@@ -434,6 +434,14 @@ func fakeRunHelper(t *testing.T, home string, run http.HandlerFunc) *httptest.Se
 		_, _ = io.Copy(io.Discard, r.Body)
 		run(w, r)
 	}))
+	writeHelperEndpoint(t, home, srv)
+	return srv
+}
+
+// writeHelperEndpoint names srv as the helper serving home, as `helper serve`
+// names itself.
+func writeHelperEndpoint(t *testing.T, home string, srv *httptest.Server) {
+	t.Helper()
 	ep, err := json.Marshal(toolkit.HelperEndpoint{Schema: toolkit.HelperSchema, Address: strings.TrimPrefix(srv.URL, "http://"), Token: "t", PID: os.Getpid()})
 	if err != nil {
 		t.Fatal(err)
@@ -441,7 +449,6 @@ func fakeRunHelper(t *testing.T, home string, run http.HandlerFunc) *httptest.Se
 	if err := os.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return srv
 }
 
 // ⛔ run --via-helper --json ANSWERS A JOB'S RESULT FOR A JOB THE HELPER TOOK ON

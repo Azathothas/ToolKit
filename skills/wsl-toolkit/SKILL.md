@@ -225,7 +225,8 @@ Attacks the base from the unprivileged account and reports every door it finds o
 Exit 0 means every door the configuration claims to close is closed, and other doors
 can still be open. Exit 1 names a claim the base does not keep, and exit 2 is a probe
 that could not run. ⛔ **Run this rather than believing any page about what a base
-cannot reach.**
+cannot reach.** It is refused through the helper with exit 2, so run it through the
+session's WSL approval path.
 
 ```powershell
 wsl-toolkit base reclaim

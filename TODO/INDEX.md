@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 257  open 11  blocked 5  done 241
+total 257  open 9  blocked 5  done 243
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 3 | 2 | 113 | 118 |
-| P3 | 8 | 3 | 24 | 35 |
-| **all** | **11** | **5** | **241** | **257** |
+| P2 | 2 | 2 | 114 | 118 |
+| P3 | 7 | 3 | 25 | 35 |
+| **all** | **9** | **5** | **243** | **257** |
 
 ---
 
@@ -226,7 +226,7 @@ total 257  open 11  blocked 5  done 241
 | WSL-129 | P2 | S | done | A project cannot say which version of the tool it needs | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-130 | P2 | L | done | An engine inside a base is set up by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-131 | P2 | M | done | Job defaults are repeated in every wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-132 | P2 | S | open | Two acceptance cases are not isolated from what they run beside | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-132 | P2 | S | done | Two acceptance cases are not isolated from what they run beside | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-133 | P3 | S | done | `base shell` has no `--private-net` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-134 | P3 | S | blocked | A real window's focus event was never produced for herdr's `--remote` signals | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-135 | P3 | S | blocked | The muse-code guide was never run as one ordered pass from an empty host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -236,7 +236,7 @@ total 257  open 11  blocked 5  done 241
 | WSL-139 | P3 | S | done | `base ensure` leaves older herdr nightly clients on disk | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-140 | P2 | S | done | A base build fails when one package mirror stalls, and nothing retries | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-141 | P2 | S | done | The herdr adapter installs 0.9.0 when this repository publishes 0.9.5 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-142 | P3 | S | open | `base doors --via-helper`'s refusal was never run against a live helper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-142 | P3 | S | done | `base doors --via-helper`'s refusal was never run against a live helper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-143 | P3 | S | done | The base account's login shell is `/bin/sh` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-144 | P2 | S | done | An agent pane cannot be started in the project directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-145 | P2 | S | done | The adapter contract's example probe passes with no wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

@@ -13916,7 +13916,7 @@ What was open before the ruling, superseded:
 ## WSL-132. Two acceptance cases are not isolated from what they run beside
 
 **Source** the old record's finding 116, met on 2026-10-21
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -13952,7 +13952,11 @@ All cases pass on an instance whose configuration asks for systemd, with the con
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/acceptance`, for 8.0.0.** The marker case changes `base.image` alone and gives the configuration back byte for byte, failing when it cannot. The tick case outlasts the probe's budget and the process's wait delay. Four more cases stand apart from an instance with a configuration of its own: two ask from an empty home, and two write the suite's own base into their scratch home.
+
+Driven as the Prove asks: `acceptance.ps1 -Quick -Instance s132r`, on a scratch instance whose file asks for systemd and passwordless sudo, passed 104 of 104. The file's SHA-256 was the same before and after. Go cases run the marker case and `Get-SuiteBase` under pwsh against a stubbed tool.
+
+⚠ The nine cases that run under pwsh skip where there is no pwsh, which is the Linux proof's image. CI's ubuntu runner has pwsh. The full suite, 111 cases, was not run.
 
 
 ## WSL-133. `base shell` has no `--private-net`
@@ -14404,7 +14408,7 @@ What was open before the ruling:
 ## WSL-142. `base doors --via-helper`'s refusal was never run against a live helper
 
 **Source** the old record's review findings of 2026-09-17
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -14436,7 +14440,7 @@ The new case passes.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/acceptance`, for 8.0.0.** The doors case ran in the suite's live run against a scratch instance with a helper serving it, 104 of 104 passing, and its refusal names `wsl.exe` running on the host. `TestBaseDoorsIsRefusedThroughAServingHelper` holds the refusal through a fake helper on any host. The manual says the helper does not carry `base doors`.
 
 
 ## WSL-143. The base account's login shell is `/bin/sh`

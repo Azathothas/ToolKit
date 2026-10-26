@@ -3,8 +3,13 @@
 package toolkit
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ⛔ EVERY CASE HERE READS A FUNCTION WITH NO PROCESS IN IT, on purpose. The
@@ -263,4 +268,122 @@ func TestASizeIsReadInTheUNITSTheEnginePrinted(t *testing.T) {
 			t.Fatalf("ParseHumanBytes(%q) is %d, want %d", tc.in, got, tc.want)
 		}
 	}
+}
+
+// tickCaseMargin is what an acceptance heartbeat case's silence keeps over the
+// longest a tick can wait. ⚠ The line that opens a silence crosses wsl.exe on
+// its way to the relay, so the relay may see the silence start late, and a
+// loaded host may schedule the relay late as well. WSL-132.
+const tickCaseMargin = 2 * time.Second
+
+// TestTheAcceptanceTickCaseWaitsOutTheProbeBudget holds the acceptance suite's
+// tick case to what the relay guarantees on a loaded machine. WSL-132.
+//
+// ⛔ A TICK WAITS ON ONE PROBE OF THE CONTAINER, and the probe may spend all of
+// containerProbeBudget, then processWaitDelay more while its pipes drain. The
+// relay asks again once it answers and drops a tick that output overtook, so a
+// silence shorter than the interval, the poll, the budget and the delay may
+// carry none. The case asked for two in seven seconds, and failed beside
+// mutation rows while it passed idle. A longer budget or delay, a shorter
+// silence or a second required tick each turns it back into a measure of the load.
+func TestTheAcceptanceTickCaseWaitsOutTheProbeBudget(t *testing.T) {
+	body := acceptanceCase(t, "a job that outlives the tick interval says so, and stops saying it")
+	tick := regexp.MustCompile(`'--tick', '(\d+)s'`).FindStringSubmatch(body)
+	sleep := regexp.MustCompile(`echo first; sleep (\d+); echo second`).FindStringSubmatch(body)
+	need := regexp.MustCompile(`\$ticks\.Count -lt (\d+)`).FindStringSubmatch(body)
+	if tick == nil || sleep == nil || need == nil {
+		t.Fatalf("the tick case no longer names its interval, its silence and the ticks it needs:\n%s", body)
+	}
+	interval, _ := strconv.Atoi(tick[1])
+	silent, _ := strconv.Atoi(sleep[1])
+	floor := time.Duration(interval)*time.Second + relayPoll + containerProbeBudget + processWaitDelay + tickCaseMargin
+	if time.Duration(silent)*time.Second < floor {
+		t.Errorf("the tick case is silent for %ds, and one tick is certain only after %v: a %ds interval, the %v poll, the %v probe budget, the %v wait delay and a %v margin",
+			silent, floor, interval, relayPoll, containerProbeBudget, processWaitDelay, tickCaseMargin)
+	}
+	if need[1] != "1" {
+		t.Errorf("the tick case needs %s ticks, and a loaded machine guarantees one", need[1])
+	}
+}
+
+// TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget holds the suite's
+// two distribution heartbeat cases to the same guarantee. WSL-132.
+//
+// ⛔ A DISTRIBUTION'S TICK WAITS ON WSL's ANSWER ABOUT IT, which may spend all of
+// distroFactsBudget and processWaitDelay more. The unterminated line opens its
+// silence only once StreamFlushAfter shows it, and the escalation needs a tick
+// that lands past its step. So each silence outlasts what its case needs. ⛔ AND
+// A LATE TICK NAMES A LONG SPAN, so each pattern a case reads a span with is
+// read against a two digit one.
+func TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget(t *testing.T) {
+	slowest := relayPoll + distroFactsBudget + processWaitDelay + tickCaseMargin
+	for _, tc := range []struct {
+		name string
+		// opens is how long after its last write the relay starts the silence.
+		opens    time.Duration
+		escalate bool
+		// spans pairs each pattern the case matches with a line a late tick writes.
+		spans map[string]string
+	}{
+		{"an unterminated line is shown early and a silence is reported with the distribution state", StreamFlushAfter + relayPoll, true,
+			map[string]string{
+				`-match '(tick [^']*)'`:  "tick 17s silent | elapsed 21s | out 0 lines 0 B | err 0 lines 0 B | distro running | disk 1.2 GB",
+				`-match '(after [^']*)'`: "after 17s of silence: nothing can be concluded from what is measurable here. because: x",
+			}},
+		{"a consumed progress line is carried on the heartbeat and not relayed", 0, false,
+			map[string]string{
+				`-match '(progress [^']*)'`: "tick 17s silent | elapsed 18s | out 0 lines 0 B | err 0 lines 0 B | distro running | progress 40% unpacking (17s ago)",
+			}},
+	} {
+		body := acceptanceCase(t, tc.name)
+		tick := regexp.MustCompile(`'--tick', '(\d+)s'`).FindStringSubmatch(body)
+		sleep := regexp.MustCompile("`nsleep (\\d+)`n").FindStringSubmatch(body)
+		if tick == nil || sleep == nil {
+			t.Fatalf("%q no longer names its interval and its silence:\n%s", tc.name, body)
+		}
+		interval, _ := strconv.Atoi(tick[1])
+		silent, _ := strconv.Atoi(sleep[1])
+		floor := tc.opens + time.Duration(interval)*time.Second + slowest
+		if tc.escalate {
+			step := regexp.MustCompile(`'--tick-escalate', '(\d+)s'`).FindStringSubmatch(body)
+			if step == nil {
+				t.Fatalf("%q no longer names its escalation step:\n%s", tc.name, body)
+			}
+			n, _ := strconv.Atoi(step[1])
+			floor += time.Duration(n) * time.Second
+		}
+		if time.Duration(silent)*time.Second < floor {
+			t.Errorf("%q is silent for %ds, and the tick it reads is certain only after %v", tc.name, silent, floor)
+		}
+		for find, line := range tc.spans {
+			m := regexp.MustCompile(find).FindStringSubmatch(body)
+			if m == nil {
+				t.Errorf("%q no longer matches a pattern shaped %s", tc.name, find)
+				continue
+			}
+			if !regexp.MustCompile(m[1]).MatchString(line) {
+				t.Errorf("%q reads %q, which a tick that landed late does not match: %s", tc.name, m[1], line)
+			}
+		}
+	}
+}
+
+// acceptanceCase is the body of the acceptance suite's case with this name, from
+// its Test-Case line to the brace that closes it.
+func acceptanceCase(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "acceptance.ps1"))
+	if err != nil {
+		t.Fatalf("the acceptance suite could not be read: %v", err)
+	}
+	text := strings.ReplaceAll(string(b), "\r\n", "\n")
+	start := strings.Index(text, "Test-Case '"+name+"'")
+	if start < 0 {
+		t.Fatalf("the acceptance suite has no case named %q", name)
+	}
+	end := strings.Index(text[start:], "\n    }\n")
+	if end < 0 {
+		t.Fatalf("the case %q has no closing brace at its own indentation", name)
+	}
+	return text[start : start+end]
 }

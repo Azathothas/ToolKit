@@ -2,6 +2,231 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the acceptance marker case reads every byte of its restore back, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "return (($null -ne $now) -and ([Convert]::ToBase64String($now) -eq [Convert]::ToBase64String($Saved)))",
+      "replace": "return $true",
+      "run": "TestTheMarkerCaseGivesTheConfigurationBackByteForByte",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance marker case removes a configuration it found missing, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "elseif (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }",
+      "replace": "elseif ($false) { }",
+      "run": "TestTheMarkerCaseGivesTheConfigurationBackByteForByte",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the suite's base copied into a scratch home keeps every key but the name, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "if ($p.Name -ne 'name') { $kept[$p.Name] = $p.Value }",
+      "replace": "if ($p.Name -ne 'name') { }",
+      "run": "TestGetSuiteBaseAsksAScratchHomeForTheSuitesBase",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the suite's base copied into a scratch home resolves a relative grant at the suite's file, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "if (-not [IO.Path]::IsPathFullyQualified($source)) {",
+      "replace": "if ($false) {",
+      "run": "TestGetSuiteBaseAsksAScratchHomeForTheSuitesBase",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance suite refuses a PowerShell older than 7.2, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "($Version.Major -eq 7 -and $Version.Minor -lt 2)",
+      "replace": "($Version.Major -eq 7 -and $Version.Minor -lt 0)",
+      "run": "TestTheSuiteRefusesAPowerShellItsJSONCannotRunOn",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance unterminated-line case is silent past the slowest distribution tick",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "printf 'Password: '`nsleep 25`n",
+      "replace": "printf 'Password: '`nsleep 10`n",
+      "run": "TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance progress case is silent past the slowest distribution tick",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "echo WTK 40 unpacking`nsleep 20`n",
+      "replace": "echo WTK 40 unpacking`nsleep 3`n",
+      "run": "TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance unterminated-line case reads a tick of any span",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "'tick \\d+s silent .*\\| distro running \\| disk'",
+      "replace": "'tick \\ds silent .*\\| distro running \\| disk'",
+      "run": "TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance unterminated-line case reads an escalation of any span",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "'after \\d+s of silence: '",
+      "replace": "'after 3s of silence: '",
+      "run": "TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance progress case reads a progress age of any span",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "'progress 40% unpacking \\(\\d+s ago\\)'",
+      "replace": "'progress 40% unpacking \\(\\ds ago\\)'",
+      "run": "TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a longer distribution facts budget is held against the acceptance heartbeat cases",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "const distroFactsBudget = 15 * time.Second\n",
+      "replace": "const distroFactsBudget = 25 * time.Second\n",
+      "run": "TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a container probe budget the wait delay overruns is held against the acceptance tick case",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/observe.go",
+      "find": "const containerProbeBudget = 20 * time.Second\n",
+      "replace": "const containerProbeBudget = 27500 * time.Millisecond\n",
+      "run": "TestTheAcceptanceTickCaseWaitsOutTheProbeBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a longer process wait delay is held against the acceptance heartbeat cases",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/process.go",
+      "find": "const processWaitDelay = time.Second\n",
+      "replace": "const processWaitDelay = 10 * time.Second\n",
+      "run": "TestTheAcceptanceTickCaseWaitsOutTheProbeBudget|TestTheAcceptanceDistroHeartbeatCasesWaitOutTheFactsBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base doors refuses the helper route, on any host",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_doors.go",
+      "find": "return exitCannot, fmt.Errorf(\"base doors runs a probe that mounts, writes and opens sockets inside the base, which the restricted helper protocol does not accept. Make this call through the session's WSL approval path\")",
+      "replace": "_ = c",
+      "run": "TestBaseDoorsIsRefusedThroughAServingHelper",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance search-order case asks from a home with no instance file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "foreach ($a in @('--home', $empty, 'config', '--json'))",
+      "replace": "foreach ($a in @('config', '--json'))",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance refused-spelling case asks from a home with no instance file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "foreach ($a in @('--home', $bare, 'config', '--json'))",
+      "replace": "foreach ($a in @('config', '--json'))",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance helper-lifecycle home asks for the suite's base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "$null = Set-StateConfig -StateHome $home3 -Config @{ base = (Get-SuiteBase) }",
+      "replace": "",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance mid-flight catalog asks for the suite's base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "base   = (Get-SuiteBase)",
+      "replace": "",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the suite's base copied into a scratch home leaves its name out, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "if ($p.Name -ne 'name') { $kept[$p.Name] = $p.Value }",
+      "replace": "$kept[$p.Name] = $p.Value",
+      "run": "TestGetSuiteBaseAsksAScratchHomeForTheSuitesBase",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance marker case changes one key and keeps every other, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "else { $doc = [Text.Json.Nodes.JsonNode]::Parse($Text) }",
+      "replace": "else { $doc = [Text.Json.Nodes.JsonObject]::new() }",
+      "run": "TestEditConfigKeyChangesOnlyItsKey",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance marker case writes the configuration's own bytes back, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "if ($null -ne $Saved) { [IO.File]::WriteAllBytes($Path, $Saved) }",
+      "replace": "if ($null -ne $Saved) { [IO.File]::WriteAllText($Path, [Text.Encoding]::UTF8.GetString($Saved)) }",
+      "run": "TestTheMarkerCaseGivesTheConfigurationBackByteForByte",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance marker case fails over a configuration it did not restore, under pwsh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "if (-not $restored) { return \"the configuration at $cfgPath was not restored byte for byte\" }",
+      "replace": "",
+      "run": "TestTheMarkerCaseGivesTheConfigurationBackByteForByte",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance tick case is silent for longer than a tick can wait",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "'-c', 'echo first; sleep 30; echo second')",
+      "replace": "'-c', 'echo first; sleep 7; echo second')",
+      "run": "TestTheAcceptanceTickCaseWaitsOutTheProbeBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance tick case needs the one tick a loaded machine guarantees",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "        if ($ticks.Count -lt 1) {",
+      "replace": "        if ($ticks.Count -lt 2) {",
+      "run": "TestTheAcceptanceTickCaseWaitsOutTheProbeBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a longer container probe budget is held against the acceptance tick case",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/observe.go",
+      "find": "const containerProbeBudget = 20 * time.Second\n",
+      "replace": "const containerProbeBudget = 30 * time.Second\n",
+      "run": "TestTheAcceptanceTickCaseWaitsOutTheProbeBudget",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a sealed base's resolver failure has its own line",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/verify.sh",
