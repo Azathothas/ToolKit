@@ -59,7 +59,8 @@ wsl-toolkit base --help
 wsl-toolkit base exec --help
 ```
 
-⚠ `helper --help` prints the helper's usage and then exits 2.
+⚠ **Asking for help is not a failure.** Every `--help` answers 0. `wsl-toolkit base` or
+`wsl-toolkit helper` with no subcommand answers 2, because nothing was asked.
 
 ⭐ **Read the refusal first.** Most name the file, the field and the fix.
 
@@ -97,21 +98,23 @@ Under `--json`, `job_started` says whether the job started, because a job can ex
 ⭐ **Every example here acts on the default base, so none passes `--instance`.** The
 default base is the agents' base too. Its canonical name is `wsl-toolkit-jobs`. ⚠ An
 older default base may still be named `wsl-toolkit`, and it keeps working under that
-name. `base status` says which name it has, and how to move.
+name. `base status` says which name it has, and how to move. ⛔ Moving deletes the
+base's home, so it is the user's choice.
 
 `--instance NAME` acts on another base, the distribution `wsl-toolkit-NAME`, with its
 own state. `doctor --json` lists every distribution in `host.wsl_distros`. ⛔ Where the
 instance does not exist, `base ensure` builds a new one, so use the name the user has.
 ⛔ **`base` and `jobs` are reserved instance names.** A new instance under either is
-refused.
+refused, and an existing one stays reachable.
 ⚠ **A new instance named `wsl-NAME` or `wsl-toolkit-NAME` is made as `NAME`.** Its
 distribution is `wsl-toolkit-NAME`, and stderr warns once. An existing instance keeps
 its name. `--literal-instance` keeps the name as given.
 
 One base is one JSON configuration. When the instance's own `config.json` exists in
-its state directory, `--instance NAME` reads it from any directory. Otherwise the
-search starts at `wsl-toolkit.json` in the working directory and above it. `config`
-names the file that won:
+its state directory, `--instance NAME` reads it from any directory. ⚠ The nearest
+`wsl-toolkit.json` from the working directory up still lends it every `jobs` key that
+file writes. Otherwise the search starts at `wsl-toolkit.json` in the working
+directory and above it. `config` names the file that won, and each key it lent:
 
 ```powershell
 wsl-toolkit config
@@ -130,7 +133,7 @@ Start there whenever something is unexpected.
 | `shared_tmpfs` | `off` unmounts the shared `/mnt/wsl`. It needs `automount` `off` too |
 | `toolset` | what the base installs as root. It is `none` by default |
 | `mounts` | the grants. One Windows directory each |
-| `adapters` | the software `base ensure` installs, in order |
+| `adapters` | the software `base ensure` installs, in order. Each installs with `pacman -Syu --needed`, which upgrades every package in the base |
 
 | field under `jobs` | what it means |
 | --- | --- |
@@ -145,6 +148,10 @@ wsl-toolkit config --write
 wsl-toolkit config validate
 ```
 
+⚠ **Where `config` names a `wsl-toolkit.json` instead, that file wins in its
+directory and below.** Change that one, because the state directory's copy then
+changes nothing.
+
 ---
 
 ## 5. The commands that do the work
@@ -155,10 +162,19 @@ wsl-toolkit base ensure
 
 Builds, provisions, installs every adapter, and prints the state. A second run
 reconciles rather than rebuilding, so run it after a configuration change.
-⛔ **It can restart and rebuild the base.** It restarts the distribution when a
-provisioned setting changed, and rebuilds a base whose re-provisioning fails. Ask the
-user before you run it on a base that holds work. ⚠ Building a base needs a container
-engine on Windows: podman, docker or `wslc`, tried in that order.
+⛔ **It can restart the base, which stops what runs in it.** A base that does not
+verify, such as one whose provisioned setting changed, is provisioned again and
+restarted. Where that fails, the base is kept, and the refusal names `base recreate`.
+Ask the user before you run it on a base that holds work.
+
+⚠ Building a base needs a container engine on Windows: podman, docker or `wslc`,
+tried in that order.
+
+⛔ **Only the state directory that owns the base changes it.** `base status` names
+the owner. Another one is refused a rebuild, a re-provision, `--repair` and
+`base remove`. So is a shell whose `%LOCALAPPDATA%` Windows redirects into an app's
+copy. From either, `base ensure` installs no adapter, says so in one line, and
+exits 0. Run those from PowerShell or a terminal outside the app.
 
 ```powershell
 wsl-toolkit base status --probe
@@ -308,18 +324,23 @@ It is refused through the helper.
 
 ## 7. When it is broken
 
+⛔ **`base recreate` and `base remove --yes` delete the base's home, images and
+credentials.** Run either only when the user asks for it, whatever a refusal or a
+remediation names.
+
 | what you see | what to do |
 | --- | --- |
 | a configuration field the tool does not know | compare it with `config --effective`. If its name and place are right, run `wsl-toolkit selfupdate` |
 | an adapter reports a problem | read the line. It names the file and the command |
-| the base is registered and nothing works | `wsl-toolkit --instance NAME base ensure --repair` |
-| Windows restarted WSL under it | a job, `base exec` and each start of the base clear the engine state another boot or an earlier start left. A base an earlier release built gets the start's check at its first `base ensure` of this release. Where podman still refuses, the same `--repair` clears it. ⛔ **`wsl --shutdown` breaks EVERY instance holding an engine.** The remediation names every other instance with its own `base ensure --repair`. Run each |
+| the base is registered and nothing works | run `base status --probe`. Each problem it lists names its fix. ⛔ `base ensure` can restart the base, and `--repair` restarts it over another configuration's grants too, so ask the user first |
+| a refusal naming both `wsl-toolkit` and `wsl-toolkit-jobs` as registered | the tool does not guess which one is the default base. Ask the user, then set `base.name` to that one in the configuration |
+| Windows restarted WSL under it | a job, `base exec` and each start of the base clear the engine state another boot or an earlier start left. An owner's `base ensure` installs that check, and installing it restarts nothing. Where podman still refuses, `base ensure --repair` clears it. ⛔ **`wsl --shutdown` breaks EVERY instance holding an engine.** The remediation names the other instances, unprobed. Run `base status --probe` with each one's `--instance` before any repair |
 | a Windows launcher says it is another build | `base ensure` rewrites it |
 | `no such job` for a job another shell started | the other shell may name another `--instance`, or hold another state directory. `config` and `doctor` name a second copy. Call the tool from one kind of shell, or set `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%` |
-| a helper refusal reading `and this build speaks` | a helper from another release is still running. Each instance has its own: `wsl-toolkit --instance NAME helper stop`, then `wsl-toolkit --instance NAME helper serve --detach` |
+| a helper refusal reading `and this build speaks` | a helper from another release is still running. Run `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach`, each with the `--instance` that helper serves |
 | a line saying `pull ... and was given up` | ⭐ **silence, and a slow link can be silent too.** A pull prints nothing while one layer downloads, so its limit is that layer's time at 256 KiB/s. On a slower link, set `WSL_TOOLKIT_PULL_STALL` to a duration such as `45m` where you call the tool, and run it again. The line says where else to look |
-| a refusal reading `the wsl-toolkit identity marker could not be read`, or a remediation `identity-unread` | a damaged disk, or one a virus scanner or a backup holds. Nothing was changed. `ready` names `base recreate` for it. ⛔ **Ask the user first.** `base recreate` rebuilds the base and `base remove --yes` removes it, each deleting its home and images |
-| an advisory `built-from-local-copy` | the pull failed, and the base was built from the image the host engine already held. It may be older than the registry's. The advisory names its digest, through the helper too. Once the registry answers, `base recreate` builds from its image |
+| a refusal reading `the wsl-toolkit identity marker could not be read`, or a remediation `identity-unread` | a damaged disk, or one a virus scanner or a backup holds. Nothing was changed. `ready` names `base recreate` for it. ⛔ **Ask the user first**, as the line above the table says |
+| an advisory `built-from-local-copy` | the pull failed, and the base was built from the image the host engine already held. It may be older than the registry's. The advisory names its digest, through the helper too. Once the registry answers, `base recreate` builds from its image, when the user asks for it |
 | a line saying `export ... and was given up` | the export writes to this machine and touches no registry. Read the free space and the engine machine. `WSL_TOOLKIT_PULL_STALL` does not change its limit |
 | an advisory `host-space-low` | the volume the base's disk grows into has under 6 GiB free. Jobs still run, and a full volume fails the guest's writes. Free space there. `wsl-toolkit gc` lists what the tool holds |
 
@@ -329,6 +350,10 @@ the job:
 ```powershell
 wsl-toolkit logs JOB-ID
 ```
+
+⚠ **An ephemeral job that ran attached keeps no transcript.**
+`--container-lifecycle ephemeral` removes its record once its answer is written, and
+`logs ID` then finds no job. Read the answer the run printed.
 
 ---
 
