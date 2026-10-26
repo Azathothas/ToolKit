@@ -147,7 +147,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			}
 			return verdictFor(st), renderBase(st, flags.asJSON, flags.probe)
 		case "ensure", "recreate":
-			st, err := c.BaseEnsureWith(ctx, sub == "recreate", flags.repair)
+			st, err := helperEnsure(ctx, c, cfg, sub, presetSwitch, flags.repair)
 			if err != nil {
 				return exitCannot, presetSwitchFailed(err, switched, flags.save, cfg)
 			}
@@ -449,6 +449,12 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	fmt.Fprintf(out, "  image       %s\n", st.Image)
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)
+	}
+	// ⭐ THE IMAGE AT THE DIGEST IT WAS BUILT FROM, as `base.image` names it. A
+	// tag rebuilt since builds something else, and this builds the same base again.
+	// WSL-186.
+	if pinned := toolkit.PinnedImage(st.BuiltFrom, st.Digest); pinned != "" {
+		fmt.Fprintf(out, "  digest      %s\n", pinned)
 	}
 	fmt.Fprintf(out, "  account     %s\n", st.User)
 	fmt.Fprintf(out, "  automount   %s\n", automountRow(st.Access))

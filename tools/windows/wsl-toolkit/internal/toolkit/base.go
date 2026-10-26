@@ -90,9 +90,14 @@ const BinfmtImage = "docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@" + binfmtPinne
 
 // BaseState is what `base status` answers.
 type BaseState struct {
-	Name       string `json:"name"`
-	Image      string `json:"image"`
-	BuiltFrom  string `json:"built_from,omitempty"`
+	Name      string `json:"name"`
+	Image     string `json:"image"`
+	BuiltFrom string `json:"built_from,omitempty"`
+	// Digest is the digest of the image the base was built from, as the host
+	// engine named it at the build: the guest's marker's under --probe, and this
+	// machine's record's otherwise. ⚠ Empty for a base an older release built.
+	// WSL-186.
+	Digest     string `json:"digest,omitempty"`
 	User       string `json:"user"`
 	Registered bool   `json:"registered"`
 	Running    bool   `json:"running"`
@@ -207,6 +212,10 @@ type Base struct {
 	// engine. ⚠ Nil, which every real Base has, means the engine. A case sets it to
 	// drive a build with no engine. WSL-150.
 	archive func(ctx context.Context, tarPath string) error
+	// exported is what this process's export read about the image it exported:
+	// its digest, and whether the engine's own copy stood in for a failed pull.
+	// ⚠ Zero for a build a case's archive made. WSL-186, WSL-192.
+	exported ExportedImage
 }
 
 // NewBase binds the lifecycle to this host.
@@ -340,6 +349,7 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 		// for one fact, so they are compared. They drift the moment somebody
 		// runs `--preset alpine` without `--save`.
 		st.BuiltFrom = rec.Image
+		st.Digest = rec.Digest
 		// ⚠ THIS IS THE RECORD, and the record is not the authority. Under
 		// --probe the guest's own marker replaces both this value and this
 		// problem below; without one, the record is the best answer available
@@ -370,6 +380,7 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 	if id, err := b.wsl.ReadIdentity(ctx, b.cfg.Base.Name); err == nil {
 		st.Identity = &id
 		st.BuiltFrom = id.Image
+		st.Digest = id.Digest
 		// ⛔ THE RECORD-BASED PROBLEM IS DROPPED, not added to. The record and
 		// the marker say the same thing whenever `ensure` has run, so keeping
 		// both produced two lines about one disagreement and left a reader
@@ -402,6 +413,9 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 			st.Problems = append(st.Problems, fmt.Sprintf(
 				"%s carries no identity marker, so this tool cannot confirm it built it. `base ensure` adopts one it has a record for", b.cfg.Base.Name))
 		}
+	} else if errors.Is(err, ErrIdentityUnread) {
+		// ⭐ WHAT REMOVES IT IS NAMED, beside why the marker was not read. WSL-183.
+		st.Problems = append(st.Problems, err.Error()+stopAfter(err.Error())+" "+unreadMarkerAdvice())
 	} else {
 		st.Problems = append(st.Problems, err.Error())
 	}
@@ -619,6 +633,8 @@ type baseRecord struct {
 	Image   string    `json:"image"`
 	User    string    `json:"user"`
 	Created time.Time `json:"created"`
+	// Digest is the image's digest, as the marker carries it. WSL-186.
+	Digest string `json:"digest,omitempty"`
 }
 
 func (b *Base) recordPath() string { return filepath.Join(b.home, "base.json") }
@@ -659,6 +675,7 @@ func (b *Base) writeRecord() error {
 	rec := baseRecord{
 		Schema: "wsl-toolkit-base/1", Name: b.cfg.Base.Name,
 		Image: b.cfg.Base.Image, User: b.cfg.Base.User, Created: time.Now().UTC(),
+		Digest: b.exported.Digest,
 	}
 	data, err := jsonMarshalIndent(rec)
 	if err != nil {
@@ -957,8 +974,10 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 	// ⭐ STAMPED BEFORE IT IS VERIFIED. The marker says what this tool BUILT,
 	// which is a fact by the time provisioning has finished; whether it can run
 	// a container is a different question and the answer to it is not identity.
+	// ⭐ WITH THE DIGEST THE ENGINE NAMED for what it exported, so the tag moving
+	// later does not lose which image this base came from. WSL-186.
 	if err := b.wsl.WriteIdentity(ctx, b.cfg.Base.Name, Identity{
-		Image: b.cfg.Base.Image, User: b.cfg.Base.User, Tool: toolVersion(),
+		Image: b.cfg.Base.Image, User: b.cfg.Base.User, Tool: toolVersion(), Digest: b.exported.Digest,
 	}); err != nil {
 		return st, b.rollbackImported(err)
 	}
@@ -1231,16 +1250,38 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 		}
 		b.log(b.cfg.Base.Name + " predates the identity marker and this tool's own record describes it; stamping it")
 		if err := b.wsl.WriteIdentity(ctx, b.cfg.Base.Name, Identity{
-			Image: rec.Image, User: rec.User, Built: rec.Created, Tool: toolVersion(),
+			Image: rec.Image, User: rec.User, Built: rec.Created, Tool: toolVersion(), Digest: rec.Digest,
 		}); err != nil {
 			return err
 		}
 		b.log("wrote " + IdentityPath)
 		return nil
 
+	case errors.Is(err, ErrIdentityUnread):
+		// ⛔ NOT AN ABSENCE AND NOT A STAMP: nothing was learned about the marker.
+		// The refusal says what does it, where it said only what failed. WSL-183.
+		return fmt.Errorf("%w%s Nothing was changed. %s", err, stopAfter(err.Error()), unreadMarkerAdvice())
+
 	default:
 		return err
 	}
+}
+
+// unreadMarkerAdvice is what an ensure and a probe say about a base whose marker
+// nothing could read. WSL-183.
+func unreadMarkerAdvice() string {
+	return fmt.Sprintf("A damaged disk does this, and so does one another program holds, such as a virus scanner or a backup. "+
+		"From the state directory that owns it, %s removes it and %s rebuilds it",
+		ToolCommand("base remove --yes"), ToolCommand("base recreate"))
+}
+
+// stopAfter is what ends the sentence s: nothing where s ends with a full stop
+// already, as WSL's own messages do.
+func stopAfter(s string) string {
+	if strings.HasSuffix(s, ".") {
+		return ""
+	}
+	return "."
 }
 
 // writeRecordFrom writes the host record from what the GUEST said, so the two
@@ -1256,7 +1297,7 @@ func (b *Base) writeRecordFrom(id Identity) error {
 	}
 	rec := baseRecord{
 		Schema: "wsl-toolkit-base/1", Name: b.cfg.Base.Name,
-		Image: id.Image, User: id.User, Created: id.Built,
+		Image: id.Image, User: id.User, Created: id.Built, Digest: id.Digest,
 	}
 	data, err := jsonMarshalIndent(rec)
 	if err != nil {
@@ -1364,7 +1405,10 @@ func (b *Base) exportRootfs(ctx context.Context, engine *Engine, freed int64) (s
 		b.dropRootfs(rootfs)
 		return "", err
 	}
-	if err := engine.ExportRootfs(ctx, b.cfg.Base.Image, rootfs, b.log); err != nil {
+	// ⭐ A BASE'S EXPORT READS THE DIGEST, AND FALLS BACK TO THE ENGINE'S OWN COPY
+	// when the pull fails. WSL-186, WSL-192.
+	exported, err := engine.ExportBaseRootfs(ctx, b.cfg.Base.Image, rootfs, b.log)
+	if err != nil {
 		b.dropRootfs(rootfs)
 		return "", err
 	}
@@ -1372,6 +1416,7 @@ func (b *Base) exportRootfs(ctx context.Context, engine *Engine, freed int64) (s
 		b.dropRootfs(rootfs)
 		return "", err
 	}
+	b.exported = exported
 	return rootfs, nil
 }
 
@@ -2418,6 +2463,21 @@ func (b *Base) remove(ctx context.Context) error {
 				return fmt.Errorf("%w, and %s", err, unmarkedAdvice(b.cfg.Base.Name, why))
 			}
 			b.log(interruptedBuildNote(b.cfg.Base.Name, rec))
+			err = b.wsl.Unregister(ctx, b.cfg.Base.Name, false)
+		}
+		// ⭐ A GUEST NOTHING COULD READ CANNOT SHOW ITS MARKER. A corrupt disk, or
+		// one another program held, was refused here, and only `wsl --unregister`
+		// by hand removed it. WSL's registration of its disk in this state
+		// directory's base folder is the proof instead, and assertOwner read it
+		// above. ⚠ A marker that was read and names another distribution, or does
+		// not parse, still refuses. WSL-183.
+		if errors.Is(err, ErrIdentityUnread) {
+			cause := err
+			if inner := errors.Unwrap(err); inner != nil {
+				cause = inner
+			}
+			b.log(fmt.Sprintf("⚠ %s. WSL keeps the disk of %s in %s, this state directory's base folder, so it is removed on that",
+				strings.TrimSuffix(cause.Error(), "."), b.cfg.Base.Name, b.Dir()))
 			err = b.wsl.Unregister(ctx, b.cfg.Base.Name, false)
 		}
 		if err != nil {

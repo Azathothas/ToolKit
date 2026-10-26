@@ -3,6 +3,7 @@
 package toolkit
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -166,6 +167,12 @@ func fakeWslMain(state string, args []string) int {
 			fmt.Fprintln(os.Stderr, "The distribution failed to start.")
 			return 1
 		}
+		// ⚠ A DISK THE GUEST STARTED ON AND CANNOT READ: `cat` names the path, and
+		// the reason is not that the file is missing. WSL-183.
+		if how, ok := said("identity"); ok && strings.TrimSpace(how) == "eio" {
+			fmt.Fprintf(os.Stderr, "/bin/cat: %s: Input/output error\n", IdentityPath)
+			return 1
+		}
 		marker, err := os.ReadFile(filepath.Join(state, "identity.json"))
 		if err != nil {
 			// What `cat` says about a missing file: the path, so the read is
@@ -175,6 +182,21 @@ func fakeWslMain(state string, args []string) int {
 		}
 		_, _ = os.Stdout.Write(marker)
 		return 0
+	}
+	// ⚠ THE MARKER'S WRITE, WHEN THE CASE STAGES IT: the archive's one file becomes
+	// identity.json, which the read above answers. A build can then end. WSL-186.
+	if len(args) > 2 && args[0] == "-d" && args[len(args)-1] == "/etc" && has(args[1]) {
+		if how, ok := said("identity-write"); ok && strings.TrimSpace(how) == "ok" {
+			tr := tar.NewReader(os.Stdin)
+			if _, err := tr.Next(); err != nil {
+				return 1
+			}
+			marker, _ := io.ReadAll(tr)
+			if err := os.WriteFile(filepath.Join(state, "identity.json"), marker, 0o600); err != nil {
+				return 96
+			}
+			return 0
+		}
 	}
 	script, _ := io.ReadAll(os.Stdin)
 	// ⚠ AN ANSWERED SCRIPT: grants.sh asked which live grants another file
@@ -243,6 +265,19 @@ func fakeEngineMain(state, role string, args []string) int {
 			}
 			fmt.Println("Writing manifest to image destination")
 		}
+	case "image":
+		// ⚠ THE ENGINE'S OWN COPY, WHEN THE CASE STAGES ONE: `image inspect`
+		// answers state/image.json, and an image it does not hold otherwise.
+		// WSL-186, WSL-192.
+		if len(args) < 3 || args[1] != "inspect" {
+			return 125
+		}
+		img, err := os.ReadFile(filepath.Join(state, "image.json"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s: image not known\n", args[len(args)-1])
+			return 125
+		}
+		_, _ = os.Stdout.Write(img)
 	case "rm":
 	case "create":
 		fmt.Println("fake-export-container")

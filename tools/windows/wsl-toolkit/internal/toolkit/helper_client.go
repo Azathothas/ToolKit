@@ -296,6 +296,39 @@ func (c *HelperClient) BaseEnsure(ctx context.Context, force bool) (BaseState, e
 // omitted field would read as "do not repair" on one side and "was never asked"
 // on the other, which is the same answer for two different reasons.
 func (c *HelperClient) BaseEnsureWith(ctx context.Context, force, repair bool) (BaseState, error) {
+	if force {
+		return c.baseEnsure(ctx, rebuildAlways, repair)
+	}
+	return c.baseEnsure(ctx, rebuildNever, repair)
+}
+
+// WithBaseImage is this client sending image as the base's image, for a call
+// whose `--preset` named it.
+//
+// ⛔ THE ONE CHANGE A CALLER MAKES TO WHAT THE CLIENT READ. The client reads its
+// configuration from the file, and a `--preset` without `--save` is not in the
+// file. So through the helper, `base ensure --preset debian` built from the file's
+// image, where the CLI builds Debian. WSL-191.
+func (c *HelperClient) WithBaseImage(image string) *HelperClient {
+	next := *c
+	next.cfg.Base.Image = image
+	return &next
+}
+
+// BaseEnsureSwitch is BaseEnsureWith for a `--preset` switch, as Base.EnsureSwitch
+// is for the CLI: the helper rebuilds the base only when, read under its lock, it
+// was not built from the configured image.
+//
+// ⛔ THE SWITCH CROSSED AS A FORCED REBUILD. A second switch that waited for the
+// first removed and rebuilt the base the first had just built, with whatever a job
+// had started in it since. The CLI decided it under the lock from 7.0.2, and the
+// helper route did not. WSL-191.
+func (c *HelperClient) BaseEnsureSwitch(ctx context.Context, repair bool) (BaseState, error) {
+	return c.baseEnsure(ctx, rebuildSwitch, repair)
+}
+
+// baseEnsure sends one ensure. mode says when it rebuilds a registered base.
+func (c *HelperClient) baseEnsure(ctx context.Context, mode rebuild, repair bool) (BaseState, error) {
 	var out struct {
 		State BaseState `json:"state"`
 		Error string    `json:"error"`
@@ -309,8 +342,11 @@ func (c *HelperClient) BaseEnsureWith(ctx context.Context, force, repair bool) (
 	// arrived with none. Its write kept no other file's line, so an ensure here
 	// dropped every other file's grant at the restart, and its verifier refused
 	// each kept one after any restart. WSL-190.
+	//
+	// ⚠ force IS `base recreate` ALONE. A switch is its own field, and the helper
+	// refuses both together. WSL-191.
 	body := map[string]any{
-		"force": force, "repair": repair, "config": c.cfg,
+		"force": mode == rebuildAlways, "switch": mode == rebuildSwitch, "repair": repair, "config": c.cfg,
 		"name_from": c.cfg.nameFrom, "guest": helperGuest(c.cfg),
 		"config_path": ownerFile(c.cfg),
 	}

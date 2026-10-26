@@ -64,6 +64,11 @@ type Identity struct {
 	// Tool is the version that built it, so a base built by an older release is
 	// recognisable rather than merely present.
 	Tool string `json:"tool,omitempty"`
+	// Digest is the digest of the image it was built from, as the host engine
+	// named it at the build. ⭐ `base.image` set to the image at this digest builds
+	// the same rootfs again after the tag moved. ⚠ Empty for a base an older
+	// release built, and where the engine named none. WSL-186.
+	Digest string `json:"digest,omitempty"`
 }
 
 // ErrNotOwned is what every ownership refusal wraps, so a caller can tell one
@@ -77,9 +82,16 @@ var ErrNotOwned = errors.New("not a distribution this tool owns")
 var ErrNoIdentity = errors.New("carries no wsl-toolkit identity marker")
 
 // ErrIdentityUnread says the marker could not be read at all: the guest did not
-// start, the read timed out, or wsl.exe failed. ⛔ It is not ErrNoIdentity,
-// because nothing was learned about the marker. WSL-167.
+// start, the read timed out, wsl.exe failed, or `cat` failed for a reason other
+// than a missing file. ⛔ It is not ErrNoIdentity, because nothing was learned
+// about the marker. WSL-167, WSL-183.
 var ErrIdentityUnread = errors.New("the wsl-toolkit identity marker could not be read")
+
+// ErrGuestUnstartable says WSL did not start the guest, or the read never came
+// back, so `cat` never answered. An error carrying it carries ErrIdentityUnread
+// too. ⛔ A corrupt disk, or one another program holds, is this, and its fix is
+// not a stamp. WSL-183.
+var ErrGuestUnstartable = errors.New("the guest could not be started")
 
 // IsOwnedName is the structural half: `wsl-toolkit`, or `wsl-toolkit-<suffix>`.
 //
@@ -208,11 +220,21 @@ func (w *Wsl) ReadIdentity(ctx context.Context, name string) (Identity, error) {
 	// says the marker is not there. Read as an absence, they demoted a base this
 	// tool built and stamped a guest it could not reach. `cat` names the path it
 	// could not open, and wsl.exe failing to start a guest does not. WSL-167.
+	//
+	// ⛔ AND ONLY ITS "No such file". `cat` names the path for an I/O error on a
+	// damaged disk too, and that was read as a guest with no marker. The guest
+	// started, and nothing was learned about the marker. WSL-183.
+	// ⚠ The words are the C locale's, which a guest this tool provisions keeps.
 	if code == 1 && bounded.Err() == nil && strings.Contains(errBuf.String(), IdentityPath) {
-		return id, fmt.Errorf("%s %w", name, ErrNoIdentity)
+		if strings.Contains(errBuf.String(), "No such file") {
+			return id, fmt.Errorf("%s %w", name, ErrNoIdentity)
+		}
+		return id, fmt.Errorf("%w: %s started, and cat could not read %s: %s", ErrIdentityUnread, name, IdentityPath, guestFailure(errBuf.String()))
 	}
+	// ⛔ EVERYTHING ELSE IS A GUEST THAT DID NOT ANSWER: WSL refused to start it,
+	// or the read never came back. WSL-183.
 	if code != 0 || err != nil {
-		return id, fmt.Errorf("%w: %s, exit %d: %s", ErrIdentityUnread, name, code, guestFailure(out.String(), errBuf.String()))
+		return id, fmt.Errorf("%w: %w: %s, exit %d: %s", ErrIdentityUnread, ErrGuestUnstartable, name, code, guestFailure(out.String(), errBuf.String()))
 	}
 	if err := json.Unmarshal([]byte(out.String()), &id); err != nil {
 		return id, fmt.Errorf("%s carries a %s that does not parse: %w", name, IdentityPath, err)

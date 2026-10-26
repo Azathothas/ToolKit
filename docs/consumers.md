@@ -296,6 +296,50 @@ ledger row carries no line, so on such a base the next restart can drop one file
 grant, as 7.0.2 did. The manual's grant section names the two commands of that
 file which write the line back.
 
+### ⚠ What a base whose marker cannot be read changes, and what a caller does
+
+`WSL-183`. Not released yet. It ships in `wsl-toolkit-v8.0.0`. A removal the caller
+asked for replaces a refusal, and a refusal replaces a stamp.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `base remove --yes` removes an owned base whose identity marker cannot be read, on WSL's registration of its disk in the instance's `base` folder. 7.x refused it, and only `wsl --unregister` removed it | relied on that refusal to keep such a base | runs `base remove --yes` only on a base it means to delete |
+| `base recreate`, and a `--preset` switch that rebuilds, rebuild such a base. 7.x refused both | relied on those refusals to keep it | runs neither on a base it means to keep |
+| `cat` failing on the marker for any reason but a missing file reads as an unread marker. `base ensure` refuses such a base with exit 2, where 7.x stamped it from this machine's record | relied on that ensure adopting the base | frees the disk from the program holding it, or runs `base recreate` |
+| that refusal, and the `base status --probe` problem, add the likely causes and name `base remove --yes` and `base recreate` | matches the problem's words exactly | reads the exit code, or matches `could not be read` |
+
+### ⭐ What recording the digest adds, and what a caller reads
+
+`WSL-186`. Not released yet. No exit code changes, and no field is removed.
+
+| change | a caller that | the caller does |
+| --- | --- | --- |
+| `base status --json`, and the state `base ensure --json` prints, add `digest`. Under `--probe` it is the guest marker's, and otherwise this machine's record's | | reads it, or ignores it |
+| `base status` prints a `digest` row naming the image at that digest, where a build of this release recorded one | treats every line of `base status` as one it knows | reads `--json` |
+| the guest's `/etc/wsl-toolkit-identity.json` and the instance's `base.json` add `digest` | reads either file | reads it, or ignores it |
+| a build prints a `digest:` line, or a ⚠ line saying none is recorded | treats every stderr line of a build as one it knows | reads the exit code, or `--json` |
+
+### ⚠ What a `--preset` switch through the helper changes, and what a caller does
+
+`WSL-191`. Not released yet. The helper protocol stays `wsl-toolkit-helper/7`, which
+no release speaks yet, and its `base/ensure` request gains `switch`.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `base ensure --preset` through the helper rebuilds only where the base, read under its lock, is not built from the preset. 7.x rebuilt it every time | relied on a switch through the helper to rebuild a base already built from the preset | runs `base recreate` |
+| `--preset` without `--save` through the helper builds the preset's image. 7.x sent the file's image, and built that | relied on the helper building the file's image beside a `--preset` | drops `--preset` |
+| a request to `/v1/base/ensure` with both `force` and `switch` is refused with HTTP 400, and nothing changes | sends its own requests to the helper | sends one of the two |
+
+### ⚠ What building from the engine's own copy changes, and what a caller does
+
+`WSL-192`. Not released yet. A build that failed can succeed. ⚠ A rebuild whose pull
+fails no longer exits 2 where the engine holds the image, a change by the table above.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a build whose pull fails exports the copy the host engine already holds for this machine's platform. Two ⚠ lines say so, with the copy's digest. 7.x exited 2 and kept the base | relied on a failed pull to stop a rebuild, so a base is only built from the registry's current image | removes the engine's copy before the rebuild, or reads the `digest` row after it |
+| a refusal for a failed pull adds why the engine's own copy was not used: it holds none, or one for another platform | matches the refusal's words exactly | reads the exit code |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.
