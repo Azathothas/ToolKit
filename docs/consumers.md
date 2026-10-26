@@ -94,7 +94,7 @@ depend on it.
 
 ### ⛔ What the canonical default base name breaks, and what a caller does
 
-`WSL-167`, ruling 33. Not released yet. A break by the table above, so the release
+`WSL-167`, ruling 33. In `wsl-toolkit-v8.0.0`. A break by the table above, so the release
 that carries it is a major one. ⭐ A host that already has a default base keeps
 using it, under its old name, from every state directory.
 
@@ -123,7 +123,7 @@ pg-toolkit's `up` and podbox's `podbox-dev session` both run. So is the `base en
 
 ### ⚠ What the instance prefix changes, and what a caller does
 
-`WSL-193`. Not released yet. An existing instance keeps its name, so no working call
+`WSL-193`. In `wsl-toolkit-v8.0.0`. An existing instance keeps its name, so no working call
 changes meaning for it.
 
 | change | it breaks a caller that | the caller does |
@@ -132,7 +132,7 @@ changes meaning for it.
 
 ### ⚠ What an ephemeral job's record changes, and what a caller does
 
-`WSL-121`. Not released yet. The help always said an ephemeral job leaves nothing behind;
+`WSL-121`. In `wsl-toolkit-v8.0.0`. The help always said an ephemeral job leaves nothing behind;
 now its host record goes too, once its answer is written.
 
 | change | it breaks a caller that | the caller does |
@@ -146,7 +146,7 @@ nothing of one after it ends.
 
 ### ⚠ What an empty `/out` changes, and what a caller does
 
-`WSL-124`. Not released yet.
+`WSL-124`. In `wsl-toolkit-v8.0.0`.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -158,7 +158,7 @@ from two scripts, and each makes the directory first (`run-in-base.sh:158`,
 
 ### ⛔ What a project lending every `jobs` key breaks, and what a caller does
 
-`WSL-131`, ruling 34. Not released yet. A break by the table above, so it goes into
+`WSL-131`, ruling 34. In `wsl-toolkit-v8.0.0`. A break by the table above, so it goes into
 `wsl-toolkit-v8.0.0`.
 
 | change | it breaks a caller that | the caller does |
@@ -170,7 +170,7 @@ from two scripts, and each makes the directory first (`run-in-base.sh:158`,
 
 ### ⚠ What a pull's sized stall changes, and what a caller does
 
-`WSL-176`. Not released yet. No exit code changes for a call that names no new
+`WSL-176`. In `wsl-toolkit-v8.0.0`. No exit code changes for a call that names no new
 variable.
 
 | change | it breaks a caller that | the caller does |
@@ -187,7 +187,7 @@ variable.
 
 ### ⚠ What watching the host's free space changes, and what a caller does
 
-`WSL-180`. Not released yet.
+`WSL-180`. In `wsl-toolkit-v8.0.0`.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -201,7 +201,7 @@ variable.
 
 ### ⚠ What reading `--home` the MSYS way changes, and what a caller does
 
-`WSL-187`. Not released yet.
+`WSL-187`. In `wsl-toolkit-v8.0.0`.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -212,7 +212,7 @@ variable.
 
 ### ⚠ What reading `WSL_TOOLKIT_CACHE` the MSYS way changes, and what a caller does
 
-`WSL-195`. Not released yet.
+`WSL-195`. In `wsl-toolkit-v8.0.0`.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -221,7 +221,7 @@ variable.
 
 ### ⚠ What reading the host it runs on changes, and what a caller does
 
-`WSL-188`. Not released yet.
+`WSL-188`. In `wsl-toolkit-v8.0.0`.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -249,7 +249,7 @@ variable.
 
 ### ⛔ What the tool's own exit code breaks, and what a caller does
 
-`WSL-127`, ruling 35. Not released yet. A break by the table above, so it goes into
+`WSL-127`, ruling 35. In `wsl-toolkit-v8.0.0`. A break by the table above, so it goes into
 `wsl-toolkit-v8.0.0`. A command that answers with a job's own code now answers 125
 where this tool could not run the job. So a job's 2 is never read as a refusal.
 
@@ -282,7 +282,7 @@ run: agent-box's `development.md:83`, podbox's `run-in-base.sh:32` and
 
 ### ⛔ What `text-tool eol` refusing a missing path breaks, and what a caller does
 
-`WSL-166`, ruling 35. Not released yet. `text-tool` ships with `wsl-toolkit`, so it
+`WSL-166`, ruling 35. In `wsl-toolkit-v8.0.0`. `text-tool` ships with `wsl-toolkit`, so it
 goes into `wsl-toolkit-v8.0.0`.
 
 | change | it breaks a caller that | the caller does |
@@ -292,7 +292,7 @@ goes into `wsl-toolkit-v8.0.0`.
 
 ### ⭐ What the base runtime adds, and what a caller reads
 
-`WSL-126`, `WSL-130` and the limits in `WSL-136`. Not released yet. No exit
+`WSL-126`, `WSL-130` and the limits in `WSL-136`. In `wsl-toolkit-v8.0.0`. No exit
 code changes, and no field a 7.0.2 document carries is removed.
 
 | change | a caller that | the caller does |
@@ -312,7 +312,7 @@ They ship in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 
 ### ⚠ What the base build changes, and what a caller does
 
-`WSL-137`, `WSL-143`, `WSL-147` and `WSL-150`. Not released yet.
+`WSL-137`, `WSL-143`, `WSL-147` and `WSL-150`. In `wsl-toolkit-v8.0.0`.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -323,7 +323,7 @@ They ship in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 
 ### ⭐ What a restart of WSL changes, and what a caller reads
 
-`WSL-170`, `WSL-178` and `WSL-184`. Not released yet. No field a 7.0.2 document
+`WSL-170`, `WSL-178` and `WSL-184`. In `wsl-toolkit-v8.0.0`. No field a 7.0.2 document
 carries is removed. ⚠ Only a session the base restarted under answers another
 code. `wait` answers 1 where it waited or answered 124. `stop` exits 0 where it
 signalled another group and exited 1. Both ride in `wsl-toolkit-v8.0.0`.
@@ -343,7 +343,7 @@ signalled another group and exited 1. Both ride in `wsl-toolkit-v8.0.0`.
 
 ### ⚠ What a grant that survives a restart changes, and what a caller does
 
-`WSL-190`. Not released yet. A grant that works today keeps working. ⛔ The helper
+`WSL-190`. In `wsl-toolkit-v8.0.0`. A grant that works today keeps working. ⛔ The helper
 protocol moves to `wsl-toolkit-helper/7`, a break by the table above, so it ships
 in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 
@@ -360,7 +360,7 @@ file which write the line back.
 
 ### ⚠ What a base whose marker cannot be read changes, and what a caller does
 
-`WSL-183`. Not released yet. It ships in `wsl-toolkit-v8.0.0`. A removal the caller
+`WSL-183`. In `wsl-toolkit-v8.0.0`. A removal the caller
 asked for replaces a refusal, and a refusal replaces a stamp.
 
 | change | it breaks a caller that | the caller does |
@@ -376,7 +376,7 @@ asked for replaces a refusal, and a refusal replaces a stamp.
 
 ### ⭐ What recording the digest adds, and what a caller reads
 
-`WSL-186`. Not released yet. No exit code changes, and no field is removed.
+`WSL-186`. In `wsl-toolkit-v8.0.0`. No exit code changes, and no field is removed.
 
 | change | a caller that | the caller does |
 | --- | --- | --- |
@@ -389,7 +389,7 @@ asked for replaces a refusal, and a refusal replaces a stamp.
 
 ### ⚠ What a `--preset` switch through the helper changes, and what a caller does
 
-`WSL-191`. Not released yet. The helper protocol stays `wsl-toolkit-helper/7`, which
+`WSL-191`. In `wsl-toolkit-v8.0.0`. The helper protocol stays `wsl-toolkit-helper/7`, which
 no release speaks yet, and its `base/ensure` request gains `switch`.
 
 | change | it breaks a caller that | the caller does |
@@ -402,7 +402,7 @@ no release speaks yet, and its `base/ensure` request gains `switch`.
 
 ### ⚠ What building from the engine's own copy changes, and what a caller does
 
-`WSL-192`. Not released yet. A build that failed can succeed. ⚠ A rebuild whose pull
+`WSL-192`. In `wsl-toolkit-v8.0.0`. A build that failed can succeed. ⚠ A rebuild whose pull
 fails no longer exits 2 where the engine holds the image, a change by the table above.
 
 | change | it breaks a caller that | the caller does |

@@ -21,6 +21,45 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-10-26
+
+### 2026-10-26T18:58:29Z: `wsl-toolkit` is 8.0.0, a major: the default base's name and owner, a job's code apart from the tool's, and a base that survives its restarts
+
+**Record:** `WSL-120` to `WSL-133`, `WSL-136`, `WSL-137`'s second half, `WSL-139` to `WSL-157`, `WSL-160` to `WSL-164`, `WSL-166`, `WSL-167`, `WSL-170`, `WSL-176`, `WSL-178`, `WSL-180`, `WSL-183`, `WSL-184` and `WSL-186` to `WSL-195`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md); `DOC-11`, `DOC-12`, `DOC-14` and `DOC-15` in [`TODO/docs.md`](TODO/docs.md); rulings 33 to 35 in [`TODO/RULES.md`](TODO/RULES.md). Every break has its section in [`docs/consumers.md`](docs/consumers.md). The work filed `WSL-196` to `WSL-199`.
+**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v8.0.0` from this commit.
+
+⛔ **A major release.** Read [`docs/consumers.md`](docs/consumers.md) before moving a caller to it. The breaks below are the ones most callers meet.
+
+⛔ **The default base's name comes from WSL's own registry, and only its owner removes or rebuilds it.** A scratch `WSL_TOOLKIT_HOME` can no longer delete another home's base. A fresh host's default is `wsl-toolkit-jobs`. `WSL-167`
+
+⛔ **A job's own exit 2 is never read as this tool's refusal.** A command that forwards a job's code answers 125 where this tool could not run the job, and `--tool-exit` picks another code. A result carries `job_started` and `tool_failed`. `WSL-127`
+
+⛔ **The helper protocol is `wsl-toolkit-helper/7`.** A 7.x helper left running is refused until it is restarted. `WSL-127`, `WSL-190`
+
+⛔ **An instance named `wsl-NAME` is made as `NAME`**, with a warning, and `--literal-instance` keeps the name. `WSL-193`
+
+⛔ **A working tree's `wsl-toolkit.json` lends every `jobs` key**, and only the keys it writes. `WSL-131`
+
+⛔ **`text-tool eol` refuses a path that does not exist**, with exit 1, and writes nothing. `WSL-166`
+
+⭐ **A base survives its restarts.** The engine's state and a session's ids are held to each start of the base. A restart mounts every configuration file's grants. A base that cannot start is told from one with no marker, and its owner can remove it. `WSL-178`, `WSL-184`, `WSL-189`, `WSL-190`, `WSL-183`
+
+⭐ **Builds read the host and the registry.** A pull's silence is sized by its largest layer. A build records its image's digest, and a failed pull builds from the engine's own copy. The host's free space is watched. `WSL-176`, `WSL-186`, `WSL-192`, `WSL-180`
+
+⭐ **Jobs.** A unique prefix or the container's name selects a job. An ephemeral job removes its own record, and a cap bounds how many run. `run` and `matrix` take `--cache`, `--user NAME --create-user`, `--cap-add`, `--input-exec` and a configuration's `requires`. `WSL-120` to `WSL-123`, `WSL-128`, `WSL-129`, `WSL-136`
+
+⭐ **`base exec`, `base sync`, `base shell` and `base agent`.** `base exec` takes inputs, artifacts, stdin, an account and a Windows directory. `base sync` copies a checkout in. A detached session runs in a scope of its own, so `stop` reaches every child. `WSL-124` to `WSL-126`, `WSL-128`, `WSL-133`, `WSL-146`
+
+⭐ **The base's runtime and build.** Engines, KVM, memory and cpu limits are set up by the base. Package retries, bash as the login shell, and a nested engine told the shape that works. `WSL-130`, `WSL-136`, `WSL-140`, `WSL-143`, `WSL-147`, `WSL-150`, `WSL-153`, `WSL-155`, `WSL-170`
+
+⭐ **Fourteen hardcoded assumptions read the host they run on**: the account's ids, engine drop-ins, `su` where there is no `runuser`, the machine's own architecture, and a sealed base's resolver. `--home`, `WSL_TOOLKIT_HOME` and `WSL_TOOLKIT_CACHE` from Git Bash name the directory MSYS maps. `WSL-188`, `WSL-187`, `WSL-195`
+
+⭐ **Adapters, guides and skills.** herdr 0.9.5. The adapter contract's probe is the one the agents run. The herdr guide says how out of a cancelled approval. The skills are read again against this release. `WSL-139`, `WSL-141`, `WSL-144`, `WSL-145`, `WSL-148`, `WSL-157`, `DOC-14`
+
+⭐ **Smaller fixes and the acceptance suite.** `WSL-132`, `WSL-142`, `WSL-149`, `WSL-151`, `WSL-152`, `WSL-154`, `WSL-156`, `WSL-160`, `WSL-162` to `WSL-164`, `WSL-191`, `WSL-194`
+
+⚠ **Not measured here:** the presets' figures come from this host's non-default `.wslconfig`, and no preset was built on a stock host (`WSL-197`). An Alpine base mounts no grant after a restart (`WSL-198`).
+
 ## 2026-10-24
 
 ### 2026-10-24T11:30:50Z: `wsl-toolkit` is 7.0.2, the audit's data-loss fixes
