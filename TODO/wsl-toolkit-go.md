@@ -16029,7 +16029,7 @@ driven on scratch instance g1s:
 ## WSL-176. The 4-minute pull "stall" is really a minimum bandwidth, and the message says it is not a slow link
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 7; verified by two skeptics. The audit's note on entries: NONE.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16071,7 +16071,11 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/host`, for 8.0.0.** A pull may stay silent for as long as its largest layer takes at 256 KiB/s, never less than 4 minutes, and its total limit grows with the image. The layers are read from the image's registry over HTTPS, following an index to this machine's platform, for at most 30 s. `WSL_TOOLKIT_PULL_STALL` lengthens the stall and never shortens the total. A bad value is refused before anything is pulled, on the helper's route and in a dry run too. The stall's refusal no longer says "not a slow link". It names the limit, why it was that, and the variable.
+
+The review found that podman cannot read a single image's manifest: podman 6.1.4 in the default base refuses it. So the build reads the registry itself. Cases drive a fake registry that asks for a token as ghcr.io and Docker Hub do, and a test refuses any real registry read.
+
+⚠ No build was driven against a real engine. The registry read alone was driven against ghcr.io and Docker Hub.
 
 
 ## WSL-177. A build deletes `<home>\base` whenever the configured name is not listed, without asking whose disk it is
@@ -16250,7 +16254,7 @@ driven on scratch instance g4r, two configuration files A and B:
 ## WSL-180. Nothing watches the host free space that the dynamic VHDX grows into
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 11; verified by two skeptics. The audit's note on entries: NONE. WSL-06 checks only at import.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -16289,7 +16293,11 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/host`, for 8.0.0.** `base status --json` carries `host_free_bytes`, with the advisory `host-space-low` below the floor. A job that starts below it warns and still runs, on the helper's route too. A new build, a forced rebuild and `distro new --image`, dry run included, check the floor before the engine is asked, so nothing is pulled or written on a volume too small. A rebuild counts the old disk as freed.
+
+Driven read-only on the default base: `host_free_bytes` matched the drive's free space within 49 KB.
+
+⚠ The low-space paths were reached only through a stand-in; this host had 204 GiB free.
 
 
 ## WSL-181. The QEMU step is fatal on every ensure, and its root podman call is duplicated with the same D-Bus defect
@@ -16571,7 +16579,7 @@ Open.
 ## WSL-187. `--home` and `WSL_TOOLKIT_HOME` skip msysHostPath
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 18; verified by two skeptics. The audit's note on entries: WSL-111 (missed these two) and WSL-118. Low to medium. (The input was cut off here.)
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16609,7 +16617,11 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/host`, for 8.0.0.** `--home` and `WSL_TOOLKIT_HOME` go through `msysHostPath` and are made absolute once, before anything reads them, on the launcher's entry point too. The helper and detached children inherit the settled path.
+
+Driven from Git Bash: 7.0.2 read `--home /c/Users/...` as a directory named `c` under the drive's root, and this build reads the directory MSYS maps. Case `TestAnMsysHomeNamesTheDirectoryMsysMapsAndIsHandedOnAbsolute`, three rows red on Windows and Linux.
+
+⚠ `WSL_TOOLKIT_CACHE` has the same defect, found by the builder and not fixed here.
 
 
 ## WSL-188. Fourteen smaller hardcoded assumptions the audit found, each cheap to fix
@@ -16922,3 +16934,40 @@ under the integration builders' load, before: 3 of 3 failed alone, the same on m
 after: -count=10, 10 of 10 passed
 its two rows: red on Windows and in golang:1.25
 ```
+
+## WSL-195. `WSL_TOOLKIT_CACHE` skips msysHostPath, as `--home` did
+
+**Source** the 8.0.0 builder of `WSL-187`, 2026-10-26, workflow wf_0ba711d1-0ce, found beside its own entry
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`WSL-187` settles `--home` and `WSL_TOOLKIT_HOME` through `msysHostPath` before anything reads them. `WSL_TOOLKIT_CACHE` still goes through `filepath.Abs` alone, so from Git Bash a value like `/c/Users/me/cache` names a directory `c` under the drive's root.
+
+## Premise
+
+Read in `paths.go`, `CacheDir`, by the builder of `WSL-187`. Not driven.
+
+## Approach
+
+Settle `WSL_TOOLKIT_CACHE` the way `settleHome` settles the home: `msysHostPath`, then `filepath.Abs`, exported once before anything reads it. A case drives the MSYS form.
+
+## Consumers
+
+A cache path given in MSYS form from Git Bash names the directory MSYS maps. Nothing that works today changes.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with the new case red without the fix.
+
+---
+
+## Closing
+
+Open.

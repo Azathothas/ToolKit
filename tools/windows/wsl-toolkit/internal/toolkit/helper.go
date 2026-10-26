@@ -255,6 +255,9 @@ type helperEnsureRequest struct {
 	Guest    bool   `json:"guest,omitempty"`
 	// ConfigPath is the client's configuration file. WSL-190.
 	ConfigPath string `json:"config_path,omitempty"`
+	// PullStallMS is the caller's WSL_TOOLKIT_PULL_STALL, and zero is a
+	// caller that set none. WSL-176.
+	PullStallMS int64 `json:"pull_stall_ms,omitempty"`
 }
 
 // runnerForEnsure is the runner an ensure request is served by, with the
@@ -748,6 +751,9 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		Stderr:    &chunkWriter{out: events, kind: "stderr"},
 		TickEvery: time.Duration(req.TickMS) * time.Millisecond,
 		OnTick:    req.tickSink(events),
+		// ⛔ A LINE FOR THE CALLER GOES TO THE CALLER, as a log event, and not
+		// to this process's stderr. WSL-180.
+		Note: events.note,
 	})
 	// ⭐ AN EPHEMERAL JOB LEAVES NOTHING HERE EITHER. The helper owns the record,
 	// so the helper removes it, before the answer that says so. WSL-121.
@@ -866,6 +872,8 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 		// goroutines at once. The rule OnRow already carries.
 		TickEvery: time.Duration(req.TickMS) * time.Millisecond,
 		OnTick:    req.tickSink(events),
+		// ⛔ EACH ROW'S LINE FOR THE CALLER GOES TO THE CALLER. WSL-180.
+		Note: events.note,
 	})
 	if err != nil {
 		events.send(HelperEvent{Kind: "error", Text: err.Error()})
@@ -983,6 +991,10 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+	if req.PullStallMS < 0 {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": "pull_stall_ms is a positive whole number of milliseconds, or absent"})
+		return
+	}
 	// ⛔ A CALLER THAT DOES NOT OWN THE BASE IS REFUSED WHAT ITS OWN ENSURE WOULD BE,
 	// at the same points: the helper's base runs as the caller's guest. WSL-167.
 	// ⛔ AND IT ACTS FOR THE CALLER'S FILE, as the CLI's ensure does. WSL-190.
@@ -991,7 +1003,10 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	st, err := runner.EnsureBaseWith(r.Context(), req.Force, req.Repair)
+	// ⛔ THE CALLER'S STALL, AND NEVER THIS PROCESS'S OWN. The helper's
+	// environment is whatever the process that started it held. WSL-176.
+	ctx := withPullStall(r.Context(), time.Duration(req.PullStallMS)*time.Millisecond)
+	st, err := runner.EnsureBaseWith(ctx, req.Force, req.Repair)
 	if err != nil {
 		// ⛔ THE STATE CROSSES WITH THE ERROR. It used to send `"state": ""`,
 		// so a refusal that carries the exact command to run next arrived over

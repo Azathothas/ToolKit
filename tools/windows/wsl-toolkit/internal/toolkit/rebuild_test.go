@@ -235,6 +235,14 @@ func fakeEngineMain(state, role string, args []string) int {
 			fmt.Fprintln(os.Stderr, "Error: initializing source: reading manifest: manifest unknown")
 			return 125
 		}
+		// ⭐ WSL-176: silent for the span the case wrote, as podman is while one
+		// layer downloads, then done.
+		if quiet, err := os.ReadFile(filepath.Join(state, "pull-silent")); err == nil {
+			if d, err := time.ParseDuration(strings.TrimSpace(string(quiet))); err == nil {
+				time.Sleep(d)
+			}
+			fmt.Println("Writing manifest to image destination")
+		}
 	case "rm":
 	case "create":
 		fmt.Println("fake-export-container")
@@ -475,6 +483,9 @@ func TestAForcedRebuildWithNoEngineKeepsTheBase(t *testing.T) {
 	h := newFakeHost(t)
 	b, s, disk := fakeBuiltBase(t, h, DefaultBaseImage)
 	h.engine(t, false)
+	// ⚠ THE VOLUME IS THE CASE'S, or a host with little free would refuse at the
+	// floor WSL-180 checks first, and never reach the engine. WSL-180.
+	roomyVolume(t, 1<<40)
 	_, err := b.EnsureWith(context.Background(), true, false)
 	if err == nil || !strings.Contains(err.Error(), fakeBaseName+" was NOT removed") ||
 		!strings.Contains(err.Error(), "podman is installed at") || !strings.Contains(err.Error(), "Cannot connect to Podman") {
@@ -497,6 +508,9 @@ func TestAForcedRebuildAsksTheEngineBeforeItRemoves(t *testing.T) {
 	h := newFakeHost(t)
 	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
 	h.engine(t, true)
+	// ⚠ The volume is the case's, so the floor before the engine passes on any
+	// host. WSL-180.
+	roomyVolume(t, 1<<40)
 	// ⚠ The fake WSL runs no guest script, so the build stops at its first step
 	// inside the guest, or at this volume's space check before the import.
 	if _, err := b.EnsureWith(context.Background(), true, false); err == nil {

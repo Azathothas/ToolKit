@@ -287,6 +287,7 @@ func TestEveryMatrixFieldReachesItsRows(t *testing.T) {
 	spec.Script = []byte("true")
 	spec.OnTick = func(TickEvent) {}
 	spec.Admit = func(_ context.Context, _ *JobOwner) (time.Duration, error) { return 0, nil }
+	spec.Note = func(string) {}
 	spec.Caches = []JobCache{
 		{Name: "cargo", Path: "/cargo"},
 	}

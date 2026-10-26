@@ -64,6 +64,9 @@ type MatrixSpec struct {
 	// Admit holds each row as its runner claims it, until the running cap lets
 	// it in. Nil is no cap. WSL-136.
 	Admit func(context.Context, *JobOwner) (time.Duration, error)
+	// Note is JobSpec's, for every row: a line for whoever asked for the fleet.
+	// WSL-180.
+	Note func(string)
 }
 
 // rowSpec is one row's job: the fleet's settings, this row's image, and the
@@ -81,7 +84,7 @@ func rowSpec(spec MatrixSpec, img Image, staged, artifacts string, limits Worksp
 		Label: img.ID, User: spec.User, Devices: spec.Devices, Inputs: spec.Inputs, MaxOutput: spec.MaxOutput,
 		OnTick: spec.OnTick, TickEvery: spec.TickEvery, Admit: spec.Admit,
 		Caches: spec.Caches, CreateUser: spec.CreateUser, Sudo: spec.Sudo, CapAdd: spec.CapAdd,
-		Resources: spec.Resources,
+		Resources: spec.Resources, Note: spec.Note,
 	}
 }
 

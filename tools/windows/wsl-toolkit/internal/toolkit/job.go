@@ -203,6 +203,13 @@ type JobSpec struct {
 	// above are handed to it instead of to the bounded copy, or the caller would
 	// see every line twice: once rendered and once raw.
 	Log *RunLog
+	// Note receives a line meant for whoever asked for this job, where that is
+	// not this runner's log. Nil is the runner's log.
+	//
+	// ⛔ THE HELPER'S LOG IS ITS OWN STDERR, which a detached helper discards. A
+	// line written there reached no client, so a job the helper started under
+	// the space floor said nothing to the caller. WSL-180.
+	Note func(string)
 }
 
 // JobResult is what one unit of work produced.
@@ -611,6 +618,18 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	// counts it. A job --max-running held was marked when it was let in. WSL-136.
 	if err := markAdmitted(r.home, id); err != nil {
 		r.log("could not mark job " + id + " as running, so --max-running will not count it: " + err.Error())
+	}
+	// ⚠ THE BASE'S DISK GROWS INTO THIS MACHINE'S VOLUME AS THE JOB WRITES, so a
+	// job that starts with it under the floor says so. A warning and never a
+	// refusal: the job may fit. WSL-180.
+	if r.base != nil {
+		if low, ok := r.base.hostSpaceWarning(); ok {
+			say := r.log
+			if spec.Note != nil {
+				say = spec.Note
+			}
+			say("⚠ " + low.What + ". " + low.Costs + ". Run: " + low.Command)
+		}
 	}
 
 	user := r.cfg.Base.User

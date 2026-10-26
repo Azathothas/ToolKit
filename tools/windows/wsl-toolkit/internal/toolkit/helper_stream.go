@@ -96,6 +96,12 @@ func (e *eventWriter) send(ev HelperEvent) {
 	}
 }
 
+// note sends a line for the client as a log event, which the client prints as
+// its own progress. WSL-180.
+func (e *eventWriter) note(line string) {
+	e.send(HelperEvent{Kind: "log", Text: line})
+}
+
 // chunkWriter turns writes into stdout or stderr events.
 //
 // ⚠ IT DOES NOT WAIT FOR A NEWLINE. A build that prints a progress bar with
