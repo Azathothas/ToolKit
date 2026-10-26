@@ -2,6 +2,222 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a pull's layers are read from its registry, not the engine",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\tlargest, total, readErr := registryLayerBytes(ctx, ref, e.Arch)\n",
+      "replace": "\tlargest, total, readErr := int64(0), int64(0), errors.New(\"the engine printed no layers\")\n",
+      "run": "TestAPullSilentWhileItsLargestLayerDownloadsIsNotGivenUp",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry that asks for a token is given an anonymous one",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\t\tcase resp.StatusCode == http.StatusUnauthorized && !asked:\n",
+      "replace": "\t\tcase false && !asked:\n",
+      "run": "TestAPullSilentWhileItsLargestLayerDownloadsIsNotGivenUp",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: Docker Hub's one-word repository is read under library/",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\t\trepo = \"library/\" + repo\n",
+      "replace": "\t\trepo = \"\" + repo\n",
+      "run": "TestDockerHubsOneWordRepositoryIsReadUnderLibrary",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: Docker Hub is read at registry-1.docker.io",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\t\thost = \"registry-1.docker.io\"\n",
+      "replace": "\t\thost = \"docker.io\"\n",
+      "run": "TestDockerHubsOneWordRepositoryIsReadUnderLibrary",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the read of a pull's layers is said before it is made",
+      "file": "internal/toolkit/engine.go",
+      "find": "\tlog(fmt.Sprintf(\"reading the layers of %s from its registry, for at most %s, to size the pull's limits\", ref, FormatSpan(ManifestReadTimeout)))\n",
+      "replace": "",
+      "run": "TestAPullSilentWhileItsLargestLayerDownloadsIsNotGivenUp",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: WSL_TOOLKIT_PULL_STALL still reads the layers for the ceiling",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\t\treturn namedPullLimit(named, largest, total), nil\n",
+      "replace": "\t\treturn namedPullLimit(named, 0, 0), nil\n",
+      "run": "TestTheStallVariableNeverShortensTheCeiling",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: WSL_TOOLKIT_PULL_STALL's ceiling holds every layer at the floor rate",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\t\tStall: stall, Total: max(EngineTransferTimeout, atFloorRate(total), stall),\n",
+      "replace": "\t\tStall: stall, Total: max(EngineTransferTimeout, stall),\n",
+      "run": "TestTheStallVariableNeverShortensTheCeiling",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: WSL_TOOLKIT_PULL_STALL's ceiling holds every layer at its own rate",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\t\tlim.Total = max(lim.Total, time.Duration(scaled))\n",
+      "replace": "\t\tlim.Total = max(lim.Total, time.Duration(scaled)*0)\n",
+      "run": "TestTheStallVariableNeverShortensTheCeiling",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a small layer's refusal says the floor set its limit",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\t\tlim.Hint = fmt.Sprintf(\" This limit was the floor of %s, because its largest layer, %s, takes less at %s.\",\n\t\t\tFormatSpan(pullStallFloor), HumanBytes(largest), rate)\n",
+      "replace": "\t\tlim.Hint = fmt.Sprintf(\" This limit was its largest layer, %s, takes less at %s.\", HumanBytes(largest), rate)\n",
+      "run": "TestAPullsLimitsAreSizedFromItsLayers",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stalled pull's hint names its own engine's command",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\tswitch engine {\n",
+      "replace": "\tswitch \"podman\" {\n",
+      "run": "TestAPullsLimitsAreSizedFromItsLayers",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a pull whose layers cannot be read says the floor set its limit",
+      "file": "internal/toolkit/pullstall.go",
+      "find": "\t\t\tHint: fmt.Sprintf(\" This limit was the floor of %s, because its layers could not be read.\", FormatSpan(pullStallFloor)),\n",
+      "replace": "\t\t\tHint: \"\",\n",
+      "run": "TestTheStallVariableNamesAPullsLimitAndTheRefusalSaysWhy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a forced rebuild refuses a stall that is no duration before the engine",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif _, _, err := pullStallFor(ctx); err != nil {\n\t\treturn nil, fmt.Errorf(\"%s was NOT removed: %w\", b.cfg.Base.Name, err)\n",
+      "replace": "\tif _, _, err := pullStallFor(ctx); false && err != nil {\n\t\treturn nil, fmt.Errorf(\"%s was NOT removed: %w\", b.cfg.Base.Name, err)\n",
+      "run": "TestAStallVariableThatIsNoDurationRefusesBeforeTheEngine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a new build refuses a stall that is no duration before the engine",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif _, _, err := pullStallFor(ctx); err != nil {\n\t\treturn \"\", err\n",
+      "replace": "\tif _, _, err := pullStallFor(ctx); false && err != nil {\n\t\treturn \"\", err\n",
+      "run": "TestAStallVariableThatIsNoDurationRefusesBeforeTheEngine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: distro new --image and its dry run refuse a stall that is no duration",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tif _, _, err := pullStallFor(ctx); err != nil {\n",
+      "replace": "\t\tif _, _, err := pullStallFor(ctx); false && err != nil {\n",
+      "run": "TestAStallVariableThatIsNoDurationRefusesBeforeTheEngine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the client sends its pull stall with an ensure",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\t\tbody[\"pull_stall_ms\"] = stall.Milliseconds()\n",
+      "replace": "\t\t_ = stall\n",
+      "run": "TestTheClientSendsItsPullStallToTheHelper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the client refuses a pull stall that is no duration before the helper",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\tstall, set, err := readPullStall()\n\tif err != nil {\n",
+      "replace": "\tstall, set, err := readPullStall()\n\tif err != nil && false {\n",
+      "run": "TestTheClientSendsItsPullStallToTheHelper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper builds with its caller's pull stall and never its own",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tctx := withPullStall(r.Context(), time.Duration(req.PullStallMS)*time.Millisecond)\n",
+      "replace": "\tctx := r.Context()\n",
+      "run": "TestTheHelperBuildsWithItsCallersPullStall",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper refuses a negative pull stall",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tif req.PullStallMS < 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheHelperBuildsWithItsCallersPullStall",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's line for its caller goes to its caller",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\t\tif spec.Note != nil {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestAJobTheHelperStartsUnderTheFloorTellsItsCaller",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job the helper runs sends its caller's lines as log events",
+      "file": "internal/toolkit/helper.go",
+      "find": "\t\t// to this process's stderr. WSL-180.\n\t\tNote: events.note,\n",
+      "replace": "\t\t// to this process's stderr. WSL-180.\n",
+      "run": "TestAJobTheHelperStartsUnderTheFloorTellsItsCaller",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet the helper runs sends its caller's lines as log events",
+      "file": "internal/toolkit/helper.go",
+      "find": "\t\t// ⛔ EACH ROW'S LINE FOR THE CALLER GOES TO THE CALLER. WSL-180.\n\t\tNote: events.note,\n",
+      "replace": "\t\t// ⛔ EACH ROW'S LINE FOR THE CALLER GOES TO THE CALLER. WSL-180.\n",
+      "run": "TestAJobTheHelperStartsUnderTheFloorTellsItsCaller",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet's line for its caller reaches every row",
+      "file": "internal/toolkit/matrix.go",
+      "find": "\t\tResources: spec.Resources, Note: spec.Note,\n",
+      "replace": "\t\tResources: spec.Resources,\n",
+      "run": "TestAJobTheHelperStartsUnderTheFloorTellsItsCaller|TestEveryMatrixFieldReachesItsRows",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an image saved from the engine is held to a floor",
+      "file": "internal/toolkit/imageload.go",
+      "find": "\tif err := spaceFloor(home, ThrowawaySpaceFloor, 0, \"before an image is saved into it\", \"Nothing was saved\"); err != nil {\n",
+      "replace": "\tif err := spaceFloor(home, ThrowawaySpaceFloor, 0, \"before an image is saved into it\", \"Nothing was saved\"); false && err != nil {\n",
+      "run": "TestAnImageSavedFromTheEngineIsRefusedUnderTheFloor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a launcher settles the state directory",
+      "file": "cmd_base_agent.go",
+      "find": "\tif err := settleHome(); err != nil {\n\t\tfmt.Fprintln(os.Stderr, agent+\": \"+err.Error())\n",
+      "replace": "\tif err := error(nil); err != nil {\n\t\tfmt.Fprintln(os.Stderr, agent+\": \"+err.Error())\n",
+      "run": "TestALauncherReadsAnMsysHomeTheWayMsysMapsIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: --home and WSL_TOOLKIT_HOME are read the way MSYS maps them",
       "file": "gitbash.go",
       "find": "\tabs, err := filepath.Abs(msysHostPath(v))\n",

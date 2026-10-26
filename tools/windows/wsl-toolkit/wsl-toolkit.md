@@ -73,7 +73,9 @@ works. `WSL-111`
 
 ⭐ **The state directory is read the same way.** `--home /d/wsl-toolkit` and
 `WSL_TOOLKIT_HOME=/d/wsl-toolkit` name `D:\wsl-toolkit`, and so does `--config` for
-its file. The directory is handed to the helper and to each detached child as one
+its file. `/tmp/x` names `x` in the temporary directory, and any other `/...` is
+under the Git install. An agent's launcher, such as `muse.exe`, reads it the same
+way. The directory is handed to the helper and to each detached child as one
 absolute path. `WSL-187`
 
 - `--script -` reads the command from stdin, so a generated script needs no file.
@@ -2048,16 +2050,19 @@ floor. `ready` lists it in its notes with its command, and never names it as the
 forward.
 
 ⭐ **The volume the disk grows into is watched.** The disk is dynamic, and a full
-volume fails the guest's writes and remounts ext4 read only. `base status` and
-`ready` read the volume's free space, and `--json` carries it as `host_free_bytes`.
-Under 6 GiB free they report the advisory `host-space-low`. A job starting under it
-says so on stderr, and still runs. `WSL-180`
+volume fails the guest's writes and remounts ext4 read only. `base status`,
+`base ensure` and `base recreate` read the volume's free space, and their `--json`
+carries it as `host_free_bytes`. Under 6 GiB free they report the advisory
+`host-space-low`. `ready` lists that advisory in its notes, and its `--json` carries
+no free space. A job starting under the floor says so on stderr, through the helper
+too, and still runs. `WSL-180`
 
 ⛔ **A build under that floor refuses before the host engine is asked.**
 `base ensure`, `base recreate` and a `--preset` switch refuse before the pull, so no
 archive lands on a volume that cannot hold the import. A rebuild counts the old disk
 as freed, and keeps the base. `distro new --image` checks its own floor of 256 MiB
-the same way, and so does its `--dry-run`. `WSL-180`
+the same way, and so does its `--dry-run`. `base image load IMAGE` checks that floor
+too, before the engine saves the image into the state directory. `WSL-180`
 
 ---
 
@@ -2243,17 +2248,30 @@ fully qualified is refused the same way. `WSL-169`
 
 ⭐ **A pull may be silent for as long as its largest layer takes at 256 KiB/s.**
 podman on Windows prints a line as a layer starts and one as it ends, and nothing
-between. So a build reads the image's manifest first, with `manifest inspect`. The
-pull's stall limit is that layer's time at the floor rate, and never under four
-minutes. The build's `pulling` line says the limit and where it came from. Its total
-ceiling grows past thirty minutes where every layer at that rate needs it. `WSL-176`
+between. So a build first reads the image's manifest from its registry, over HTTPS
+and with no credential, for at most 30 seconds. It says so before the read. The
+engine is not asked, because podman prints no layers for one image. The pull's stall
+limit is that layer's time at the floor rate, and never under four minutes. The
+build's `pulling` line says the limit and where it came from. Its total ceiling grows
+past thirty minutes where every layer at that rate needs it. `WSL-176`
 
 ⚠ **On a slower link, set `WSL_TOOLKIT_PULL_STALL`** to a duration such as `45m`. It
-names every pull's stall limit outright, and a value that is no duration refuses the
-build before anything is pulled. Where the manifest cannot be read, as with `wslc`,
-the limit is four minutes and the line says why. The export keeps four minutes,
-because it writes the archive as it moves. A refusal for silence says a slow link
-reads the same, and names the variable. `WSL-176`
+names every pull's stall limit outright. The layers are still read for the ceiling.
+It is the longest of thirty minutes, every layer at the floor rate, and every layer
+at the variable's rate for the largest. So the variable never shortens the ceiling.
+A value that is no duration refuses before the engine is asked, and a `--dry-run`
+of `distro new --image` refuses it too. `WSL-176`
+
+⚠ **Through the helper, the caller's variable is the one read.** `base ensure`,
+`base recreate`, `ready --ensure` and the ensure before `run` or `matrix` send it
+with the request. Each refuses a value that is no duration before the helper is
+asked. The helper reads no variable of its own. `WSL-176`
+
+Where the registry does not answer, or asks for a credential, the limit is four
+minutes and the line says why. The export keeps four minutes, because it writes the
+archive as it moves, and the variable does not change it. A refusal for silence says
+a slow link reads the same, why the limit was what it was, and the variable. It ends
+with the command that reads the engine that pulled. `WSL-176`
 
 ⭐ **`--preset` is compared with the image the base was built from.** This machine's
 record of the base answers, and the configuration answers where there is no record.

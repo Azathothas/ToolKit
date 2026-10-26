@@ -155,9 +155,14 @@ variable.
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
 | a pull may be silent for its largest layer's time at 256 KiB/s, and never under four minutes. Its total ceiling grows past thirty minutes where every layer needs it. A slow pull that was given up now finishes | relied on a slow pull failing within four minutes | sets `WSL_TOOLKIT_PULL_STALL` to the limit it wants |
-| `base ensure`, `base recreate` and `distro new --image` ask the engine for the image's manifest before the pull. The `pulling` line on stderr adds the limit and why | treats every stderr line of a build as one it knows | reads the exit code, or `--json` |
-| a stall's refusal says silence is not a measured speed and names `WSL_TOOLKIT_PULL_STALL`. It no longer says the cause is not a slow link | matches the old refusal's words | matches `and was given up` |
-| a `WSL_TOOLKIT_PULL_STALL` that is no positive duration refuses the build before anything is pulled | | sets a duration such as `45m`, or removes it |
+| `base ensure`, `base recreate` and `distro new --image` read the image's manifest from its registry over HTTPS, with no credential, before the pull. A line on stderr says so first, and the `pulling` line adds the limit and why | treats every stderr line of a build as one it knows | reads the exit code, or `--json` |
+| each build sends its image's registry up to three more requests: a token and two manifest reads. Docker Hub counts the two reads as one pull, so a build there counts as two against its anonymous limit | builds from Docker Hub close to that limit | allows for the second pull, or builds from another registry |
+| a host that reaches the registry only through the engine, or a private image, keeps four minutes, and the line says why | | sets `WSL_TOOLKIT_PULL_STALL`, or `HTTPS_PROXY` where a proxy is the reason |
+| a stall's refusal says silence is not a measured speed, why the limit was what it was, and names `WSL_TOOLKIT_PULL_STALL`. It no longer says the cause is not a slow link. Its last command is the pulling engine's own, such as `docker info` | matches the old refusal's words | matches `and was given up` |
+| a `WSL_TOOLKIT_PULL_STALL` that is no positive duration refuses before the engine is asked, and a forced rebuild keeps the base. `distro new --image --dry-run` exits 2 where it exited 0 | reads that exit 0 as a run that would succeed | sets a duration such as `45m`, or removes it |
+| `WSL_TOOLKIT_PULL_STALL` names the stall, and the layers still size the ceiling. The ceiling is the longest of thirty minutes and every layer at either rate, so it never shortens | | nothing |
+| through the helper, the caller's `WSL_TOOLKIT_PULL_STALL` crosses with `base ensure`, `base recreate`, `ready --ensure` and the ensure before a job. The helper reads no variable of its own | set the variable only where the helper was started | sets it where it calls the tool |
+| through the helper, a caller's value that is no duration refuses on the client with exit 2, before the helper is asked | | sets a duration such as `45m`, or removes it |
 
 ### ⚠ What watching the host's free space changes, and what a caller does
 
@@ -166,10 +171,12 @@ variable.
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
 | `base status --json` adds `host_free_bytes`, and the advisory `host-space-low` under 6 GiB free. `ready` lists the advisory in its notes, and its verdict does not change | | reads them, or ignores them |
+| `base ensure --json` and `base recreate --json` add `host_free_bytes` and the advisory too, and their human output prints the `host-space-low` block | treats every line or field of an ensure as one it knows | reads `--json`, and ignores what it does not know |
 | `base status` prints the `host-space-low` block under that floor | treats every line of `base status` as one it knows | reads `--json` |
-| a job starting under that floor prints a ⚠ line on stderr, and still runs | treats every stderr line of a job as one it knows | reads the exit code, or `--json` |
-| `base ensure`, `base recreate`, a `--preset` switch and `distro new --image` refuse before the engine is asked, under the floor. Each refused later before, with the same exit code | | nothing |
+| a job starting under that floor prints a ⚠ line on stderr, through the helper too, and still runs | treats every stderr line of a job as one it knows | reads the exit code, or `--json` |
+| `base ensure`, `base recreate`, a `--preset` switch and `distro new --image` refuse before the engine is asked, under the floor. Each refused after the pull before, with the same exit code | | nothing |
 | `distro new --image --dry-run` exits 2 under 256 MiB free, where it exited 0 and the real run refused | reads that exit 0 as a run that would succeed | frees space, or reads the refusal |
+| `base image load IMAGE` refuses under 256 MiB free, before the engine saves the image into the state directory | loads an image from the engine onto a nearly full volume | frees space, or loads the image from a file |
 
 ### ⚠ What reading `--home` the MSYS way changes, and what a caller does
 
@@ -178,6 +185,8 @@ variable.
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
 | under Git Bash, `--home /d/x` and `WSL_TOOLKIT_HOME=/d/x` name `D:\x`. They named `x` under the current drive's root, such as `C:\d\x` | keeps jobs, a ledger, locks or grants in that second root | moves what it needs to `D:\x`, or passes the old root's Windows spelling |
+| under Git Bash, `/tmp/x` names `x` in the temporary directory, and any other `/...` is under the Git install, such as `C:\Program Files\Git\srv\x`. They named `C:\tmp\x` and `C:\srv\x` | keeps its state under such a root | passes the directory's Windows spelling |
+| an agent's launcher, such as `muse.exe`, reads `WSL_TOOLKIT_HOME` the same way, and hands it on absolute | started a launcher from Git Bash and kept its state in the second root | moves what it needs, or passes the Windows spelling |
 | `WSL_TOOLKIT_HOME` is handed on absolute, so the helper and a detached child read the directory their parent read | | nothing |
 
 ### ⭐ What the base runtime adds, and what a caller reads

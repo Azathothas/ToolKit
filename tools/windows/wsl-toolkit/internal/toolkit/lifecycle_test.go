@@ -70,6 +70,9 @@ func TestAForcedRebuildWithAnUnreachableImageKeepsTheBase(t *testing.T) {
 	h := newFakeHost(t)
 	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
 	h.engine(t, true)
+	// ⚠ THE VOLUME IS THE CASE'S, or a host with little free would refuse at the
+	// floor WSL-180 checks first, and never reach the pull this case drives.
+	roomyVolume(t, 1<<40)
 	h.say(t, "pull", "refused")
 	_, err := b.EnsureWith(context.Background(), true, false)
 	if err == nil || !strings.Contains(err.Error(), fakeBaseName+" was NOT removed") || !strings.Contains(err.Error(), "manifest unknown") {

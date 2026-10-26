@@ -118,6 +118,37 @@ func TestAnMsysHomeNamesTheDirectoryMsysMapsAndIsHandedOnAbsolute(t *testing.T) 
 	}
 }
 
+// ⛔ WSL-187: A LAUNCHER SETTLES THE STATE DIRECTORY TOO. main sends a launcher
+// name such as `muse.exe` to runLauncher before run is reached, so from Git Bash
+// with WSL_TOOLKIT_HOME=/d/x it read `C:\d\x`, and handed that on to every
+// child.
+func TestALauncherReadsAnMsysHomeTheWayMsysMapsIt(t *testing.T) {
+	prefixMainCase(t)
+	wasQuiet := quiet
+	t.Cleanup(func() { quiet = wasQuiet })
+	t.Setenv("MSYSTEM", "MINGW64")
+	t.Setenv("EXEPATH", `C:\Program Files\Git\bin`)
+	t.Setenv("WSL_TOOLKIT_HOME", "/d/x")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `D:\x`
+	if runtime.GOOS != "windows" {
+		want = filepath.Join(cwd, "D:/x")
+	}
+	// ⚠ AN INSTANCE NO LAUNCHER NAME CARRIES, so the launcher stops at it and
+	// starts nothing, after the state directory is settled.
+	stderrOf(t, func() {
+		if code := runLauncher(context.Background(), "muse", "Not An Instance", nil); code == exitOK {
+			t.Error("a launcher for an instance that is no name answered 0")
+		}
+	})
+	if got := os.Getenv("WSL_TOOLKIT_HOME"); got != want {
+		t.Errorf("a launcher handed the state directory on as %q, want %q", got, want)
+	}
+}
+
 // withStdin runs fn with this process's stdin reading body.
 func withStdin(t *testing.T, body string, fn func()) {
 	t.Helper()

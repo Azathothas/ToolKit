@@ -121,13 +121,20 @@ func SaveHostImage(ctx context.Context, ref string) (string, string, func(), err
 	if err := ValidateImageRef(ref); err != nil {
 		return "", "", nil, err
 	}
-	engine, err := FindEngine(ctx)
-	if err != nil {
-		return "", "", nil, fmt.Errorf("an image that is not a file is read from this machine's engine, and there is none: %w", err)
-	}
 	home, err := EnsureHome()
 	if err != nil {
 		return "", "", nil, err
+	}
+	// ⛔ THE SPACE BEFORE THE ENGINE. A save wrote its archive into the state
+	// directory with no check at all, as a build's export did. The archive's
+	// size is the engine's to say, so this is the floor a throwaway's archive
+	// keeps. WSL-180.
+	if err := spaceFloor(home, ThrowawaySpaceFloor, 0, "before an image is saved into it", "Nothing was saved"); err != nil {
+		return "", "", nil, err
+	}
+	engine, err := FindEngine(ctx)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("an image that is not a file is read from this machine's engine, and there is none: %w", err)
 	}
 	dir, err := os.MkdirTemp(home, "image-load-")
 	if err != nil {

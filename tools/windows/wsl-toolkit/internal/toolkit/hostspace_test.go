@@ -4,6 +4,9 @@ package toolkit
 
 import (
 	"context"
+	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,5 +159,61 @@ func TestABuildUnderTheSpaceFloorAsksNoEngine(t *testing.T) {
 	// --tarball is not refused here.
 	if _, err := tw.Preflight(context.Background(), ThrowawaySpec{}); err != nil {
 		t.Errorf("a preflight with no image was refused over the space: %v", err)
+	}
+}
+
+// ⛔ A JOB THE HELPER STARTS UNDER THE FLOOR TELLS ITS CALLER. The line went to
+// the helper's own log, which is its stderr, and a detached helper discards
+// that. So `run` and `matrix` through the helper said nothing on a low volume.
+// It now crosses the stream as a log event, which the client prints.
+func TestAJobTheHelperStartsUnderTheFloorTellsItsCaller(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	roomyVolume(t, 1<<30)
+	var helperSaid sayings
+	srv := &HelperServer{cfg: b.cfg, log: helperSaid.log, runners: map[string]*Runner{},
+		runner: &Runner{cfg: b.cfg, base: b, wsl: &Wsl{Path: filepath.Join(t.TempDir(), "no-wsl.exe")}, home: b.home, log: helperSaid.log}}
+	script := base64.StdEncoding.EncodeToString([]byte("true\n"))
+	for _, c := range []struct {
+		route, body string
+		serve       func(http.ResponseWriter, *http.Request)
+	}{
+		{"run", `{"image":"docker.io/library/alpine:latest","script_b64":"` + script + `","network":false,"platform":"` + NativePlatform() + `"}`, srv.handleRun},
+		{"matrix", `{"images":["alpine"],"script_b64":"` + script + `","network":false,"platform":"` + NativePlatform() + `"}`, srv.handleMatrix},
+	} {
+		rec := httptest.NewRecorder()
+		c.serve(rec, httptest.NewRequest(http.MethodPost, "/v1/"+c.route, strings.NewReader(c.body)))
+		var notes []string
+		if err := ReadHelperEvents(rec.Body, func(ev HelperEvent) error {
+			if ev.Kind == "log" {
+				notes = append(notes, ev.Text)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("%s: the helper's answer did not read: %v", c.route, err)
+		}
+		if !(&sayings{lines: notes}).said("⚠ the volume holding " + disk + " has 1.0 GiB free") {
+			t.Errorf("%s through the helper under the floor sent its caller %v", c.route, notes)
+		}
+	}
+	if helperSaid.said("the volume holding") {
+		t.Errorf("the warning went to the helper's own log, which a detached helper discards: %v", helperSaid.lines)
+	}
+}
+
+// ⛔ AN IMAGE SAVED FROM THE ENGINE IS HELD TO A FLOOR TOO. `base image load
+// IMAGE` wrote the engine's `save` archive into the state directory with no
+// check, as a build's export did, and asked the engine first.
+func TestAnImageSavedFromTheEngineIsRefusedUnderTheFloor(t *testing.T) {
+	h := newFakeHost(t)
+	h.engine(t, true)
+	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+	roomyVolume(t, ThrowawaySpaceFloor-1)
+	_, _, _, err := SaveHostImage(context.Background(), "docker.io/library/alpine:latest")
+	if err == nil || !strings.Contains(err.Error(), "NOT ENOUGH DISK SPACE") || !strings.Contains(err.Error(), "Nothing was saved") {
+		t.Fatalf("a save under the floor answered %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(h.state, "calls")); err == nil && strings.Contains(string(data), "podman") {
+		t.Fatalf("a save under the floor asked the engine: %s", data)
 	}
 }

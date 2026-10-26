@@ -230,17 +230,6 @@ func fakeEngineMain(state, role string, args []string) int {
 	switch args[0] {
 	case "info":
 		fmt.Println(runtime.GOARCH)
-	case "manifest":
-		// ⭐ WSL-176: `manifest inspect REF` answers the manifest the case wrote for
-		// REF, and a reference it wrote none for is unknown, as a registry says.
-		if len(args) == 3 && args[1] == "inspect" {
-			if body, err := os.ReadFile(filepath.Join(state, fakeManifestFile(args[2]))); err == nil {
-				_, _ = os.Stdout.Write(body)
-				return 0
-			}
-		}
-		fmt.Fprintln(os.Stderr, "Error: reading manifest: manifest unknown")
-		return 125
 	case "pull":
 		if refused, _ := os.ReadFile(filepath.Join(state, "pull")); strings.TrimSpace(string(refused)) == "refused" {
 			fmt.Fprintln(os.Stderr, "Error: initializing source: reading manifest: manifest unknown")
@@ -494,6 +483,9 @@ func TestAForcedRebuildWithNoEngineKeepsTheBase(t *testing.T) {
 	h := newFakeHost(t)
 	b, s, disk := fakeBuiltBase(t, h, DefaultBaseImage)
 	h.engine(t, false)
+	// ⚠ THE VOLUME IS THE CASE'S, or a host with little free would refuse at the
+	// floor WSL-180 checks first, and never reach the engine. WSL-180.
+	roomyVolume(t, 1<<40)
 	_, err := b.EnsureWith(context.Background(), true, false)
 	if err == nil || !strings.Contains(err.Error(), fakeBaseName+" was NOT removed") ||
 		!strings.Contains(err.Error(), "podman is installed at") || !strings.Contains(err.Error(), "Cannot connect to Podman") {
@@ -516,6 +508,9 @@ func TestAForcedRebuildAsksTheEngineBeforeItRemoves(t *testing.T) {
 	h := newFakeHost(t)
 	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
 	h.engine(t, true)
+	// ⚠ The volume is the case's, so the floor before the engine passes on any
+	// host. WSL-180.
+	roomyVolume(t, 1<<40)
 	// ⚠ The fake WSL runs no guest script, so the build stops at its first step
 	// inside the guest, or at this volume's space check before the import.
 	if _, err := b.EnsureWith(context.Background(), true, false); err == nil {

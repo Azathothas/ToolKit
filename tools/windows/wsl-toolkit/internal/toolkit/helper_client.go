@@ -302,6 +302,16 @@ func (c *HelperClient) BaseEnsureWith(ctx context.Context, force, repair bool) (
 		"force": force, "repair": repair, "config": c.cfg,
 		"name_from": c.cfg.nameFrom, "guest": helperGuest(c.cfg),
 	}
+	// ⛔ THE CALLER'S PULL STALL GOES WITH IT, read and refused here. The helper
+	// read its own environment, so the variable this caller set reached no
+	// pull, and a value that is no duration was never refused. WSL-176.
+	stall, set, err := readPullStall()
+	if err != nil {
+		return out.State, err
+	}
+	if set {
+		body["pull_stall_ms"] = stall.Milliseconds()
+	}
 	if err := c.call(ctx, http.MethodPost, "/v1/base/ensure", body, &out); err != nil {
 		return out.State, err
 	}

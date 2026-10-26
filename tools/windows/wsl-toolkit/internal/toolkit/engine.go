@@ -227,6 +227,9 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	}
 	// ⭐ THE STALL IS SIZED BEFORE THE PULL, from the layers it will move, and
 	// the line says how long the pull may be silent and why. WSL-176.
+	// ⚠ THE READ IS SAID BEFORE IT IS MADE. It is bounded, and a registry that
+	// is slow to answer was a silence before the first line. WSL-176.
+	log(fmt.Sprintf("reading the layers of %s from its registry, for at most %s, to size the pull's limits", ref, FormatSpan(ManifestReadTimeout)))
 	lim, err := e.pullLimits(ctx, ref)
 	if err != nil {
 		return err

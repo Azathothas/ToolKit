@@ -172,6 +172,14 @@ func agentEnv(raw []string) ([]toolkit.EnvPair, error) {
 // command, for the instance the name carries, with every argument the agent's.
 func runLauncher(ctx context.Context, agent, instance string, args []string) int {
 	quiet = true
+	// ⛔ THE LAUNCHER SETTLES THE STATE DIRECTORY TOO. main sends a launcher
+	// name here before run, so `muse.exe` from Git Bash with
+	// WSL_TOOLKIT_HOME=/d/x read `C:\d\x`, the second root WSL-187 removes, and
+	// handed it on to every child. WSL-187.
+	if err := settleHome(); err != nil {
+		fmt.Fprintln(os.Stderr, agent+": "+err.Error())
+		return exitCannot
+	}
 	// ⛔ A NAME WITH NO SUFFIX SELECTS THE DEFAULT BASE, so neither the environment
 	// nor a working tree's pointer moves it to another instance. WSL-167.
 	if instance == toolkit.DefaultInstance {

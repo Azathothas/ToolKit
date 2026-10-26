@@ -547,6 +547,12 @@ func (b *Base) hostSpaceWarning() (Remediation, bool) {
 // import's own check needs at least this floor, so this refuses nothing that
 // check would pass. WSL-180.
 func assertSpaceFloor(dir string, floor, freed int64) error {
+	return spaceFloor(dir, floor, freed, "before anything is pulled", "Nothing was pulled")
+}
+
+// spaceFloor is assertSpaceFloor's rule, with the words for what it comes
+// before and what it kept from happening.
+func spaceFloor(dir string, floor, freed int64, before, nothing string) error {
 	free, ok, err := freeSpace(dir)
 	if err != nil || !ok {
 		// ⚠ Unread is no refusal here. The import's check says so in its own
@@ -554,8 +560,8 @@ func assertSpaceFloor(dir string, floor, freed int64) error {
 		return nil
 	}
 	if free+freed < floor {
-		return fmt.Errorf("NOT ENOUGH DISK SPACE for %s. At least %s must be free before anything is pulled, and %s is free on the volume holding it%s. "+
-			"Nothing was pulled", dir, HumanBytes(floor), HumanBytes(free), freedNote(freed))
+		return fmt.Errorf("NOT ENOUGH DISK SPACE for %s. At least %s must be free %s, and %s is free on the volume holding it%s. %s",
+			dir, HumanBytes(floor), before, HumanBytes(free), freedNote(freed), nothing)
 	}
 	return nil
 }
@@ -1265,6 +1271,11 @@ func (b *Base) rebuildEngine(ctx context.Context) (*Engine, error) {
 	if err := ValidateImageRef(b.cfg.Base.Image); err != nil {
 		return nil, fmt.Errorf("%s was NOT removed: base.image cannot be exported: %w", b.cfg.Base.Name, err)
 	}
+	// ⛔ THE PULL'S STALL BEFORE THE ENGINE. A value that is no duration was
+	// refused only at the pull, after the engine was asked. WSL-176.
+	if _, _, err := pullStallFor(ctx); err != nil {
+		return nil, fmt.Errorf("%s was NOT removed: %w", b.cfg.Base.Name, err)
+	}
 	// ⛔ THE SPACE BEFORE THE ENGINE, AND BEFORE THE REMOVAL. A rebuild into a
 	// volume under the floor pulls nothing and keeps the base. WSL-180.
 	if err := assertSpaceFloor(b.Dir(), BaseSpaceFloor, b.diskBytes()); err != nil {
@@ -1481,6 +1492,10 @@ func (b *Base) freshRootfs(ctx context.Context) (string, error) {
 			return "", err
 		}
 		return rootfs, nil
+	}
+	// ⛔ THE PULL'S STALL BEFORE THE ENGINE, as a rebuild reads it. WSL-176.
+	if _, _, err := pullStallFor(ctx); err != nil {
+		return "", err
 	}
 	// ⛔ THE SPACE BEFORE THE ENGINE, so a volume under the floor gets no pull
 	// and no archive. WSL-180.

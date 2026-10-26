@@ -284,7 +284,8 @@ It is refused through the helper.
 | a Windows launcher says it is another build | `base ensure` rewrites it |
 | `no such job` for a job another shell started | the other shell may name another `--instance`, or hold another state directory. `config` and `doctor` name a second copy. Call the tool from one kind of shell, or set `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%` |
 | a helper refusal reading `and this build speaks` | a helper from another release is still running. Each instance has its own: `wsl-toolkit --instance NAME helper stop`, then `wsl-toolkit --instance NAME helper serve --detach` |
-| a line saying `and was given up` | ⭐ **silence, and a slow link can be silent too.** A pull prints nothing while one layer downloads, so its limit is that layer's time at 256 KiB/s. On a slower link, set `WSL_TOOLKIT_PULL_STALL` to a duration such as `45m` and run it again. The line says where else to look |
+| a line saying `pull ... and was given up` | ⭐ **silence, and a slow link can be silent too.** A pull prints nothing while one layer downloads, so its limit is that layer's time at 256 KiB/s. On a slower link, set `WSL_TOOLKIT_PULL_STALL` to a duration such as `45m` where you call the tool, and run it again. The line says where else to look |
+| a line saying `export ... and was given up` | the export writes to this machine and touches no registry. Read the free space and the engine machine. `WSL_TOOLKIT_PULL_STALL` does not change its limit |
 | an advisory `host-space-low` | the volume the base's disk grows into has under 6 GiB free. Jobs still run, and a full volume fails the guest's writes. Free space there. `wsl-toolkit gc` lists what the tool holds |
 
 ⭐ **The tool keeps a complete transcript of every job it runs**, until `gc` removes
