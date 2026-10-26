@@ -248,7 +248,7 @@ func sessionFiles(guestDir string, s SessionStart) []JobInput {
 		{Name: "payload.sh", Bytes: append([]byte(exports.String()), s.Payload...)},
 	}
 	for _, in := range s.Inputs {
-		files = append(files, JobInput{Name: "in/" + in.Name, Path: in.Path, Bytes: in.Bytes})
+		files = append(files, in.under("in"))
 	}
 	if s.Stdin != nil {
 		files = append(files, JobInput{Name: "stdin", Bytes: s.Stdin})

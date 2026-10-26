@@ -196,6 +196,9 @@ start in the guest directory this Windows directory is seen at: its grant, or it
 \fB--input\fR
 NAME=FILE: a file on this machine, read from the current directory, placed at NAME in a directory of the command's own that WSL_TOOLKIT_IN names. Repeatable
 .TP
+\fB--input-exec\fR
+NAME=FILE: as --input, but the copy has CRLF turned into LF and mode 0755, so the command runs "$WSL_TOOLKIT_IN/NAME" by its shebang. FILE must start with #!. Repeatable
+.TP
 \fB--json\fR
 with --detach, write the session as a structured answer
 .TP

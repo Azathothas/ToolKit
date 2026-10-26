@@ -5,6 +5,7 @@ package toolkit
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -85,6 +86,80 @@ func TestAnExecutableInputThatCannotRunByItsShebangIsRefused(t *testing.T) {
 			t.Errorf("--input %s was refused, and it takes any bytes: %v", name, err)
 		}
 	}
+}
+
+// TestAnAttachedBaseExecPlacesAnExecutableInputRepaired is base exec
+// --input-exec, attached: the copy in the command's in directory has LF endings
+// and mode 0755, and --input of the same file beside it keeps its bytes at 0644.
+func TestAnAttachedBaseExecPlacesAnExecutableInputRepaired(t *testing.T) {
+	g := newExecFakeGuest(t)
+	raw := "#!/bin/sh\r\necho hi\r\n"
+	f := filepath.Join(t.TempDir(), "run.sh")
+	if err := os.WriteFile(f, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := RunBaseExec(context.Background(), g.wsl, BaseExec{
+		Distro: "wsl-toolkit", User: "toolkit", Dir: "~", Script: []byte("\"$" + ExecInEnv + "/bin/run.sh\"\n"),
+		Inputs: []JobInput{
+			{Name: "bin/run.sh", Path: f, Exec: true},
+			{Name: "raw.sh", Path: f},
+		},
+	})
+	if err != nil || res.Exit != 0 {
+		t.Fatalf("the call answered %d, %v", res.Exit, err)
+	}
+	placed := false
+	for _, c := range g.calls(t) {
+		body, ok := c.Files["in/bin/run.sh"]
+		if !ok {
+			continue
+		}
+		placed = true
+		if body != "#!/bin/sh\necho hi\n" || c.Modes["in/bin/run.sh"] != 0o755 {
+			t.Errorf("--input-exec arrived as mode %o, %q; want 0755 and LF endings", c.Modes["in/bin/run.sh"], body)
+		}
+		if c.Files["in/raw.sh"] != raw || c.Modes["in/raw.sh"] != 0o644 {
+			t.Errorf("--input arrived as mode %o, %q; want 0644 and its bytes unchanged", c.Modes["in/raw.sh"], c.Files["in/raw.sh"])
+		}
+	}
+	if !placed {
+		t.Fatal("no archive placed the executable input in the command's in directory")
+	}
+}
+
+// TestADetachedSessionPlacesAnExecutableInputRepaired is the same on the
+// session's one archive.
+func TestADetachedSessionPlacesAnExecutableInputRepaired(t *testing.T) {
+	d := "/home/user/" + GuestRoot + "/sessions/0123456789abcdef"
+	files := sessionFiles(d, SessionStart{
+		Payload: []byte("\"$" + ExecInEnv + "/run.sh\"\n"),
+		Inputs: []JobInput{
+			{Name: "run.sh", Bytes: []byte("#!/bin/sh\r\ntrue\r\n"), Exec: true},
+		},
+	})
+	var buf bytes.Buffer
+	if _, err := writeInputsTar(&buf, files); err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(&buf)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Name != "in/run.sh" {
+			continue
+		}
+		b, _ := io.ReadAll(tr)
+		if hdr.Mode != 0o755 || string(b) != "#!/bin/sh\ntrue\n" {
+			t.Fatalf("--input-exec arrived in the session as mode %o, %q; want 0755 and LF endings", hdr.Mode, b)
+		}
+		return
+	}
+	t.Fatalf("the session's archive holds no in/run.sh: %+v", files)
 }
 
 // TestAnExecutableInputCrossesTheHelper: the mark travels with the bytes, and

@@ -717,9 +717,9 @@ guest, and holds `--timeout` itself. Nothing on Windows has to stay alive.
 - The command is the one `base exec` would send, `--private-net`, `--root` and
   `--user` included. `--dir` and `--here` are where it starts, and a directory it
   cannot enter stops the start with exit 125.
-- ⭐ `--input` and `--artifacts` work here too. The inputs travel with the payload
-  into the session's directory, and `WSL_TOOLKIT_IN` and `WSL_TOOLKIT_OUT` name its
-  `in` and `out` directories. `WSL-124`
+- ⭐ `--input`, `--input-exec` and `--artifacts` work here too. The inputs travel
+  with the payload into the session's directory, and `WSL_TOOLKIT_IN` and
+  `WSL_TOOLKIT_OUT` name its `in` and `out` directories. `WSL-124`, `WSL-128`
 - ⭐ **The first `wait ID` or `logs ID --follow` to see the session end delivers its
   `--artifacts`.** `wait --json` carries the delivery as `artifacts`, and a later
   `wait` reads that record rather than writing the files again. A delivery that
@@ -819,8 +819,8 @@ file on disk is never written to, and `--input` keeps its bytes as they are.
   flags.
 
 `run`, `matrix` and the helper take all three. `run`, `matrix`, `base exec`,
-`bsd run` and `distro` take `--command-base64`. `base exec` takes `--input` too,
-as [its section](#base-exec-and-what-a-job-has) says.
+`bsd run` and `distro` take `--command-base64`. `base exec` takes `--input` and
+`--input-exec` too, as [its section](#base-exec-and-what-a-job-has) says.
 
 ---
 
@@ -1243,6 +1243,7 @@ says.
 ```powershell
 wsl-toolkit base exec --dir C:\path\to\project -c 'make test'
 wsl-toolkit base exec --input seed.sql=.\seed.sql --artifacts .\out -c 'psql -f "$WSL_TOOLKIT_IN/seed.sql" > "$WSL_TOOLKIT_OUT/run.txt"'
+wsl-toolkit base exec --input-exec run.sh=.\run.sh -c '"$WSL_TOOLKIT_IN/run.sh" --fast'
 Get-Content .\data.csv | wsl-toolkit base exec --stdin -c 'wc -l'
 ```
 
@@ -1261,6 +1262,10 @@ its directory itself now, and exit 125 follows the shell's own reason.
   makes it. `--root` and `--user` together are refused. `WSL-123`
 - `--input NAME=FILE` places a file at `NAME`, byte for byte, in a directory of the
   command's own that `WSL_TOOLKIT_IN` names. The rules for `NAME` are `run`'s.
+- ⭐ `--input-exec NAME=FILE` places a script there that the command runs by its
+  shebang. The copy has LF line endings and mode 0755, and the file on disk is not
+  written to. The refusals are `run`'s, and one `NAME` is one input across both
+  flags. `WSL-128`
 - `--artifacts DIR` copies back what the command leaves in the directory
   `WSL_TOOLKIT_OUT` names, with the checks a job's `/out` gets. `DIR` is made only
   when something arrives. A transfer that fails turns exit 0 into exit 1, keeps the
@@ -1268,10 +1273,11 @@ its directory itself now, and exit 125 follows the shell's own reason.
 - `--stdin` passes this process's stdin to the command, and then the command travels
   as a file in its directory. A terminal is refused, and so is `--stdin` beside
   `--script -`, which has read stdin already.
-- ⚠ `--input` and `--artifacts` read a relative path from the current directory, as
-  `--script` and `--env-file` do. The command's directory is a job's under the
-  account's `~/.wsl-toolkit/jobs`, with a ledger record, so `gc` collects what a killed
-  client leaves. Under another account's home, `gc` does not look.
+- ⚠ `--input`, `--input-exec` and `--artifacts` read a relative path from the
+  current directory, as `--script` and `--env-file` do. The command's directory is a
+  job's under the account's `~/.wsl-toolkit/jobs`, with a ledger record, so `gc`
+  collects what a killed client leaves. Under another account's home, `gc` does not
+  look.
 
 ⚠ **Without `--stdin`, stdin is still `/dev/null`.** A `while read` loop that runs
 `base exec` would otherwise give it the rest of the loop's input, so passing stdin is
@@ -1823,13 +1829,14 @@ architecture is named at pull and create time rather than checked afterwards.
 
 ## Relative paths, and the directory you are actually in
 
-With a project configuration in play, a relative `--workspace`, `--script`,
-`--env-file`, `--artifacts`, `--input` or matrix transcript path of `run` or `matrix`
-resolves against the directory holding that configuration. A relative
-`jobs.workspace` or `jobs.env_file` always resolves against the file that names it.
+With a project configuration in play, `run` and `matrix` resolve a relative path
+against the directory holding that configuration. That holds for `--workspace`,
+`--script`, `--env-file`, `--artifacts`, `--input`, `--input-exec` and a matrix
+transcript path. A relative `jobs.workspace` or `jobs.env_file` always resolves
+against the file that names it.
 That is a working tree's own where it lends a named instance its `workspace` or `env_file`.
-`base exec` reads a relative `--script`, `--env-file`, `--input` and `--artifacts`
-from the current directory, and so does `base sync` its `HOST-DIR`.
+`base exec` reads a relative `--script`, `--env-file`, `--input`, `--input-exec` and
+`--artifacts` from the current directory, and so does `base sync` its `HOST-DIR`.
 
 ⭐ **A relative grant source resolves against its file on every route.** The client
 sends each `base.mounts` source resolved. An ensure or a probe through the helper

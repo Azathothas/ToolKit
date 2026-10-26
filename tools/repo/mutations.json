@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: base exec takes --input-exec",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_exec.go",
+      "find": "\tfs.Var(&e.inputExecs, \"input-exec\", ",
+      "replace": "\tfs.Var(&e.inputExecs, \"input-exec-unbound\", ",
+      "run": "TestBaseExecReadsAnExecutableInputBesideItsInputs",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec reads --input-exec as an executable input",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_exec.go",
+      "find": "out = append(out, toolkit.JobInput{Name: name, Path: p, Exec: list.exec})",
+      "replace": "out = append(out, toolkit.JobInput{Name: name, Path: p})",
+      "run": "TestBaseExecReadsAnExecutableInputBesideItsInputs",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an input placed under the in directory keeps its executable mark",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\tin.Name = dir + \"/\" + in.Name\n\treturn in\n",
+      "replace": "\treturn JobInput{Name: dir + \"/\" + in.Name, Path: in.Path, Bytes: in.Bytes}\n",
+      "run": "TestAnAttachedBaseExecPlacesAnExecutableInputRepaired|TestADetachedSessionPlacesAnExecutableInputRepaired",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an attached base exec places each input whole",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "files = append(files, in.under(\"in\"))",
+      "replace": "files = append(files, JobInput{Name: \"in/\" + in.Name, Path: in.Path, Bytes: in.Bytes})",
+      "run": "TestAnAttachedBaseExecPlacesAnExecutableInputRepaired",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a detached session places each input whole",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/session.go",
+      "find": "files = append(files, in.under(\"in\"))",
+      "replace": "files = append(files, JobInput{Name: \"in/\" + in.Name, Path: in.Path, Bytes: in.Bytes})",
+      "run": "TestADetachedSessionPlacesAnExecutableInputRepaired",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base herdr and base bootstrap answer the tool's code for their own refusal",
       "module": "tools/windows/wsl-toolkit",
       "file": "exit_tool.go",

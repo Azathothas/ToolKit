@@ -160,6 +160,42 @@ func TestBaseExecReadsItsInputsAndArtifactsFromTheCurrentDirectory(t *testing.T)
 	}
 }
 
+// TestBaseExecReadsAnExecutableInputBesideItsInputs is WSL-128's base exec half:
+// --input-exec binds, reads its file from the current directory, and arrives
+// marked executable, while --input beside it stays byte for byte.
+func TestBaseExecReadsAnExecutableInputBesideItsInputs(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	for name, body := range map[string]string{"app.toml": "x\r\n", "run.sh": "#!/bin/sh\r\ntrue\r\n", "data.bin": "plain\r\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var opts baseExecFlags
+	fs := newFlagSet("base exec")
+	opts.bind(fs)
+	if err := parseArgs(fs, []string{"--input", "conf/app.toml=app.toml", "--input-exec", "bin/run.sh=run.sh", "-c", "true"}); err != nil {
+		t.Fatalf("base exec did not take --input-exec: %v", err)
+	}
+	ins, err := opts.execInputs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ins) != 2 || ins[0].Exec || ins[0].Name != "conf/app.toml" ||
+		!ins[1].Exec || ins[1].Name != "bin/run.sh" || ins[1].Path != filepath.Join(dir, "run.sh") {
+		t.Fatalf("the inputs read as %+v; want the plain one, then the executable one", ins)
+	}
+	for _, bad := range []stringList{{"run.sh"}, {"run.sh="}, {"../x=run.sh"}, {"x=missing.sh"}, {"x=data.bin"}} {
+		if _, err := (baseExecFlags{inputExecs: bad}).execInputs(); err == nil || !strings.Contains(err.Error(), "--input") {
+			t.Errorf("--input-exec %q answered %v, want a refusal", bad, err)
+		}
+	}
+	// ⚠ One name is one input, across both flags.
+	if _, err := (baseExecFlags{inputs: stringList{"a=app.toml"}, inputExecs: stringList{"a=run.sh"}}).execInputs(); err == nil {
+		t.Error("one name given as --input and --input-exec was accepted")
+	}
+}
+
 func TestStdinIsPassedOnlyWhereItIsAPipeOrAFile(t *testing.T) {
 	if err := (baseExecFlags{stdin: true}).stdinRefusal(true); err == nil || !strings.Contains(err.Error(), "is a terminal") {
 		t.Errorf("--stdin from a terminal answered %v", err)

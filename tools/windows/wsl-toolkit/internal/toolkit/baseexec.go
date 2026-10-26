@@ -210,7 +210,7 @@ func runBaseExecInDir(ctx context.Context, w *Wsl, e BaseExec, script []byte, di
 	// ⭐ ONE ARCHIVE carries the inputs and, for --stdin, the command.
 	var files []JobInput
 	for _, in := range e.Inputs {
-		files = append(files, JobInput{Name: "in/" + in.Name, Path: in.Path, Bytes: in.Bytes})
+		files = append(files, in.under("in"))
 	}
 	if e.Stdin != nil {
 		files = append(files, JobInput{Name: "payload.sh", Bytes: append(shellAssignments(e.Env), script...)})

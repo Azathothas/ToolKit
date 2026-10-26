@@ -127,6 +127,17 @@ type JobInput struct {
 	Exec bool `json:"exec,omitempty"`
 }
 
+// under is the same input placed below dir in an archive: a base exec's or a
+// session's in directory. WSL-128.
+//
+// ⛔ A COPY OF THE WHOLE VALUE, NOT OF ITS FIELDS ONE BY ONE. Both places built
+// a new value from the name, the path and the bytes, which leaves behind the
+// mark that makes an input executable, and any field added after it.
+func (in JobInput) under(dir string) JobInput {
+	in.Name = dir + "/" + in.Name
+	return in
+}
+
 // maxExecInput bounds an executable input, which is a script read whole so its
 // line endings can be repaired. A larger file travels as a plain input.
 const maxExecInput = 64 << 20
