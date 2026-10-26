@@ -2,6 +2,267 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: base herdr and base bootstrap answer the tool's code for their own refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\tcase \"exec\", \"shell\", \"agent\", \"herdr\", \"bootstrap\":\n",
+      "replace": "\t\tcase \"exec\", \"shell\", \"agent\":\n",
+      "run": "TestAJobCommandsOwnRefusalIsNotAJobsTwo",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a flag that takes a value is set by any value, false included",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\tif !hasValue || !boolean {\n",
+      "replace": "\t\tif !hasValue {\n",
+      "run": "TestAJobCommandsOwnRefusalIsNotAJobsTwo|TestAFlagIsReadInEverySpelling",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refusal document names the subcommand it refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\tname, args = cmd+\" \"+args[0], args[1:]\n",
+      "replace": "\t\targs = args[1:]\n",
+      "run": "TestARefusedRunUnderJSONSaysNoJobStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refused distro run --json answers a document",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\tcmd == \"distro\" && len(args) > 0 && args[0] == \"run\",\n",
+      "replace": "\t\tcmd == \"distro\" && len(args) > 0 && args[0] == \"run\" && false,\n",
+      "run": "TestARefusedRunUnderJSONSaysNoJobStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refused bsd run --json answers a document",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\tcmd == \"bsd\" && len(args) > 0 && args[0] == \"run\":\n",
+      "replace": "\t\tcmd == \"bsd\" && len(args) > 0 && args[0] == \"run\" && false:\n",
+      "run": "TestARefusedRunUnderJSONSaysNoJobStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: distro new answers a refusal document only where it runs a command",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "args[0] == \"new\" && forwardsExit(cmd, args),\n",
+      "replace": "args[0] == \"new\",\n",
+      "run": "TestARefusedRunUnderJSONSaysNoJobStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an empty --tool-exit is refused, and an empty variable is unset",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\tif asked {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestTheToolsOwnCodeIsConfigurable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper answer lost after the job was taken on is the job's end, not a refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper_stream.go",
+      "find": "\tif err != nil && accepted {\n",
+      "replace": "\tif false && err != nil && accepted {\n",
+      "run": "TestAHelperAnswerLostAfterTheJobWasTakenOnIsTheToolsFailure|TestAHelperJobWhoseAnswerWasLostIsNotARefusal",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper's refusal is never read as a job it took on",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper_stream.go",
+      "find": "\t\t\treturn false, fmt.Errorf(\"the helper refused: %s\", problem.Error)\n",
+      "replace": "\t\t\treturn true, fmt.Errorf(\"the helper refused: %s\", problem.Error)\n",
+      "run": "TestAHelperAnswerLostAfterTheJobWasTakenOnIsTheToolsFailure",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper job cancelled by its call answers a stop",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper_stream.go",
+      "find": "\tif errors.Is(ctx.Err(), context.Canceled) {\n\t\tres.Cancelled, res.Exit = true, ExitStopped\n",
+      "replace": "\tif false {\n\t\tres.Cancelled, res.Exit = true, ExitStopped\n",
+      "run": "TestAHelperJobCancelledByItsCallAnswersAStop",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a run --via-helper cancelled before the job was taken on answers 130",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\t\t\treturn cannotOrStopped(ctx), err\n",
+      "replace": "\t\t\treturn exitCannot, err\n",
+      "run": "TestAHelperRunCancelledBeforeItWasTakenOnIsAStop",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cancelled call is a stop",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\tif errors.Is(ctx.Err(), context.Canceled) {\n\t\treturn toolkit.ExitStopped\n",
+      "replace": "\tif false {\n\t\treturn toolkit.ExitStopped\n",
+      "run": "TestACancelledCallIsAStop|TestAHelperRunCancelledBeforeItWasTakenOnIsAStop",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an orphan whose container the engine holds with no exit is the tool's failure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_jobs.go",
+      "find": "\tcase present:\n\t\tres.ToolFailed, res.Exit = true, exitCannot\n",
+      "replace": "\tcase present:\n\t\tres.Exit = exitFailed\n",
+      "run": "TestAnOrphanWhoseEndWasNotRecordedIsTheToolsFailure",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an orphan whose container is gone with no end recorded is the tool's failure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_jobs.go",
+      "find": "\tdefault:\n\t\tres.ToolFailed, res.Exit = true, exitCannot\n",
+      "replace": "\tdefault:\n\t\tres.Exit = exitFailed\n",
+      "run": "TestAnOrphanWhoseEndWasNotRecordedIsTheToolsFailure",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wait --json writes the effective_exit it answers",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_jobs.go",
+      "find": "\t\t\tsealed.Seal()\n\t\t\tend.Result = &sealed\n",
+      "replace": "\t\t\tend.Result = &sealed\n",
+      "run": "TestAWaitAnswersTheEffectiveExitItReturns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job that never started is not said to have exited",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\tcase res.Unreached:\n\t\treturn \"did not start\"\n",
+      "replace": "\tcase false:\n\t\treturn \"did not start\"\n",
+      "run": "TestAJobThatNeverRanIsNotSaidToHaveExited",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job whose end was lost is not said to have exited",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\tcase res.ToolFailed:\n\t\treturn \"started, and this tool lost how it ended\"\n",
+      "replace": "\tcase false:\n\t\treturn \"started, and this tool lost how it ended\"\n",
+      "run": "TestAJobThatNeverRanIsNotSaidToHaveExited",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: run's closing line says how the job ended",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\tlogf(\"  %s %s in %s\", res.Label, endedAs(res, res.Exit), res.Duration.Round(time.Millisecond))\n",
+      "replace": "\tlogf(\"  %s exited %d in %s\", res.Label, res.Exit, res.Duration.Round(time.Millisecond))\n",
+      "run": "TestAJobThatNeverRanIsNotSaidToHaveExited",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: ready --smoke says how the smoke job ended",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\treturn fmt.Sprintf(\"the smoke job %s: %s\", endedAs(res, res.Verdict()), strings.TrimSpace(res.Error+\" \"+res.ArtifactError))\n",
+      "replace": "\treturn fmt.Sprintf(\"the smoke job exited %d: %s\", res.Verdict(), strings.TrimSpace(res.Error+\" \"+res.ArtifactError))\n",
+      "run": "TestAJobThatNeverRanIsNotSaidToHaveExited",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a throwaway command whose wsl.exe started reads started",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tJobStarted: err == nil || ProcessStarted(err)}\n",
+      "replace": "\t\tJobStarted: err == nil}\n",
+      "run": "TestAThrowawayCommandSaysWhetherItStartedAndWhetherItsEndWasLost",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a throwaway command whose end was lost is the tool's failure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tout.ToolFailed = out.JobStarted\n",
+      "replace": "",
+      "run": "TestAThrowawayCommandSaysWhetherItStartedAndWhetherItsEndWasLost",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a throwaway command carries job_started even when false",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tJobStarted bool `json:\"job_started\"`\n\tToolFailed bool `json:\"tool_failed,omitempty\"`\n}",
+      "replace": "\tJobStarted bool `json:\"job_started,omitempty\"`\n\tToolFailed bool `json:\"tool_failed,omitempty\"`\n}",
+      "run": "TestAThrowawayCommandSaysWhetherItStartedAndWhetherItsEndWasLost",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a child that never started is not read as started",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/process.go",
+      "find": "Started: c.Process != nil}",
+      "replace": "Started: true}",
+      "run": "TestAThrowawayCommandSaysWhetherItStartedAndWhetherItsEndWasLost",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a bsd run past its budget is timed out",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tcase outOfBudget:\n\t\tres.TimedOut = true\n",
+      "replace": "\tcase false:\n\t\tres.TimedOut = true\n",
+      "run": "TestABsdRunPastItsBudgetIsTimedOut|TestABsdPayloadCutOffStartedAndLostItsEnd",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a bsd payload whose end was lost is the tool's failure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tcase res.JobStarted:\n\t\tres.ToolFailed = true\n",
+      "replace": "\tcase false:\n\t\tres.ToolFailed = true\n",
+      "run": "TestABsdPayloadCutOffStartedAndLostItsEnd",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a bsd payload reads started once its line is typed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tres.JobStarted = true\n\treturn g.run(ctx, line)\n",
+      "replace": "\treturn g.run(ctx, line)\n",
+      "run": "TestABsdPayloadCutOffStartedAndLostItsEnd",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a bsd run reads how it ended as it returns",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tbsdEnded(&res, err, spent)\n",
+      "replace": "\t\t_ = spent\n",
+      "run": "TestABsdRunPastItsBudgetIsTimedOut",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a bsd run past its --timeout exits 124",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_bsd.go",
+      "find": "\tif res.TimedOut {\n\t\treturn exitTimeout, runErr\n",
+      "replace": "\tif false {\n\t\treturn exitTimeout, runErr\n",
+      "run": "TestABsdRunPastItsTimeoutExitsOneTwoFour",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a payload's own 125 is a red job, not a job that could not run",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "const ToolCannot = 99\n",
+      "replace": "const ToolCannot = 125\n",
+      "run": "TestAPayloadsOwn125IsARedJob",
+      "args": []
+    },
+    {
       "label": "text-tool: eol refuses a path that does not exist",
       "module": "tools/text-tool",
       "file": "internal/edit/edit.go",
@@ -68,7 +329,7 @@
       "label": "wsl-toolkit: distro new answers a job's code only when it runs a command",
       "module": "tools/windows/wsl-toolkit",
       "file": "exit_tool.go",
-      "find": "\t\t\treturn hasFlag(args[1:], \"c\") || hasFlag(args[1:], \"command-base64\") || hasFlag(args[1:], \"script\")\n",
+      "find": "\t\t\treturn hasValueFlag(args[1:], \"c\") || hasValueFlag(args[1:], \"command-base64\") || hasValueFlag(args[1:], \"script\")\n",
       "replace": "\t\t\treturn true\n",
       "run": "TestAJobCommandsOwnRefusalIsNotAJobsTwo",
       "args": []
@@ -176,8 +437,8 @@
       "label": "wsl-toolkit: a refused run --json answers a document that says no job started",
       "module": "tools/windows/wsl-toolkit",
       "file": "main.go",
-      "find": "\t\tif refusesWithDocument(cmd, cmdArgs) {\n",
-      "replace": "\t\tif false {\n",
+      "find": "\t\tif name, ok := refusalDocument(cmd, cmdArgs); ok {\n",
+      "replace": "\t\tif name, ok := refusalDocument(cmd, cmdArgs); false && ok {\n",
       "run": "TestARefusedRunUnderJSONSaysNoJobStarted",
       "args": []
     },
@@ -227,12 +488,12 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: an orphan whose container has an exit started",
+      "label": "wsl-toolkit: an orphan reads started, one whose end no owner recorded included",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_jobs.go",
-      "find": "res := toolkit.JobResult{ID: id, JobStarted: exit != nil}",
-      "replace": "res := toolkit.JobResult{ID: id, JobStarted: false}",
-      "run": "TestAnOrphanWithAnExitStarted",
+      "find": "res := toolkit.JobResult{ID: id, JobStarted: true}",
+      "replace": "res := toolkit.JobResult{ID: id, JobStarted: exit != nil}",
+      "run": "TestAnOrphanWithAnExitStarted|TestAnOrphanWhoseEndWasNotRecordedIsTheToolsFailure",
       "args": []
     },
     {

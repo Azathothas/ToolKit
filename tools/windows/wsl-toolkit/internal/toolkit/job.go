@@ -262,9 +262,10 @@ type JobResult struct {
 	// past its deadline before its container started is false here, and
 	// `unreached` alone never said the last three.
 	JobStarted bool `json:"job_started"`
-	// ToolFailed is a job whose payload started and whose end this tool could
-	// not read: wsl.exe answered with no exit status of the payload's own.
-	// WSL-127.
+	// ToolFailed is a job whose payload started, or may have, and whose end this
+	// tool could not read: wsl.exe answered with no exit status of the
+	// payload's own, the helper's answer broke off, or no owner recorded it.
+	// JobStarted is true beside it. WSL-127.
 	//
 	// ⛔ IT ANSWERED 2 AS THE JOB'S OWN CODE. The 2 was the process layer's
 	// default for an error that carries no status, so a payload that exited 0

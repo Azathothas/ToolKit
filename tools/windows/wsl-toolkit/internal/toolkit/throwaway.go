@@ -675,6 +675,14 @@ type CommandOutcome struct {
 	// LogError names where the relay could not write: this process's own
 	// streams, or a log the caller asked for. The command's own exit is still Exit.
 	LogError string `json:"log_error,omitempty"`
+	// JobStarted says wsl.exe was started with the command, and ToolFailed
+	// that it was and this tool lost how it ended. WSL-127.
+	//
+	// ⛔ NEVER OMITTED, as a job's is. `exit` held 2 for a wsl.exe that never
+	// started and for one whose end was lost, while the process answered 125,
+	// which was the old ambiguity inside the answer.
+	JobStarted bool `json:"job_started"`
+	ToolFailed bool `json:"tool_failed,omitempty"`
 }
 
 // ThrowawayRunSchema versions the answer `distro run --json` writes.
@@ -1170,7 +1178,8 @@ func (t *Throwaways) runIn(ctx context.Context, name string, spec ThrowawaySpec)
 		Stderr: &countingWriter{to: stderr, count: &errN},
 	})
 	elapsed := time.Since(started)
-	out := CommandOutcome{Exit: code, StdoutBytes: outN.Load(), StderrBytes: errN.Load(), DurationMS: elapsed.Milliseconds()}
+	out := CommandOutcome{Exit: code, StdoutBytes: outN.Load(), StderrBytes: errN.Load(), DurationMS: elapsed.Milliseconds(),
+		JobStarted: err == nil || ProcessStarted(err)}
 	if err != nil {
 		t.classifyRun(ctx, name, spec, elapsed, err, &out)
 	}
@@ -1198,6 +1207,10 @@ func (t *Throwaways) classifyRun(ctx context.Context, name string, spec Throwawa
 	case errors.As(err, &exited):
 		return
 	default:
+		// ⛔ A wsl.exe THAT STARTED AND ENDED WITH NO EXIT STATUS LOST ITS END,
+		// so the 2 in Exit is the process layer's and not the command's. One
+		// that never started is a refusal. WSL-127.
+		out.ToolFailed = out.JobStarted
 		out.Error = err.Error()
 		return
 	}

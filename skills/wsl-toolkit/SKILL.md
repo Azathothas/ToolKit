@@ -77,10 +77,17 @@ MSYS2_ARG_CONV_EXCL='*'` stops it, and the tool then reads a host path such as
 gives you the pipeline's status, not the tool's. Read `$LASTEXITCODE` on the line
 after the command.
 
-⭐ **A job's code and the tool's are apart.** `run`, `wait`, `logs ID --follow`,
-`base exec` and `base agent` answer the job's own code. Where the tool could not run
-the job, they answer 125. Every other command answers 2 for a refusal. Under `--json`,
-`job_started` says whether the job started, because a job can exit 125 itself.
+⭐ **A job's code and the tool's are apart.** A command that runs a job answers the
+job's own code. Where the tool could not run the job, or lost how it ended, it answers
+125. Those commands are:
+
+- `run`, `wait`, `logs ID --follow` and `bsd run`
+- `base exec`, `base shell`, `base agent`, `base herdr` and `base bootstrap`
+- `distro new` given a command, `distro run` and `distro enter`
+
+Every other command answers 2 for a refusal, `stop` for an unknown id included.
+Under `--json`, `job_started` says whether the job started, because a job can exit
+125 itself.
 
 ---
 
@@ -241,8 +248,8 @@ back unless the job writes it to `/out` and the run passes `--artifacts DIR`.
 streams as they are written and exits with the job's own code. `wait ID` answers that
 code alone. When `wait --timeout` runs out, it answers 124 and the job keeps running.
 `stop ID` ends the job. `wait` then answers 130, unless the job traps TERM and keeps
-its own code. Each answers 125 where it could not read the job, such as an id this
-instance does not hold.
+its own code. `logs ID --follow` and `wait ID` answer 125 where they could not read the
+job, such as an id this instance does not hold. `stop ID` answers 2 for that id.
 
 ```powershell
 $sid = wsl-toolkit base exec --detach --timeout 0 -c './serve.sh'

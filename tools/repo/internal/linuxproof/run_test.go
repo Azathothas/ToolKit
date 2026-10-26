@@ -91,6 +91,10 @@ func fake(log string, args []string) int {
 			return code
 		}
 		return 125
+	case "payload-125":
+		// A job whose own payload answered 125, as a nested engine that could
+		// not run a container does. wsl-toolkit forwards it. WSL-127.
+		return 125
 	}
 	return 0
 }
@@ -557,20 +561,32 @@ func TestAJobThatCouldNotRunIsExitTwo(t *testing.T) {
 	}
 }
 
-// TestAJobWsltoolkit8CouldNotRunIsExitTwo. ⚠ wsl-toolkit 8 answers 125 for a job
-// it could not run, and a value of WSL_TOOLKIT_TOOL_EXIT in the caller's shell
-// moves it. The job's own variable is pinned, so the proof still reads "could
-// not run" and not a red job. WSL-127.
+// TestAJobWsltoolkit8CouldNotRunIsExitTwo. ⚠ wsl-toolkit 8 answers its tool code
+// for a job it could not run, and a value of WSL_TOOLKIT_TOOL_EXIT in the
+// caller's shell moves it. The job's own variable is pinned, so the proof still
+// reads "could not run" and not a red job. WSL-127.
 func TestAJobWsltoolkit8CouldNotRunIsExitTwo(t *testing.T) {
 	c := newProofCase(t)
 	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
 	t.Setenv(fakeModeEnv, "cannot-8")
 	t.Setenv("WSL_TOOLKIT_TOOL_EXIT", "7")
-	if code, msg := c.run(t, Options{}); code != 2 || Has(c.common, tree) || !strings.Contains(msg, "exited 125") {
+	if code, msg := c.run(t, Options{}); code != 2 || Has(c.common, tree) || !strings.Contains(msg, fmt.Sprintf("exited %d", ToolCannot)) {
 		t.Fatalf("a wsl-toolkit 8 job that could not run: exit %d, proved %v, %q; want 2 and no proof", code, Has(c.common, tree), msg)
 	}
 	if got := exitOf([]jobEnd{{ran: true}, {ran: true, code: ToolCannot}}); got != 2 {
 		t.Fatalf("a job that answered %d is read as %d", ToolCannot, got)
+	}
+}
+
+// TestAPayloadsOwn125IsARedJob. ⛔ A job whose payload answered 125, as a nested
+// engine that could not run a container does, failed a check. Reading it as
+// "could not run" put WSL-127's conflation back in the proof. WSL-127.
+func TestAPayloadsOwn125IsARedJob(t *testing.T) {
+	c := newProofCase(t)
+	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
+	t.Setenv(fakeModeEnv, "payload-125")
+	if code, msg := c.run(t, Options{}); code != 1 || Has(c.common, tree) || !strings.Contains(msg, "exited 125") {
+		t.Fatalf("a job whose payload answered 125: exit %d, proved %v, %q; want 1 and no proof", code, Has(c.common, tree), msg)
 	}
 }
 

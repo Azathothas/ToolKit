@@ -202,6 +202,10 @@ func execFakeShell(script string, catStdin bool) int {
 	if catStdin {
 		_, _ = io.Copy(os.Stdout, os.Stdin)
 	}
+	// ⭐ A command whose streams outlive it, as a job's can. WSL-127.
+	if os.Getenv(execFakeLingerEnv) != "" {
+		execFakeLinger()
+	}
 	code, _ := strconv.Atoi(os.Getenv(execFakeExitEnv))
 	return code
 }

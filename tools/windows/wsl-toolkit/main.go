@@ -123,9 +123,9 @@ func usage() string {
 		"",
 		"Exit: 0 it ran and agreed, 1 it ran and disagreed, 2 it could not run,",
 		"124 a deadline, 130 a stop. run, wait, logs --follow, base exec, base",
-		"shell, base agent, distro new -c, distro run, distro enter and bsd run",
-		"answer the job's own code, and the --tool-exit code, 125, where this",
-		"tool could not run it.",
+		"shell, base agent, base herdr, base bootstrap, distro new -c, distro",
+		"run, distro enter and bsd run answer the job's own code, and the",
+		"--tool-exit code, 125, where this tool could not run it.",
 	)
 	return strings.Join(lines, "\n")
 }
@@ -183,6 +183,7 @@ func run(ctx context.Context, args []string) int {
 	var rest []string
 	instance := ""
 	answered = false
+	toolExitAsked := false
 	for i := 0; i < len(args); i++ {
 		switch {
 		case args[i] == "--quiet" || args[i] == "-q":
@@ -199,8 +200,10 @@ func run(ctx context.Context, args []string) int {
 			// every other copy of this program the call starts answer the same
 			// code. WSL-127.
 			os.Setenv(toolkit.ToolExitEnv, args[i])
+			toolExitAsked = true
 		case strings.HasPrefix(args[i], toolExitFlag+"="):
 			os.Setenv(toolkit.ToolExitEnv, strings.TrimPrefix(args[i], toolExitFlag+"="))
+			toolExitAsked = true
 		case args[i] == "--home":
 			if i+1 >= len(args) {
 				fmt.Fprintln(os.Stderr, "wsl-toolkit: --home needs a directory")
@@ -261,12 +264,12 @@ func run(ctx context.Context, args []string) int {
 	refuse := func(code int, err error) int {
 		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
 		code = ownExit(forwardsExit(cmd, cmdArgs), code, err)
-		if refusesWithDocument(cmd, cmdArgs) {
-			writeRefusal(cmd, code, err)
+		if name, ok := refusalDocument(cmd, cmdArgs); ok {
+			writeRefusal(name, code, err)
 		}
 		return code
 	}
-	if err := readToolExit(); err != nil {
+	if err := readToolExit(toolExitAsked); err != nil {
 		return refuse(exitCannot, err)
 	}
 	// ⛔ THE INSTANCE IS RESOLVED BEFORE THE SUBCOMMAND RUNS, because it decides

@@ -772,7 +772,10 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		}
 		res, err := helperRunJob(ctx, c, j, ref, *image, payload, env, devices, inputs)
 		if err != nil {
-			return exitCannot, err
+			// ⚠ A CALL CANCELLED BEFORE THE HELPER TOOK THE JOB ON answers 130,
+			// as the direct route does. One cancelled after is the job's own
+			// end, which RunStream answers. WSL-127.
+			return cannotOrStopped(ctx), err
 		}
 		return reportJob(res, j.asJSON)
 	}
@@ -1078,7 +1081,7 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 	if line := limitsLine(res.Limits); line != "" {
 		logf("  %s", line)
 	}
-	logf("  %s exited %d in %s", res.Label, res.Exit, res.Duration.Round(time.Millisecond))
+	logf("  %s %s in %s", res.Label, endedAs(res, res.Exit), res.Duration.Round(time.Millisecond))
 	if hint := transcriptHint(res); hint != "" {
 		logf("  %s", hint)
 	}
@@ -1089,6 +1092,22 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 		logf("  %s", line)
 	}
 	return jobVerdict(res), nil
+}
+
+// endedAs says how a job ended, in words a reader cannot take for its payload's
+// own code. code is the number a job that ran is said to have exited with.
+// WSL-127.
+//
+// ⛔ "exited 2" WAS PRINTED for a job that never started and for one whose end
+// was lost, beside a process that answered 125, and it read as the payload's 2.
+func endedAs(res toolkit.JobResult, code int) string {
+	switch {
+	case res.Unreached:
+		return "did not start"
+	case res.ToolFailed:
+		return "started, and this tool lost how it ended"
+	}
+	return fmt.Sprintf("exited %d", code)
 }
 
 // limitsLine says what a job's limits were and whether its container was held

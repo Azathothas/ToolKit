@@ -119,28 +119,47 @@ failure answers 125, never 2.** So a job that exits 2 is never read as a refusal
 | 125 | this tool could not run the job, or lost how it ended: a refusal, a missing base, an image it could not pull |
 | 130 | the job was stopped, or this call was cancelled |
 
-Those commands are `run`, `wait`, `logs ID --follow`, `base exec`, `base shell`,
-`base agent` and its launchers, `distro new` given a command, `distro run`,
-`distro enter` and `bsd run`.
+Those commands are:
 
-- ⚠ Every other command keeps 2 for a refusal, `matrix` included. A fleet never
-  answers a row's own code.
+- `run`, `wait`, `logs ID --follow` and `bsd run`
+- `base exec`, `base shell`, `base agent` and its launchers, `base herdr` and `base
+  bootstrap`
+- `distro new` given a command, `distro run` and `distro enter`
+
+⚠ **Every other command keeps 2 for a refusal**, `matrix` and `stop` included. A
+fleet never answers a row's own code.
+
 - ⭐ `--tool-exit N`, written before the command, picks another code for one call.
   `WSL_TOOLKIT_TOOL_EXIT=N` picks it for every call, the detached owner's included.
 - `--tool-exit 2` answers what 7.x answered. A code this tool already answers with
-  another meaning is refused: 0, 1, 124 and 130.
+  another meaning is refused: 0, 1, 124 and 130. A `--tool-exit` with no code is
+  refused too. An empty variable reads as unset.
 - ⚠ A job can exit 125 itself. Read `job_started` where that matters, or pick a code
   your jobs never answer.
 - ⭐ **Every `--json` answer of a job carries `job_started`**: `run`, each row of
-  `matrix`, and `wait`. It is true once the payload was entered. It is false for a
-  job refused, unreached, or stopped before its container started.
-- A refused `run --json` or `base exec --json` writes `wsl-toolkit-refusal/1`. It
-  carries `job_started` false, `effective_exit` and `error`. A job refused after it
-  was claimed writes its own result instead, which says the same.
-- `tool_failed` is true where the payload started and this tool lost how it ended.
-  Its answer is 125.
+  `matrix`, `wait`, `distro run`, the `command` of `distro new`, and `bsd run`. It
+  is true once the payload was entered, or may have been. It is false for a job
+  refused, unreached, or stopped before its container started.
+- A refused `run --json`, `base exec --json`, `distro run --json`, `distro new
+  --json` given a command, or `bsd run --json` writes `wsl-toolkit-refusal/1`. It
+  carries `command`, such as `base exec`, `job_started` false, `effective_exit`
+  and `error`. A job refused after it was claimed writes its own result instead,
+  which says the same.
+- `tool_failed` is true where the payload started, or may have, and this tool lost
+  how it ended. Its answer is 125, and `job_started` is true beside it.
 - ⚠ `exit` stays the container's code. A job that never started, or whose end was
   lost, still carries 2 there, and `effective_exit` carries 125.
+- ⛔ **A job the helper took on and whose answer broke off is not a refusal.** `run
+  --via-helper` answers its result, with `tool_failed` and `job_started` true,
+  because the job may still run on the helper. A call cancelled on that route
+  answers 130.
+- ⛔ **A job no process owned when it ended, and whose container holds no exit,
+  answers 125** from `wait` and `logs ID --follow`, with `tool_failed`. 7.x
+  answered 1.
+- `wait --json` writes the recorded result with the `effective_exit` this `wait`
+  answers, under its own `--tool-exit`.
+- A job's closing line says `did not start` or `lost how it ended` where it has no
+  code of its own. `ready --smoke` says the same.
 - ⛔ The helper protocol is `wsl-toolkit-helper/7`, because a result carries the two
   new fields. Restart a helper of an earlier release.
 
@@ -462,9 +481,9 @@ wsl-toolkit logs                      # every job and session, with its state
 | `run --detach` | the job's id on stdout, at once. A detached copy of this program owns the job and writes its own progress to `owner.log` in the job's directory. `--json` answers `wsl-toolkit-detached/1` |
 | `logs ID --follow` | the job's stdout on stdout and its stderr on stderr, as they are written, from the start or from `--tail N` lines. It exits with the job's own exit code, and 125 where it cannot read the job |
 | `wait ID` | the exit code `run` would have answered, and 125 where it cannot read the job. `--timeout` bounds the wait: it then answers 124, and the job keeps running. `--json` answers `wsl-toolkit-job-end/1`, with `job_started` |
-| `stop ID` | exit 0 once the job no longer runs, 1 when it could not be stopped, 2 for an id this machine does not know. `--json` answers `wsl-toolkit-stop/1` |
-| `logs` | each job and session, newest first: its kind, its state, its exit code and its bytes |
-| `inspect ID` | the state, the recorded exit, and what the machine was running |
+| `stop ID` | exit 0 once the job no longer runs, 1 when it could not be stopped, 2 for an id this machine does not know. `--json` answers `wsl-toolkit-stop/1`, whose `exit` is what `wait` answers |
+| `logs` | each job and session, newest first: its kind, its state, its exit code and its bytes. The exit code is what `wait` answers, so a job that never ran reads 125 |
+| `inspect ID` | the state, the recorded exit as `wait` answers it, and what the machine was running |
 
 ⭐ **A job is named by its id, its container's name, or a prefix.** `wtk-ID` is read
 as `ID`. Four or more characters that start one job alone, with `wtk-` or without
@@ -1052,7 +1071,8 @@ wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base ex
 
 ⛔ **An instance and its configuration name one distribution.** A configuration
 whose `base.name` is not the selected instance's distribution is refused with exit
-2, whichever file the search resolved. `wsl-toolkit-muse` belongs to `--instance
+2, or 125 where the command answers with a job's code, whichever file the search
+resolved. `wsl-toolkit-muse` belongs to `--instance
 muse`, and `wsl-toolkit-jobs` or `wsl-toolkit` to no instance at all. The message names the file, both
 distributions, and the `--instance` or `--config` that agrees. `wsl-toolkit
 config` still prints which file won and where it looked.
@@ -1111,6 +1131,10 @@ default and parses no answer. So a herdr release that adds or renames a command
 reaches the caller unchanged. It refuses one thing: a command that wants a
 terminal, a bare `herdr` or any `attach`, because this path has no screen. It
 names `base attach` instead.
+
+⛔ **herdr's own 2 is herdr's.** `base herdr` answers herdr's exit code, and 125
+where this tool could not run herdr: that refusal, a missing base, a base with no
+herdr. `base bootstrap` answers the same way. `WSL-127`
 
 ⭐ **`base shell --here` marks its own shell, and the profile this tree ships reads
 the mark.** [`../../../scripts/common/shell-profile.sh`](../../../scripts/common/shell-profile.sh)
@@ -1767,8 +1791,9 @@ exit code is the script's own.
 
 ⛔ **A cancelled run exits 130**, as a cancelled `run` does. A Ctrl+C at any step
 stops the guest, and `--json` carries `cancelled: true` beside `exit: 130`. A run
-whose `--timeout` ran out exits 125, as any run that could not finish does.
-`WSL-151`, `WSL-127`
+whose `--timeout` ran out exits 124, as every deadline this tool holds does, and
+`--json` carries `timed_out: true`. `job_started` says the payload's line was typed
+at the guest's shell. `WSL-151`, `WSL-127`
 
 ⭐ **The guest disk is 12 GiB, which gives a root filesystem of about 10.6 GiB.**
 The published image is 6.0 GiB with a 4.8 GiB root, and a toolchain install fills
@@ -1784,7 +1809,7 @@ fetch --force` goes back to the published image.
 
 ⛔ **The guest kernel can panic.** `bsd run` ends a run with exit 125 and the panic line
 when QEMU exits after the console shows a panic's two lines, `panic: ` and `cpuid = `
-under it, or 60 seconds after them. What the panic wrote goes with the run's
+under it, or 60 seconds after them. A panic during the payload sets `tool_failed`. What the panic wrote goes with the run's
 overlay. ⚠ The payload's output is on the same console. So a payload that prints
 those two lines itself and ends within the 60 seconds answers with its own exit and
 output, and one that runs on past them is ended as a panic. `WSL-82`
@@ -1841,7 +1866,8 @@ wsl-toolkit distro remove --name build-box --yes
   tag, including one another run wrote while this export ran. ⚠ A snapshot is an
   unencrypted archive of whatever the distribution held, a credential a command
   left behind included.
-- A refusal answers 2 and changes nothing. A removal or an export that was
+- A refusal answers 2 and changes nothing, and 125 from `distro run`, `distro
+  enter` and `distro new` given a command. A removal or an export that was
   tried and did not finish answers 1.
 
 ⛔ **The tool acts only on a distribution whose disk WSL registered inside this

@@ -175,7 +175,7 @@ func agentEnv(raw []string) ([]toolkit.EnvPair, error) {
 // as `base agent` does. WSL-127.
 func runLauncher(ctx context.Context, agent, instance string, args []string) int {
 	quiet = true
-	if err := readToolExit(); err != nil {
+	if err := readToolExit(false); err != nil {
 		fmt.Fprintln(os.Stderr, agent+": "+err.Error())
 		return ownExit(true, exitCannot, err)
 	}

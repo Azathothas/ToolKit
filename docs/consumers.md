@@ -155,16 +155,22 @@ where this tool could not run the job. So a job's 2 is never read as a refusal.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
-| `run`, `wait`, `logs ID --follow`, `base exec`, `base shell`, `base agent` and its launchers, `distro new` given a command, `distro run`, `distro enter` and `bsd run` answer 125 where this tool could not run the job, a refusal of a flag included. A job's own 2 is still 2 | reads exit 2 from one of them as "could not run", or as a refused flag | reads 125, or passes `--tool-exit 2`, or sets `WSL_TOOLKIT_TOOL_EXIT=2`, which answers what 7.x answered |
+| a command that answers with a job's code answers 125 where this tool could not run the job, a refusal of a flag included. A job's own 2 is still 2. Those commands are `run`, `wait`, `logs ID --follow` and `bsd run`. They are `base exec`, `base shell`, `base agent` and its launchers, `base herdr` and `base bootstrap`. They are `distro new` given a command, `distro run` and `distro enter` | reads exit 2 from one of them as "could not run", or as a refused flag | reads 125, or passes `--tool-exit 2`, or sets `WSL_TOOLKIT_TOOL_EXIT=2`, which answers what 7.x answered |
 | an unreached job's `effective_exit` is 125, and its `exit` stays 2 | reads `effective_exit` 2 as an image that never ran | reads `job_started` or `unreached` |
 | a job whose payload started and whose end this tool lost answers 125 with `tool_failed`, where 7.x answered 2 as the job's own | reads that 2 as the job's | reads `tool_failed` |
-| a refused `run --json` or `base exec --json` writes `wsl-toolkit-refusal/1` on stdout, where it wrote nothing. A job refused after it was claimed writes its own result | treats any stdout under `--json` as a job's answer | reads `schema` |
-| `bsd run` past its `--timeout`, or after a guest kernel panic, answers 125 | reads 2 there | reads 125 |
-| a job's result, each `matrix` row and `wait --json` carry `job_started` | | reads it, or ignores it |
+| a job no process owned when it ended, with no exit its engine holds, ends `wait` and `logs ID --follow` with 125. Its result carries `tool_failed`, `job_started` true and `exit` 2. 7.x answered 1, with `exit` 1 | reads that 1 as a job that ran and disagreed | reads 125, or `tool_failed` |
+| `run --via-helper` whose stream broke after the helper took the job on answers the job's result, with `tool_failed` and `job_started` true, and exit 125. 7.x answered 2 and wrote nothing under `--json`. A call cancelled on that route answers 130, where 7.x answered 2 | reads a broken helper stream as a job that never started, or its cancellation as a refusal | reads `tool_failed`, and 130 as a stop |
+| a refusal under `--json` writes `wsl-toolkit-refusal/1` on stdout, where it wrote nothing. It does so for `run`, `base exec`, `distro run`, `distro new` given a command, and `bsd run`. Its `command` names the subcommand, such as `base exec`. A job refused after it was claimed writes its own result | treats any stdout under `--json` as a job's answer | reads `schema` |
+| `bsd run` past its `--timeout` answers 124, as every deadline this tool holds does, and its `--json` carries `timed_out`. After a guest kernel panic it answers 125. 7.x answered 2 for both | reads 2 there | reads 124 for the deadline and 125 for the panic |
+| a job that never ran, or whose end was lost, prints 125 where 7.x printed 2. That is the `exit` of `logs --json` and of `stop --json`, and the exit line of `inspect`. Each is what `wait` answers | reads that 2 as an image that never ran | reads 125, or the job's `job_started` and `tool_failed` |
+| a result a 7.x owner recorded carries no `job_started`, so 8.0 `wait --json` reads it as false, for a job that ran too. Its `effective_exit` is resealed to what this `wait` answers | reads `job_started` false as "never ran" on a result 7.x wrote | reads `unreached` as well, on a job 7.x recorded |
+| a job's result, each `matrix` row, `wait --json`, `distro run --json`, the `command` of `distro new --json` and `bsd run --json` carry `job_started`. The last three also carry `tool_failed`, and `bsd run` carries `timed_out` | | reads it, or ignores it |
+| where 7.x printed `LABEL exited 2 in D`, `run` without `--json` prints `LABEL did not start in D`. A lost end prints `LABEL started, and this tool lost how it ended in D`. The reason `ready --smoke` gives says the same | parses that stderr line | reads the exit code, or `--json` |
+| `--tool-exit` given no code, `--tool-exit=` included, is refused. An empty `WSL_TOOLKIT_TOOL_EXIT` still reads as unset | passes an empty `--tool-exit` and relies on 125 | passes a code, or leaves the flag out |
 | the helper protocol is `wsl-toolkit-helper/7`, and a 7.x helper and an 8.x client refuse each other | leaves a 7.x helper running after the update | stops it and starts it again: `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach`, each with the `--instance` it serves |
 
-⚠ **Every other command keeps 2 for a refusal**, `matrix`, `config validate` and
-`gc --job` included. None of them answers a job's own code.
+⚠ **Every other command keeps 2 for a refusal**, `matrix`, `stop`, `config
+validate` and `gc --job` included. None of them answers a job's own code.
 
 ⚠ **The rows it reaches:** agent-box and podbox call `run`, dash.vpn calls `run`,
 `base exec` and `base shell`, and pg-toolkit calls `base exec` and `base shell`. Their

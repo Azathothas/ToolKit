@@ -4,9 +4,12 @@ package toolkit
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -230,5 +233,116 @@ func TestAJobSaysWhetherItStartedAndWhoseCodeItAnswers(t *testing.T) {
 	}
 	if !strings.Contains(lost.Error, "could not read how it ended") {
 		t.Errorf("a lost end does not say so: %s", lost.Error)
+	}
+}
+
+// streamHelper is a helper whose /v1/run answers with handle, and a client of it.
+func streamHelper(handle http.HandlerFunc) (*HelperClient, *httptest.Server) {
+	srv := httptest.NewServer(handle)
+	return &HelperClient{endpoint: HelperEndpoint{Address: strings.TrimPrefix(srv.URL, "http://"), Token: "t"}, http: srv.Client()}, srv
+}
+
+// acceptJob answers 200 and one chunk of the job's stdout, as a helper that
+// took the job on does, and flushes it. ⚠ It reads the request's body first,
+// because the server notices a client that went away only once it has.
+func acceptJob(t *testing.T, w http.ResponseWriter, r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, eventLines(t, HelperEvent{Kind: "stdout", B64: base64.StdEncoding.EncodeToString([]byte("half"))}))
+	w.(http.Flusher).Flush()
+}
+
+// cancelOnWrite cancels a call when the first byte of the job's output arrives.
+type cancelOnWrite struct{ cancel context.CancelFunc }
+
+func (c cancelOnWrite) Write(p []byte) (int, error) { c.cancel(); return len(p), nil }
+
+// ⛔ A HELPER'S ANSWER THAT BROKE OFF AFTER IT TOOK THE JOB ON IS THE JOB'S END,
+// NOT A REFUSAL. `run --via-helper --json` answered wsl-toolkit-refusal/1 with
+// job_started false, for a job that may still be running on the helper.
+// WSL-127.
+func TestAHelperAnswerLostAfterTheJobWasTakenOnIsTheToolsFailure(t *testing.T) {
+	c, srv := streamHelper(func(w http.ResponseWriter, r *http.Request) { acceptJob(t, w, r) })
+	defer srv.Close()
+	res, artifacts, err := c.RunStream(context.Background(), HelperRunRequest{}, HelperSinks{})
+	if err != nil || artifacts != "" {
+		t.Fatalf("a stream that broke after the job was taken on answered an error: %v", err)
+	}
+	if !res.JobStarted || !res.ToolFailed || res.Cancelled || res.Verdict() != ExitTool ||
+		!strings.Contains(res.Error, "may still be running there") || !strings.Contains(res.Error, "without a result") {
+		t.Fatalf("a stream that broke after the job was taken on answered %+v", res)
+	}
+
+	// ⚠ A HELPER THAT REFUSED THE JOB NEVER TOOK IT ON, so that is still a
+	// refusal, with no result.
+	refuser, srv2 := streamHelper(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"no such image"}`)
+	})
+	defer srv2.Close()
+	res, _, err = refuser.RunStream(context.Background(), HelperRunRequest{}, HelperSinks{})
+	if err == nil || !strings.Contains(err.Error(), "no such image") || res.JobStarted || res.ToolFailed {
+		t.Fatalf("a helper's refusal answered %+v, %v", res, err)
+	}
+}
+
+// ⛔ A CALL CANCELLED WHILE THE HELPER RAN THE JOB ANSWERS 130, as the direct
+// route and the manual's table answer. It answered the tool's code. WSL-127.
+func TestAHelperJobCancelledByItsCallAnswersAStop(t *testing.T) {
+	c, srv := streamHelper(func(w http.ResponseWriter, r *http.Request) {
+		acceptJob(t, w, r)
+		<-r.Context().Done()
+	})
+	defer srv.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	res, _, err := c.RunStream(ctx, HelperRunRequest{}, HelperSinks{Stdout: cancelOnWrite{cancel}})
+	if err != nil {
+		t.Fatalf("a cancelled helper job answered an error: %v", err)
+	}
+	if !res.Cancelled || res.ToolFailed || !res.JobStarted || res.Exit != ExitStopped || res.Verdict() != ExitStopped {
+		t.Fatalf("a cancelled helper job answered %+v", res)
+	}
+}
+
+// ⛔ A THROWAWAY COMMAND SAYS WHETHER IT STARTED, AND WHETHER ITS END WAS LOST.
+// `distro run --json` carried exit 2 for a wsl.exe that never started and for
+// one whose end was lost, while the process answered 125. WSL-127.
+func TestAThrowawayCommandSaysWhetherItStartedAndWhetherItsEndWasLost(t *testing.T) {
+	g := newExecFakeGuest(t)
+	t.Setenv(execFakeLingerEnv, "")
+	tw := &Throwaways{dir: t.TempDir(), wsl: g.wsl, log: func(string) {}, now: time.Now}
+	spec := ThrowawaySpec{User: "root", Script: []byte("true\n")}
+	ctx := context.Background()
+
+	t.Setenv(execFakeExitEnv, "2")
+	two := tw.runIn(ctx, "eph-x", spec)
+	if !two.JobStarted || two.ToolFailed || two.Exit != 2 || two.Error != "" {
+		t.Fatalf("a command that exited 2 answered %+v", two)
+	}
+
+	// ⛔ wsl.exe ended with 0 and a child kept its stdout open, so Go answered
+	// no exit status, and the 2 in its place read as the command's.
+	t.Setenv(execFakeExitEnv, "0")
+	t.Setenv(execFakeLingerEnv, "1")
+	lost := tw.runIn(ctx, "eph-x", spec)
+	if !lost.JobStarted || !lost.ToolFailed || lost.Error == "" {
+		t.Fatalf("a command whose end was lost answered %+v", lost)
+	}
+
+	t.Setenv(execFakeLingerEnv, "")
+	gone := &Throwaways{dir: t.TempDir(), wsl: &Wsl{Path: filepath.Join(t.TempDir(), "no-such-wsl.exe")}, log: func(string) {}, now: time.Now}
+	never := gone.runIn(ctx, "eph-x", spec)
+	if never.JobStarted || never.ToolFailed || never.Error == "" {
+		t.Fatalf("a wsl.exe that never started answered %+v", never)
+	}
+	b, err := json.Marshal(never)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"job_started":false`) {
+		t.Fatalf("a command that never started omits job_started: %s", b)
 	}
 }
