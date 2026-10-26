@@ -147,6 +147,16 @@ now its host record goes too, once its answer is written.
 | a project file that writes only `container_lifecycle`, `platform`, `workspace`, `exclude` or `gitignore` is now read strictly under a named instance. A broken file, or one a newer build wrote, now refuses | runs a named instance from a working tree whose file was ignored before and is broken or newer | fixes the project's file, or names the file to read with `--config` |
 | `config --json` drops `project_held` and carries `project_lends`, each key the project lent. `config`, `run` and `matrix` print no ⚠ line about held keys | parses `project_held` or that line | reads `project_lends` |
 
+### ⛔ What `text-tool eol` refusing a missing path breaks, and what a caller does
+
+`WSL-166`, ruling 35. Not released yet. `text-tool` ships with `wsl-toolkit`, so it
+goes into `wsl-toolkit-v8.0.0`.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `eol` given a path that does not exist exits 1 and writes nothing, to that path or to any file named beside it, with or without `--dry-run`. 7.x converted the others, said `missing`, and exited 0 | names a path that may not exist and reads exit 0, or relies on the files beside it converting | names only paths that exist, or runs one `eol` per path and reads each exit |
+| the stderr line `text-tool: N path(s) do not exist, and eol created nothing there` is gone. The refusal says `N of M path(s) do not exist` | parses that line | reads the exit code, or `missing` in `--json` |
+
 ### ⭐ What the base runtime adds, and what a caller reads
 
 `WSL-126`, `WSL-130` and the limits in `WSL-136`. Not released yet. No exit

@@ -2,6 +2,24 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "text-tool: eol refuses a path that does not exist",
+      "module": "tools/text-tool",
+      "file": "internal/edit/edit.go",
+      "find": "\tif len(missing) > 0 {\n\t\trep.Changed = false\n",
+      "replace": "\tif false {\n\t\trep.Changed = false\n",
+      "run": "TestEolRefusesAPathThatDoesNotExist",
+      "args": []
+    },
+    {
+      "label": "text-tool: a path eol cannot find answers 1, as edit does",
+      "module": "tools/text-tool",
+      "file": "internal/edit/edit.go",
+      "find": "\t\treturn 1, fmt.Errorf(\"%d of %d path(s) do not exist",
+      "replace": "\t\treturn 0, fmt.Errorf(\"%d of %d path(s) do not exist",
+      "run": "TestEolRefusesAPathThatDoesNotExist",
+      "args": []
+    },
+    {
       "label": "check: a --json check names its findings on stderr",
       "file": "main.go",
       "find": "\t\tfmt.Fprintf(errw, \"  FAIL   %s\\n\", d)\n",
@@ -7566,15 +7584,6 @@
       "file": "internal/edit/edit.go",
       "find": "\t\tif o.mode == \"eol\" && before == nil && !exists(p) {\n",
       "replace": "\t\tif false && o.mode == \"eol\" && before == nil && !exists(p) {\n",
-      "run": "TestEolCreatesNothingAtAMissingPath",
-      "module": "tools/text-tool",
-      "args": []
-    },
-    {
-      "label": "text-tool: a path eol skipped is not written",
-      "file": "internal/edit/edit.go",
-      "find": "\t\tif skip[i] {\n\t\t\tcontinue\n\t\t}\n",
-      "replace": "",
       "run": "TestEolCreatesNothingAtAMissingPath",
       "module": "tools/text-tool",
       "args": []

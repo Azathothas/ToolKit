@@ -54,7 +54,8 @@ const usage = `text-tool <write|append|edit|eol> PATH... [payload] [operation]
   append   add to the end
   edit     change one part of it
   eol      convert line endings and the byte order mark. This is dos2unix and
-           unix2dos, and it takes no payload
+           unix2dos, and it takes no payload. A path that does not exist is
+           refused with exit 1, and nothing is written
 
 ⭐ NAME AS MANY FILES AS YOU LIKE. Every argument after the mode is a path, up
 to the first one starting with a dash. ⛔ ALL OF THEM CHANGE OR NONE DO: every

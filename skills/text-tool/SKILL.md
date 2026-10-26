@@ -240,8 +240,8 @@ the long spellings. `--bom` takes `keep` (the default), `strip` or `add`.
 the wanted ending answers 0, so you can tell "nothing to do" from "everything
 moved" without comparing byte totals.
 
-⛔ **CONFIRM THE PATH EXISTS FIRST.** A mistyped path also answers `left
-unchanged` and exit 0, and `eol` creates the file empty.
+⛔ **A PATH THAT DOES NOT EXIST IS REFUSED**, with exit 1, and nothing is written
+to it or to any file named beside it. `eol` converts a file and never makes one.
 
 ⚠ **A lone carriage return is left alone.** Only a CR that is followed by an LF
 is a line ending here. Rewriting a bare CR would edit data inside a quoted
@@ -294,6 +294,7 @@ the message; it names what it found and what to do.
 | --- | --- | --- |
 | `--expect N and this matches M times` | 1 | run `--count`, decide whether you meant M, then say M |
 | `file(s) matched nothing` | 1 | check the path for a typo; the file may have drifted; `--allow-unmatched` if you meant it |
+| `path(s) do not exist` | 1 | `eol` was named a file that is not there: check the path for a typo, then run it again |
 | `need --expect N` | 2 | you used `--replace`, `--after`, `--before` or `--between` without it |
 | `names a place in ONE file` | 2 | run it once per file, or use `--replace` |
 | `takes one operation and N were given` | 2 | pick one |
