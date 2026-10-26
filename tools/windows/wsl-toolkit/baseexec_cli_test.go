@@ -185,14 +185,19 @@ func TestBaseExecReadsAnExecutableInputBesideItsInputs(t *testing.T) {
 		!ins[1].Exec || ins[1].Name != "bin/run.sh" || ins[1].Path != filepath.Join(dir, "run.sh") {
 		t.Fatalf("the inputs read as %+v; want the plain one, then the executable one", ins)
 	}
-	for _, bad := range []stringList{{"run.sh"}, {"run.sh="}, {"../x=run.sh"}, {"x=missing.sh"}, {"x=data.bin"}} {
-		if _, err := (baseExecFlags{inputExecs: bad}).execInputs(); err == nil || !strings.Contains(err.Error(), "--input") {
-			t.Errorf("--input-exec %q answered %v, want a refusal", bad, err)
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// ⛔ Each refusal names --input-exec, the flag that gave the value. WSL-128.
+	for _, bad := range []stringList{{"run.sh"}, {"run.sh="}, {"=run.sh"}, {"../x=run.sh"}, {"x=missing.sh"}, {"x=data.bin"}, {"x=sub"}} {
+		if _, err := (baseExecFlags{inputExecs: bad}).execInputs(); err == nil || !strings.Contains(err.Error(), "--input-exec") {
+			t.Errorf("--input-exec %q answered %v, want a refusal that names --input-exec", bad, err)
 		}
 	}
-	// ⚠ One name is one input, across both flags.
-	if _, err := (baseExecFlags{inputs: stringList{"a=app.toml"}, inputExecs: stringList{"a=run.sh"}}).execInputs(); err == nil {
-		t.Error("one name given as --input and --input-exec was accepted")
+	// ⚠ One name is one input, across both flags, and the refusal names both.
+	if _, err := (baseExecFlags{inputs: stringList{"a=app.toml"}, inputExecs: stringList{"a=run.sh"}}).execInputs(); err == nil ||
+		!strings.Contains(err.Error(), `--input and --input-exec both name "a"`) {
+		t.Errorf("one name given as --input and --input-exec answered %v", err)
 	}
 }
 

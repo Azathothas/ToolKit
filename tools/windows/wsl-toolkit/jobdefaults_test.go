@@ -166,10 +166,11 @@ func TestAnExecutableInputIsReadAsNameThenFile(t *testing.T) {
 	if len(got) != 2 || got[0].Exec || !got[1].Exec || got[1].Name != "run.sh" || got[1].Path != f {
 		t.Errorf("inputs = %+v; want the plain one, then the executable one", got)
 	}
-	for _, bad := range []string{"noequals", "run.sh=", "../x=" + f} {
+	// ⛔ Each refusal names --input-exec, the flag that gave the value. WSL-128.
+	for _, bad := range []string{"noequals", "run.sh=", "=" + f, "../x=" + f, "x=" + dir} {
 		j.inputExecs = stringList{bad}
-		if _, err := j.jobInputs(toolkit.DefaultConfig()); err == nil {
-			t.Errorf("--input-exec %q was accepted", bad)
+		if _, err := j.jobInputs(toolkit.DefaultConfig()); err == nil || !strings.Contains(err.Error(), "--input-exec") {
+			t.Errorf("--input-exec %q answered %v, want a refusal that names --input-exec", bad, err)
 		}
 	}
 	// ⭐ The mark reaches the helper with the bytes.
@@ -177,10 +178,10 @@ func TestAnExecutableInputIsReadAsNameThenFile(t *testing.T) {
 	if err != nil || len(wire) != 2 || wire[0].Exec || !wire[1].Exec {
 		t.Errorf("the helper is sent %+v, %v", wire, err)
 	}
-	// ⚠ One name is one input, across both flags.
+	// ⚠ One name is one input, across both flags, and the refusal names both.
 	j.inputs, j.inputExecs = stringList{"run.sh=" + f}, stringList{"run.sh=" + f}
-	if _, err := j.jobInputs(toolkit.DefaultConfig()); err == nil {
-		t.Error("one name given as --input and --input-exec was accepted")
+	if _, err := j.jobInputs(toolkit.DefaultConfig()); err == nil || !strings.Contains(err.Error(), `--input and --input-exec both name "run.sh"`) {
+		t.Errorf("one name given as --input and --input-exec answered %v", err)
 	}
 }
 

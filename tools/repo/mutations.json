@@ -2,6 +2,105 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: an input name's refusal names the flag that gave it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "return fmt.Errorf(\"%s name %q holds an empty, . or .. component. A name is plain components under /in\", flag, name)",
+      "replace": "return fmt.Errorf(\"--input name %q holds an empty, . or .. component. A name is plain components under /in\", name)",
+      "run": "TestAnInputIsNamedAsItWasTyped|TestBaseExecReadsAnExecutableInputBesideItsInputs|TestAnExecutableInputIsReadAsNameThenFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec names --input-exec when it refuses an input name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_exec.go",
+      "find": "toolkit.ValidateInputName(list.flag, name)",
+      "replace": "toolkit.ValidateInputName(\"--input\", name)",
+      "run": "TestBaseExecReadsAnExecutableInputBesideItsInputs",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: run names --input-exec when it refuses an input name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "toolkit.ValidateInputName(\"--input-exec\", name)",
+      "replace": "toolkit.ValidateInputName(\"--input\", name)",
+      "run": "TestAnExecutableInputIsReadAsNameThenFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: one name given to --input and --input-exec names both flags",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "return fmt.Errorf(\"%s and %s both name %q. One name is one input\", first, in.flag(), in.Name)",
+      "replace": "return fmt.Errorf(\"%s names %q twice\", in.flag(), in.Name)",
+      "run": "TestAnInputIsNamedAsItWasTyped|TestBaseExecReadsAnExecutableInputBesideItsInputs|TestAnExecutableInputIsReadAsNameThenFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an input another needs as a directory is named by its flag",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "flags[dir], dir, flags[name], name)",
+      "replace": "\"--input\", dir, \"--input\", name)",
+      "run": "TestAnInputIsNamedAsItWasTyped",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an input under the in directory keeps the name it was typed with",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\tin.dir = dir\n",
+      "replace": "\tin.Name = dir + \"/\" + in.Name\n",
+      "run": "TestAnInputIsNamedAsItWasTyped",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base exec input is named where its command sees it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "return \"$\" + ExecInEnv + strings.TrimPrefix(p, in.dir)",
+      "replace": "return \"/in/\" + p",
+      "run": "TestAnInputIsNamedAsItWasTyped",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the input writer hands the member writer the name the command sees",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "writeRegularMemberAs(tw, &up, in.Path, member, in.shownAt(member), info, 0o644)",
+      "replace": "writeRegularMemberAs(tw, &up, in.Path, member, member, info, 0o644)",
+      "run": "TestAnInputThatFailsInsideItsCopyIsNamedWhereItIsSeen",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the member writer places a member at its archive path",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\tName: member, Typeflag: tar.TypeReg, Mode: mode, Size: info.Size(), ModTime: info.ModTime(),\n",
+      "replace": "\t\tName: slashRel, Typeflag: tar.TypeReg, Mode: mode, Size: info.Size(), ModTime: info.ModTime(),\n",
+      "run": "TestAnInputMemberIsWrittenUnderItsArchivePathAndNamedWhereItIsSeen",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the member writer names a failure by the name it is handed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/workspace.go",
+      "find": "return memberError(slashRel, \"opening it\", err)",
+      "replace": "return memberError(member, \"opening it\", err)",
+      "run": "TestAnInputMemberIsWrittenUnderItsArchivePathAndNamedWhereItIsSeen",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an executable input is a regular file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\t\tif !info.Mode().IsRegular() {\n\t\t\treturn nil, fmt.Errorf(\"--input-exec %s=%s is not a regular file",
+      "replace": "\t\tif false {\n\t\t\treturn nil, fmt.Errorf(\"--input-exec %s=%s is not a regular file",
+      "run": "TestAnExecutableInputThatIsNotAFileIsRefusedAsAnInputIs|TestBaseExecReadsAnExecutableInputBesideItsInputs|TestAnExecutableInputIsReadAsNameThenFile",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the adapter contract's probe line is the one the agent probes run",
       "module": "tools/windows/wsl-toolkit",
       "file": "adapters/README.md",
@@ -41,8 +140,8 @@
       "label": "wsl-toolkit: an input placed under the in directory keeps its executable mark",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/jobinput.go",
-      "find": "\tin.Name = dir + \"/\" + in.Name\n\treturn in\n",
-      "replace": "\treturn JobInput{Name: dir + \"/\" + in.Name, Path: in.Path, Bytes: in.Bytes}\n",
+      "find": "\tin.dir = dir\n\treturn in\n",
+      "replace": "\treturn JobInput{Name: in.Name, Path: in.Path, Bytes: in.Bytes, dir: dir}\n",
       "run": "TestAnAttachedBaseExecPlacesAnExecutableInputRepaired|TestADetachedSessionPlacesAnExecutableInputRepaired",
       "args": []
     },

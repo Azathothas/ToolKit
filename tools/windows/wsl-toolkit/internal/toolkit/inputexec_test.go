@@ -177,3 +177,116 @@ func TestAnExecutableInputCrossesTheHelper(t *testing.T) {
 		t.Error("the helper took an executable input with no shebang")
 	}
 }
+
+// TestAnInputIsNamedAsItWasTyped: every refusal names the flag that gave an
+// input and the NAME as it was typed. A name refused under --input-exec read
+// --input, one name given to both flags read as --input twice, and an input a
+// base exec placed under in/ was named in/NAME and /in/in/NAME. WSL-128.
+func TestAnInputIsNamedAsItWasTyped(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "run.sh")
+	script := []byte("#!/bin/sh\ntrue\n")
+	if err := os.WriteFile(f, script, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	refused := map[string][]JobInput{
+		`--input-exec name "../x"`: {
+			{Name: "../x", Bytes: script, Exec: true},
+		},
+		`--input and --input-exec both name "a"`: {
+			{Name: "a", Path: f},
+			{Name: "a", Path: f, Exec: true},
+		},
+		`--input-exec names "a" twice`: {
+			{Name: "a", Bytes: script, Exec: true},
+			{Name: "a", Bytes: script, Exec: true},
+		},
+		`--input-exec "a" is a file and --input "a/b" needs it to be a directory`: {
+			{Name: "a", Bytes: script, Exec: true},
+			{Name: "a/b", Bytes: script},
+		},
+	}
+	for want, inputs := range refused {
+		if err := CheckInputs(inputs, DefaultWorkspaceLimits()); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("CheckInputs answered %v; want it to say %s", err, want)
+		}
+	}
+	// ⛔ A file that went after the check is named as typed, where a base exec's
+	// command sees it, and a job's form stays /in/NAME.
+	gone := filepath.Join(dir, "gone.sh")
+	written := map[string]JobInput{
+		"--input-exec bin/run.sh=":              JobInput{Name: "bin/run.sh", Path: gone, Exec: true}.under("in"),
+		"stopped at $" + ExecInEnv + "/raw.sh,": JobInput{Name: "raw.sh", Path: gone}.under("in"),
+		"stopped at /in/raw.sh,":                {Name: "raw.sh", Path: gone},
+	}
+	for want, in := range written {
+		_, err := writeInputsTar(io.Discard, []JobInput{in})
+		if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "in/in/") ||
+			strings.Contains(err.Error(), "in/bin/run.sh") {
+			t.Errorf("a vanished %s answered %v; want it named %q", in.flag(), err, want)
+		}
+	}
+}
+
+// TestAnInputMemberIsWrittenUnderItsArchivePathAndNamedWhereItIsSeen: the
+// member writer puts a file at its archive path and names a failure by the
+// name it was handed for that, so an input under in/ never reads in/NAME.
+// WSL-128.
+func TestAnInputMemberIsWrittenUnderItsArchivePathAndNamedWhereItIsSeen(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "raw.sh")
+	if err := os.WriteFile(p, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	var up WorkspaceUpload
+	err = writeRegularMemberAs(tar.NewWriter(&buf), &up, p, "in/raw.sh", "$"+ExecInEnv+"/raw.sh", info, 0o644)
+	if err == nil || !strings.Contains(err.Error(), "stopped at $"+ExecInEnv+"/raw.sh, opening it") {
+		t.Errorf("err = %v, want it to name $%s/raw.sh and the open", err, ExecInEnv)
+	}
+	if hdr, err := tar.NewReader(&buf).Next(); err != nil || hdr.Name != "in/raw.sh" {
+		t.Errorf("the member was written as %+v, %v; want in/raw.sh", hdr, err)
+	}
+}
+
+// TestAnInputThatFailsInsideItsCopyIsNamedWhereItIsSeen: a failure inside the
+// member writer names a base exec's input under WSL_TOOLKIT_IN, not in/NAME.
+// A directory past the check is the input whose read fails. WSL-128.
+func TestAnInputThatFailsInsideItsCopyIsNamedWhereItIsSeen(t *testing.T) {
+	dir := t.TempDir()
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ A host that sizes a directory at 0 reads nothing from it, so the copy
+	// cannot fail there, and this case has nothing to assert.
+	if info.Size() == 0 {
+		t.Skip("this host sizes a directory at 0, so its copy reads nothing and cannot fail")
+	}
+	_, err = writeInputsTar(io.Discard, []JobInput{JobInput{Name: "d", Path: dir}.under("in")})
+	want := "stopped at $" + ExecInEnv + "/d, copying its bytes"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("a copy that failed inside its member answered %v; want %q", err, want)
+	}
+}
+
+// TestAnExecutableInputThatIsNotAFileIsRefusedAsAnInputIs: a directory given as
+// --input-exec is refused before it is read, in --input's words, at the check
+// and where the archive is written. WSL-128.
+func TestAnExecutableInputThatIsNotAFileIsRefusedAsAnInputIs(t *testing.T) {
+	dir := t.TempDir()
+	in := JobInput{Name: "run.sh", Path: dir, Exec: true}
+	want := "--input-exec run.sh=" + dir + " is not a regular file"
+	if err := CheckInputs([]JobInput{in}, DefaultWorkspaceLimits()); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("CheckInputs answered %v; want %q", err, want)
+	}
+	if _, err := writeInputsTar(io.Discard, []JobInput{in.under("in")}); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("writeInputsTar answered %v; want %q", err, want)
+	}
+}

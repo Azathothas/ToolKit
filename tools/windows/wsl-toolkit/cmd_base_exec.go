@@ -66,7 +66,7 @@ type baseExecFlags struct {
 	artifacts string
 	stdin     bool
 	here      bool
-	// inputExecs is run's --input-exec, beside --input. WSL-128.
+	// inputExecs is --input-exec, beside --input, as run takes it. WSL-128.
 	inputExecs stringList
 }
 
@@ -256,7 +256,7 @@ func (e baseExecFlags) execInputs() ([]toolkit.JobInput, error) {
 			if !ok || file == "" {
 				return nil, fmt.Errorf("%s %q is not NAME=FILE: a name in the command's input directory, one equals sign, then a file on this machine", list.flag, v)
 			}
-			if err := toolkit.ValidateInputName(name); err != nil {
+			if err := toolkit.ValidateInputName(list.flag, name); err != nil {
 				return nil, err
 			}
 			p, err := filepath.Abs(msysHostPath(file))

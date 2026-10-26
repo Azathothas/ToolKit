@@ -520,7 +520,7 @@ func TestASessionsOneArchiveCarriesItsInputsAndItsStdin(t *testing.T) {
 		},
 		ArtifactDir: `C:\out`, Stdin: []byte{},
 	})
-	if len(files) != 3 || files[0].Name != "payload.sh" || files[1].Name != "in/x/app.toml" || files[2].Name != "stdin" {
+	if len(files) != 3 || files[0].member() != "payload.sh" || files[1].member() != "in/x/app.toml" || files[2].member() != "stdin" {
 		t.Fatalf("the archive is %+v", files)
 	}
 	want := ExecInEnv + "='" + d + "/in'; export " + ExecInEnv + "\n" + ExecOutEnv + "='" + d + "/out'; export " + ExecOutEnv + "\nA='1'; export A\ncat\n"

@@ -815,8 +815,9 @@ file on disk is never written to, and `--input` keeps its bytes as they are.
 - ⛔ A file that does not start with `#!` is refused, and so is UTF-16. Such a
   file cannot run by a shebang, and a program holding CR LF by chance would
   arrive changed. Pass it with `--input` and make it executable in the job.
-- An executable input is at most 64 MiB, and one NAME is one input across both
-  flags.
+- An executable input is a regular file, as an `--input` is, and at most 64 MiB.
+  One `NAME` is one input across both flags, and a refusal names the flag that
+  gave it.
 
 `run`, `matrix` and the helper take all three. `run`, `matrix`, `base exec`,
 `bsd run` and `distro` take `--command-base64`. `base exec` takes `--input` and
