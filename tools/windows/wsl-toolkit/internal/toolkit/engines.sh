@@ -82,8 +82,8 @@ fi
 # ⛔ THE ENGINE IS SWITCHED TO THE SYSTEMD MANAGER ONLY WHERE THE ACCOUNT'S
 # SESSION BUS ANSWERS. With no bus, podman prints four warnings on every call
 # and falls back to cgroupfs, so the switch would add noise and change nothing.
-# The switch is a drop-in beside provision.sh's containers.conf, which keeps
-# cgroupfs as the default the drop-in overrides.
+# The switch is a drop-in beside provision.sh's own, 10-wsl-toolkit.conf, which
+# keeps cgroupfs as the default this one overrides by sorting after it.
 DELEGATE=/etc/systemd/system/user@.service.d/50-wsl-toolkit-delegate.conf
 MANAGER_REL=.config/containers/containers.conf.d/50-wsl-toolkit-cgroup.conf
 

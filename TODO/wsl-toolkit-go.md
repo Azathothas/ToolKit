@@ -16649,7 +16649,7 @@ Driven from Git Bash: 7.0.2 read `--home /c/Users/...` as a directory named `c` 
 ## WSL-188. Fourteen smaller hardcoded assumptions the audit found, each cheap to fix
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 19; verified by two skeptics
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -16698,7 +16698,18 @@ Exit 0, a case per row where a case can hold it.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/audit-188`, for 8.0.0.** Each of the fourteen rows is fixed as it says:
+
+- The account and its grants read the ids free in the base. Engine settings are drop-ins, so a mirror in a main file survives.
+- A grant's read-back runs through `su` where there is no `runuser`, options before the account.
+- Every adapter installs with one `pacman -Syu --needed`. The podman hint reads a machine as running, stopped or unknown.
+- The native architecture comes from `IsWow64Process2`. An engine that answers for another architecture is passed over, with its host named.
+- An export container is labelled, and `resources --host-engine` counts the ones a killed build left. `doors` reads `[automount] root` as `verify` does.
+- An empty machine is read from WSL's error code. A sealed base waits for WSL's resolver, and one that cannot resolve is not rebuilt.
+
+The review's thirteen findings were repaired. The repair found that the read-back probe wrote with `:`, whose failed redirect ends a POSIX shell, so every read-only grant was refused on a real base; it writes with `true` now. Drives on a scratch Alpine instance. 87 rows: 86 red on Linux, and the `IsWow64Process2` row runs on Windows alone.
+
+⚠ Two rows are larger than a row, and are split as the Approach says: the host-side mirror and proxy setting is `WSL-196`, and the stock-host preset run is `WSL-197`. The drives found `WSL-198` and `WSL-199`, both on Alpine.
 
 ## WSL-189. A grant that fails after it mounts leaves its new mount in place
 
@@ -16968,7 +16979,7 @@ its two rows: red on Windows and in golang:1.25
 ## WSL-195. `WSL_TOOLKIT_CACHE` skips msysHostPath, as `--home` did
 
 **Source** the 8.0.0 builder of `WSL-187`, 2026-10-26, workflow wf_0ba711d1-0ce, found beside its own entry
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -16995,6 +17006,157 @@ pwsh -NoProfile -File scripts/common/check-go.ps1
 ```
 
 Exit 0, with the new case red without the fix.
+
+---
+
+## Closing
+
+**Closed 2026-10-26, merged from `r8/audit-188`, for 8.0.0.** `WSL_TOOLKIT_CACHE` goes through `msysHostPath` and is made absolute once, from `settleHome`, so a command and a launcher both settle it before anything reads it. Case `TestAnMsysCacheNamesTheDirectoryMsysMapsAndIsHandedOnAbsolute`, with three rows.
+
+## WSL-196. A registry mirror or proxy cannot be set from the host
+
+**Source** the 8.0.0 builder of `WSL-188`, 2026-10-26, workflow wf_874f9bf0-e3a, from its drives on scratch instances; row 9 of `WSL-188`, split as that entry's Approach says
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Since `WSL-188`, provisioning writes its engine settings as drop-ins, so a mirror or proxy someone puts in the base's main files survives a re-provision. Nothing in the configuration names one, so each base is set up by hand inside the guest.
+
+## Premise
+
+Row 9 of `WSL-188` asked for drop-ins and a host-side setting. The drop-ins are merged; the setting is not built.
+
+## Approach
+
+A configuration key for registry mirrors and a proxy, written into the drop-in provisioning already owns, and read by `base status` like every other key.
+
+## Consumers
+
+A base whose configuration names a mirror pulls through it. Nothing that works today changes.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where the key reaches the drop-in and a base without it is unchanged.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-197. The presets' measurements were taken on one host with a non-default `.wslconfig`
+
+**Source** the 8.0.0 builder of `WSL-188`, 2026-10-26, workflow wf_874f9bf0-e3a, from its drives on scratch instances; row 13 of `WSL-188`, split as that entry's Approach says
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Each preset's figures come from this host, whose `.wslconfig` sets a custom kernel, `cgroup_no_v1=all`, a memory cap, `vmIdleTimeout` and `dnsTunneling`. `WSL-188` records those settings beside each figure, but no preset was built on a host with WSL's defaults.
+
+## Premise
+
+Read in `presets.go`. This host cannot give a stock run without changing the operator's `.wslconfig`.
+
+## Approach
+
+Build each preset once on a host with no `.wslconfig`, record the figures beside the current ones, and say in the manual where they differ.
+
+## Consumers
+
+None. The figures are documentation.
+
+## Prove
+
+```bash
+wsl-toolkit base ensure --preset NAME
+```
+
+Each preset builds on a stock host, and its figures are recorded with that host's settings.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-198. On Alpine a restart mounts no grant, and a read-only grant is refused
+
+**Source** the 8.0.0 builder of `WSL-188`, 2026-10-26, workflow wf_874f9bf0-e3a, from its drives on scratch instances
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+On a scratch Alpine base, a restart mounted none of the base's grants, and `base ensure` could not bring them back. Separately, BusyBox's `mount` drops `ro` for a drvfs mount, so every read-only grant there is refused by its read-back. The manual says the second.
+
+## Premise
+
+Measured by the `WSL-188` builder on scratch instance r8a188. Neither is fixed.
+
+## Approach
+
+Find why the fstab block is not mounted at an Alpine start, which has no systemd, and mount it from the boot script if that is the cause. Mount a read-only grant in a way BusyBox keeps, or refuse `ro` on Alpine before the mount with a reason.
+
+## Consumers
+
+A grant on an Alpine base survives a restart. Nothing that works today changes.
+
+## Prove
+
+```bash
+wsl-toolkit --instance NAME base grant HOST-DIR --target /workspaces/x
+```
+
+On a scratch Alpine instance, a grant survives `wsl --terminate`, and a read-only grant mounts read-only or is refused before it mounts.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-199. `engines.sh` calls `setpriv --reuid`, which BusyBox rejects
+
+**Source** the 8.0.0 builder of `WSL-188`, 2026-10-26, workflow wf_874f9bf0-e3a, from its drives on scratch instances
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Where there is no `runuser`, `as_account` in `engines.sh` falls back to `setpriv --reuid`. BusyBox's `setpriv` has no such option, so every `base ensure` on Alpine prints a usage block. The ensure does not fail.
+
+## Premise
+
+Measured by the `WSL-188` builder on scratch instance r8a188. It predates 8.0.0.
+
+## Approach
+
+Use the `su` form `WSL-188` gave the grant read-back, options before the account, where there is no `runuser`.
+
+## Consumers
+
+Nothing changes but the noise.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where `as_account` takes the `su` form when `runuser` is missing.
 
 ---
 

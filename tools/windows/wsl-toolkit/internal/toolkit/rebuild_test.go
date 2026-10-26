@@ -112,6 +112,12 @@ func fakeWslMain(state string, args []string) int {
 	case len(args) == 2 && args[0] == "--list" && args[1] == "--quiet":
 		// ⚠ A ROLLED-BACK WSL, WHEN THE CASE ASKS FOR ONE: the listing in
 		// UTF-16, a NUL after every letter.
+		// ⚠ AN EMPTY MACHINE ON A WINDOWS IN ANOTHER LANGUAGE, when the case
+		// asks for one: WSL's sentence in German, and no error code. WSL-188.
+		if how, ok := said("listing"); ok && strings.TrimSpace(how) == "localized-empty" {
+			fmt.Println("Das Windows-Subsystem fuer Linux hat keine installierten Distributionen.")
+			return 1
+		}
 		if how, ok := said("listing"); ok && strings.TrimSpace(how) == "utf16" {
 			for _, n := range registered {
 				for _, r := range n + "\r\n" {
@@ -253,9 +259,10 @@ func hasArg(args []string, want string) bool {
 
 // fakeEngineMain is podman, docker or wslc. Only podman answers, and only while
 // the case has said the engine is up; it then exports a rootfs of a few bytes.
+// ⚠ A case may make docker or wslc answer too, and say what each one's `info`
+// prints, and how long it is silent first. WSL-188.
 func fakeEngineMain(state, role string, args []string) int {
-	up, _ := os.ReadFile(filepath.Join(state, "engine"))
-	if role != "podman" || strings.TrimSpace(string(up)) != "up" {
+	if !fakeEngineUp(state, role) {
 		switch role {
 		case "podman":
 			fmt.Fprintln(os.Stderr, "Cannot connect to Podman. Please verify your connection to the Linux system using `podman system connection list`")
@@ -272,7 +279,30 @@ func fakeEngineMain(state, role string, args []string) int {
 	}
 	switch args[0] {
 	case "info":
-		fmt.Println(runtime.GOARCH)
+		if quiet, err := os.ReadFile(filepath.Join(state, "info-silent-"+role)); err == nil {
+			if d, err := time.ParseDuration(strings.TrimSpace(string(quiet))); err == nil {
+				time.Sleep(d)
+			}
+		}
+		// ⚠ ONE FIELD PER FIELD THE TEMPLATE ASKS FOR, as the engine answers, so
+		// a template that stops asking for one gets less. WSL-188.
+		if said, err := os.ReadFile(filepath.Join(state, "info-"+role)); err == nil {
+			fields := strings.Fields(string(said))
+			if asked := strings.Count(strings.Join(args, " "), "{{"); asked < len(fields) {
+				fields = fields[:asked]
+			}
+			fmt.Println(strings.Join(fields, " "))
+		} else {
+			fmt.Println(nativeArch())
+		}
+	case "version":
+		fmt.Println("wslc 3.0.3")
+	case "system", "images", "volume":
+	case "ps":
+		// ⚠ WSL-188: the export containers a case says a killed build left.
+		if said, err := os.ReadFile(filepath.Join(state, "ps-"+role)); err == nil {
+			fmt.Print(string(said))
+		}
 	case "pull":
 		if refused, _ := os.ReadFile(filepath.Join(state, "pull")); strings.TrimSpace(string(refused)) == "refused" {
 			fmt.Fprintln(os.Stderr, "Error: initializing source: reading manifest: manifest unknown")
@@ -308,6 +338,18 @@ func fakeEngineMain(state, role string, args []string) int {
 		return 125
 	}
 	return 0
+}
+
+// fakeEngineUp says whether a fake engine answers: podman while the case's
+// engine file says up, and docker or wslc while engine-docker or engine-wslc
+// does. WSL-188.
+func fakeEngineUp(state, role string) bool {
+	name := "engine"
+	if role != "podman" {
+		name = "engine-" + role
+	}
+	up, _ := os.ReadFile(filepath.Join(state, name))
+	return strings.TrimSpace(string(up)) == "up"
 }
 
 // fakeHost is one case's fake WSL and engines, and the journal they share.

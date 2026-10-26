@@ -456,6 +456,11 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 			toolkit.ToolCommandFor(n.Instance, "base remove --yes"))
 	}
 	fmt.Fprintf(out, "  image       %s\n", st.Image)
+	// ⭐ A BUILD NAMES THE ENGINE IT BUILT WITH, AND ITS HOST, on every route. The
+	// helper's own log is the helper's. WSL-188.
+	if st.BuiltWith != nil {
+		fmt.Fprintf(out, "  built with  %s\n", st.BuiltWith)
+	}
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)
 	}

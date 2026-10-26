@@ -32,7 +32,8 @@ func TestWslcIsAskedInItsOwnSpellingAndTheOthersInTheirs(t *testing.T) {
 	if got := podman.pullArgs(ref); !slices.Equal(got, []string{"pull", "--platform", "linux/amd64", ref}) {
 		t.Errorf("podman pulls with %v; the platform has to be named on every fetch, WSL-64", got)
 	}
-	if got := podman.createArgs(ref); !slices.Equal(got, []string{"create", "--platform", "linux/amd64", ref}) {
+	// ⚠ MARKED, so a container a killed export left can be found. WSL-188.
+	if got := podman.createArgs(ref); !slices.Equal(got, []string{"create", "--platform", "linux/amd64", "--label", ExportLabel, ref}) {
 		t.Errorf("podman creates with %v", got)
 	}
 }

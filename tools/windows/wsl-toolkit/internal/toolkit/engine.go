@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,7 +23,21 @@ type Engine struct {
 	Name string // podman, docker or wslc
 	Path string
 	Arch string // the platform token this engine accepts, normalised
+	Host string // the host name the engine answers from, where it says one
 }
+
+// engineProbeTimeout bounds the liveness question when no other engine is left
+// to ask. ⚠ 90 SECONDS, and it is a measurement: `info` on a machine that has
+// just started is the slowest question this tool asks.
+var engineProbeTimeout = 90 * time.Second
+
+// engineProbeTimeoutBeforeAnother bounds it when another installed engine is
+// still to be asked.
+//
+// ⛔ A HUNG podman COST 90 SECONDS PER LOOKUP before docker was asked, and a
+// build looks the engine up more than once. A machine that is only starting
+// answers inside this on the next lookup. WSL-188.
+var engineProbeTimeoutBeforeAnother = 20 * time.Second
 
 // hostEngineNames is the order a host engine is looked for.
 //
@@ -40,27 +53,43 @@ func FindEngine(ctx context.Context) (*Engine, error) {
 	// a missing docker and the next reader looks in the wrong place. That is
 	// exactly what this function did on its first run here.
 	var problems []string
-	for _, name := range hostEngineNames {
+	paths := make([]string, len(hostEngineNames))
+	resolved := make([]error, len(hostEngineNames))
+	for i, name := range hostEngineNames {
 		exe, err := ResolveExecutable(name)
-		if err != nil {
-			problems = append(problems, name+": "+err.Error())
+		paths[i], resolved[i] = exe.Resolved, err
+	}
+	for i, name := range hostEngineNames {
+		if resolved[i] != nil {
+			problems = append(problems, name+": "+resolved[i].Error())
 			continue
 		}
-		e := &Engine{Name: name, Path: exe.Resolved}
-		arch, err := e.readArch(ctx)
+		e := &Engine{Name: name, Path: paths[i]}
+		// ⛔ THE SHORTER BOUND WHILE ANOTHER INSTALLED ENGINE IS LEFT. WSL-188.
+		budget := engineProbeTimeout
+		for _, later := range resolved[i+1:] {
+			if later == nil {
+				budget = engineProbeTimeoutBeforeAnother
+			}
+		}
+		facts, err := e.readArch(ctx, budget)
 		if err != nil {
-			why := fmt.Sprintf("%s is installed at %s and did not answer: %v", name, exe.Resolved, err)
+			why := fmt.Sprintf("%s is installed at %s and did not answer: %v", name, paths[i], err)
 			// ⭐ PODMAN GETS A SECOND SENTENCE, because its own advice for this
 			// state sends the reader to two commands that cannot help.
 			if name == "podman" {
-				if hint := DiagnosePodman(ctx, exe.Resolved, err); hint != "" {
+				if hint := DiagnosePodman(ctx, paths[i], err); hint != "" {
 					why += ". " + hint
 				}
 			}
 			problems = append(problems, why)
 			continue
 		}
-		e.Arch = arch
+		if refusal := engineRefusal(name, paths[i], facts); refusal != "" {
+			problems = append(problems, refusal)
+			continue
+		}
+		e.Arch, e.Host = facts.Arch, facts.Host
 		return e, nil
 	}
 	if len(problems) == 0 {
@@ -72,8 +101,8 @@ func FindEngine(ctx context.Context) (*Engine, error) {
 // wslcVersion is the liveness question asked of wslc. ⚠ wslc's `info` names no
 // architecture, and its containers run in a VM on this machine's own, so the
 // architecture is this machine's and the call proves only that wslc answers.
-func (e *Engine) wslcVersion(ctx context.Context) error {
-	out, stderr, err := (engineCall{Timeout: 90 * time.Second, What: "wslc version"}).run(ctx, e.Path, "version")
+func (e *Engine) wslcVersion(ctx context.Context, budget time.Duration) error {
+	out, stderr, err := (engineCall{Timeout: budget, What: "wslc version"}).run(ctx, e.Path, "version")
 	if err != nil {
 		return fmt.Errorf("wslc version: %w: %s", err, firstLine(stderr))
 	}
@@ -96,11 +125,19 @@ func (e *Engine) pullArgs(ref string) []string {
 	return []string{"pull", "--platform", e.Platform(), ref}
 }
 
+// ExportLabel marks the container an export creates on the host's engine.
+//
+// ⛔ A KILLED EXPORT LEAVES ITS CONTAINER, because the removal is this process's
+// own deferred step, and the host engine is shared, so an unmarked one could not
+// be told from anyone else's. `resources --host-engine` counts the marked ones
+// and prints the command that removes them. WSL-188.
+const ExportLabel = "wsl-toolkit.export=1"
+
 func (e *Engine) createArgs(ref string) []string {
 	if e.Name == "wslc" {
 		return []string{"create", ref}
 	}
-	return []string{"create", "--platform", e.Platform(), ref}
+	return []string{"create", "--platform", e.Platform(), "--label", ExportLabel, ref}
 }
 
 // wslcImage is the part of `wslc image inspect --format json` this tool reads.
@@ -176,36 +213,87 @@ func (e *Engine) ImageConfig(ctx context.Context, ref string) (imageConfig, erro
 // x86_64, and only the first is a token --platform accepts. A value neither
 // recognises is passed through rather than guessed at, so the engine refuses it
 // by name instead of this code inventing one.
-func (e *Engine) readArch(ctx context.Context) (string, error) {
+//
+// ⭐ ONE QUESTION ANSWERS THREE FACTS: the architecture, the kind of container
+// the engine runs, and the host it answers from. WSL-188.
+func (e *Engine) readArch(ctx context.Context, budget time.Duration) (engineFacts, error) {
 	if e.Name == "wslc" {
-		if err := e.wslcVersion(ctx); err != nil {
-			return "", err
+		if err := e.wslcVersion(ctx, budget); err != nil {
+			return engineFacts{}, err
 		}
-		return runtime.GOARCH, nil
+		// ⛔ THE MACHINE'S, NOT THE EXECUTABLE'S. wslc's VM runs the machine's
+		// architecture, and the amd64 build on ARM64 refused its arm64 images
+		// as foreign. WSL-188.
+		return engineFacts{Arch: nativeArch(), OS: "linux"}, nil
 	}
-	field := "{{.Host.Arch}}"
+	field := "{{.Host.Arch}} {{.Host.OS}} {{.Host.Hostname}}"
 	if e.Name == "docker" {
-		field = "{{.Architecture}}"
+		field = "{{.Architecture}} {{.OSType}} {{.Name}}"
 	}
-	// ⚠ 90 SECONDS RATHER THAN THE DEFAULT, and it is a measurement: `info` on
-	// a machine that has just started is the slowest question this tool asks.
-	out, stderr, err := (engineCall{Timeout: 90 * time.Second, What: e.Name + " info"}).
+	out, stderr, err := (engineCall{Timeout: budget, What: e.Name + " info"}).
 		run(ctx, e.Path, "info", "--format", field)
 	if err != nil {
-		return "", fmt.Errorf("%s info --format %s: %w: %s", e.Name, field, err, firstLine(stderr))
+		return engineFacts{}, fmt.Errorf("%s info --format %s: %w: %s", e.Name, field, err, firstLine(stderr))
 	}
-	if strings.TrimSpace(out) == "" {
-		return "", fmt.Errorf("%s info --format %s printed nothing: %s", e.Name, field, firstLine(stderr))
+	fields := strings.Fields(firstLine(out))
+	if len(fields) == 0 {
+		return engineFacts{}, fmt.Errorf("%s info --format %s printed nothing: %s", e.Name, field, firstLine(stderr))
 	}
-	arch := strings.TrimSpace(firstLine(out))
-	switch arch {
+	var facts engineFacts
+	switch fields[0] {
 	case "x86_64":
-		return "amd64", nil
+		facts.Arch = "amd64"
 	case "aarch64":
-		return "arm64", nil
+		facts.Arch = "arm64"
 	default:
-		return arch, nil
+		facts.Arch = fields[0]
 	}
+	if len(fields) > 1 {
+		facts.OS = strings.ToLower(fields[1])
+	}
+	if len(fields) > 2 {
+		facts.Host = fields[2]
+	}
+	return facts, nil
+}
+
+// engineFacts is what an engine's `info` says of where it builds.
+type engineFacts struct {
+	Arch string // normalised, as --platform takes it
+	OS   string // the kind of container it runs, lower case, or empty where unsaid
+	Host string // the host name it answers from, or empty where unsaid
+}
+
+// engineRefusal is why an engine that answered cannot export this machine's
+// rootfs, or empty where it can.
+//
+// ⛔ AN ENGINE CAN ANSWER FROM ANOTHER MACHINE. A podman connection or a Docker
+// context can name a remote host, and its rootfs was built for that host's
+// architecture. Imported here, it registers and then nothing in it executes. An
+// engine that answers for another architecture is passed over by name, with its
+// host. WSL-188.
+//
+// ⛔ AND DOCKER CAN RUN WINDOWS CONTAINERS. Docker Desktop in that mode answers,
+// and was chosen, and no Linux image can be pulled into it. It is passed over,
+// and the next engine is asked. WSL-188.
+func engineRefusal(name, path string, facts engineFacts) string {
+	from := ""
+	if facts.Host != "" {
+		from = fmt.Sprintf(" from host %q", facts.Host)
+	}
+	if facts.OS != "" && facts.OS != "linux" {
+		return fmt.Sprintf("%s at %s answers%s for %s containers, and a base needs a Linux root filesystem. "+
+			"Switch it to Linux containers", name, path, from, facts.OS)
+	}
+	if want := nativeArch(); facts.Arch != want {
+		where := "`podman system connection list` names the connection it uses"
+		if name == "docker" {
+			where = "`docker context ls` names the context it uses"
+		}
+		return fmt.Sprintf("%s at %s answers%s for linux/%s, and this machine runs %s, so it builds on another machine. %s",
+			name, path, from, facts.Arch, want, where)
+	}
+	return ""
 }
 
 // Platform is the --platform value every pull and create passes.
@@ -304,6 +392,12 @@ func (e *Engine) export(ctx context.Context, ref, tarPath string, log func(strin
 	var got ExportedImage
 	if err := ValidateImageRef(ref); err != nil {
 		return got, err
+	}
+	// ⭐ THE ENGINE SAYS WHERE IT BUILDS. A connection or a context can name
+	// another machine of this architecture, and this line is how a reader knows.
+	// WSL-188.
+	if e.Host != "" {
+		log(fmt.Sprintf("%s answers from host %q", e.Name, e.Host))
 	}
 	// ⭐ THE STALL IS SIZED BEFORE THE PULL, from the layers it will move, and
 	// the line says how long the pull may be silent and why. WSL-176.
@@ -732,9 +826,23 @@ func DiagnosePodman(ctx context.Context, exe string, failure error) string {
 	}
 	bounded, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	running, machine := podmanMachineRunning(bounded, exe)
-	return podmanHint(running, machine, podmanWorkingConnection(bounded, exe))
+	state, machine := podmanMachineState(bounded, exe)
+	return podmanHint(state, machine, podmanWorkingConnection(bounded, exe))
 }
+
+// machineState is what `podman machine list` says of this host's machines.
+//
+// ⛔ THREE STATES, NOT TWO. The hint read every machine that was not Running as
+// one whose restart cannot help, so a STOPPED machine, the one state podman's own
+// `podman machine start` is right for, was told the opposite. WSL-188.
+type machineState int
+
+const (
+	// machineUnknown is a list that did not answer, or that named no machine.
+	machineUnknown machineState = iota
+	machineStopped
+	machineRunning
+)
 
 // podmanHint is what the diagnosis SAYS, with no process in it.
 //
@@ -742,36 +850,62 @@ func DiagnosePodman(ctx context.Context, exe string, failure error) string {
 // no podman at all. They could not be before, and repo mutate said so: removing
 // the whole guard left the cases green, because every one of them asserted only
 // that the diagnosis stayed SILENT and none that it ever spoke.
-func podmanHint(running bool, machine, conn string) string {
+func podmanHint(state machineState, machine, conn string) string {
 	var notes []string
-	if running {
+	if state == machineRunning {
 		notes = append(notes, fmt.Sprintf("the machine %q reports Running, so `podman machine start` will not help and "+
 			"`podman machine init` would build a SECOND machine", machine))
+	}
+	if state == machineStopped {
+		notes = append(notes, fmt.Sprintf("the machine %q is stopped, and podman's own advice holds. Run: podman machine start %s", machine, machine))
 	}
 	if conn != "" {
 		notes = append(notes, fmt.Sprintf("connection %q DOES answer, so the socket is fine and the default connection is "+
 			"the broken half. Run: podman system connection default %s", conn, conn))
-	} else {
+	} else if state == machineRunning {
 		notes = append(notes, "no registered connection answers. Inside the machine, `systemctl is-active user@1000.service` "+
 			"reports whether the user manager that serves the rootless socket came up at all; a failed one leaves no socket "+
 			"to connect to and no amount of restarting the machine creates one")
+	} else if state == machineUnknown {
+		// ⚠ NOTHING IS CLAIMED ABOUT A RESTART, because whether a machine runs is
+		// not known. WSL-188.
+		notes = append(notes, "no registered connection answers, and `podman machine list` did not say whether a machine runs. "+
+			"Read it: a stopped machine is started with `podman machine start`, and inside a running one "+
+			"`systemctl is-active user@1000.service` reports whether the user manager that serves the rootless socket came up")
 	}
 	return strings.Join(notes, "; ")
 }
 
-// podmanMachineRunning reports whether any machine is running, and its name.
-func podmanMachineRunning(ctx context.Context, exe string) (bool, string) {
+// podmanMachineState reads whether a machine runs, and its name.
+func podmanMachineState(ctx context.Context, exe string) (machineState, string) {
 	out, _, err := (engineCall{What: "podman machine list"}).run(ctx, exe, "machine", "list", "--format", "{{.Name}} {{.Running}}")
 	if err != nil {
-		return false, ""
+		return machineUnknown, ""
 	}
+	return machineStateOf(out)
+}
+
+// machineStateOf reads `podman machine list --format '{{.Name}} {{.Running}}'`:
+// the first running machine, or else the first one listed, which is stopped.
+func machineStateOf(out string) (machineState, string) {
+	stopped := ""
 	for _, ln := range strings.Split(out, "\n") {
 		fields := strings.Fields(ln)
-		if len(fields) == 2 && strings.EqualFold(fields[1], "true") {
-			return true, strings.TrimSuffix(fields[0], "*")
+		if len(fields) != 2 {
+			continue
+		}
+		name := strings.TrimSuffix(fields[0], "*")
+		if strings.EqualFold(fields[1], "true") {
+			return machineRunning, name
+		}
+		if stopped == "" && strings.EqualFold(fields[1], "false") {
+			stopped = name
 		}
 	}
-	return false, ""
+	if stopped != "" {
+		return machineStopped, stopped
+	}
+	return machineUnknown, ""
 }
 
 // podmanWorkingConnection returns the first registered connection that answers.

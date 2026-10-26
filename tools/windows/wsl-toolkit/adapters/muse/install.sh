@@ -80,7 +80,8 @@ for want in bash curl sha256sum mktemp uname wc date runuser cmp; do
 done
 if [ -n "$missing" ]; then
   say "installing what Meta's installer and its launcher call:$missing"
-  pacman -S --noconfirm --needed bash curl coreutils util-linux diffutils >/dev/null
+  # ⛔ -Syu, NOT -S, for the reason herdr's installer gives. WSL-188.
+  pacman -Syu --noconfirm --needed bash curl coreutils util-linux diffutils >/dev/null
 fi
 for want in bash curl sha256sum mktemp uname wc date runuser cmp; do
   command -v "$want" >/dev/null 2>&1 || die "$want is still absent after the package step"
@@ -154,7 +155,7 @@ fi
 # running does not help it; the agent has to be started again.
 if ! command -v bwrap >/dev/null 2>&1; then
   say "Muse enforces a sandbox and this base has no bwrap; installing bubblewrap"
-  pacman -S --noconfirm --needed bubblewrap >/dev/null 2>&1 || :
+  pacman -Syu --noconfirm --needed bubblewrap >/dev/null 2>&1 || :
 fi
 # ⛔ BEST EFFORT HERE, AND THE PROBE IS THE GUARD. This says what is wrong and does
 # not stop the install: a base whose package manager cannot supply bubblewrap still

@@ -96,7 +96,21 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 		fmt.Println("x86_64")
 		return 0, true
 	case bytes.Contains(script, []byte(`: "${TK_M1:?TK_M1 is required}"`)):
-		switch answers["verify"] {
+		// ⚠ verify=unresolved-until-restart IS A SEALED BASE WHOSE RESOLVER ANSWERS
+		// ONLY ONCE IT WAS RESTARTED, as a start whose boot script refreshed it. WSL-188.
+		verify := answers["verify"]
+		if verify == "unresolved-until-restart" {
+			verify = "unresolved"
+			if calls, _ := os.ReadFile(filepath.Join(state, "calls")); bytes.Contains(calls, []byte("wsl --terminate ")) {
+				verify = "ok"
+			}
+		}
+		switch verify {
+		case "unresolved":
+			fmt.Println("automount ro")
+			fmt.Fprintln(os.Stderr, "verify: base.shared_tmpfs is off and this base cannot resolve a name, docker.io, so the resolver it was left with does not answer")
+			fmt.Fprintln(os.Stderr, "verify-resolver: lookup docker.io: the resolver in /etc/resolv.conf did not answer")
+			return verifyNotJudged, true
 		case "ok":
 			fmt.Printf("automount ro\nengine podman version 6.1.4\n%s%s\nbinfmt-handlers 8\nbinfmt-own 8\nbinfmt-missing\nbinfmt-watch none\n",
 				assigned(script, "TK_M1"), assigned(script, "TK_M2"))

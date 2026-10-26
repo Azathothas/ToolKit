@@ -383,19 +383,36 @@ done
 # ⭐ CREATED WITH bash WHERE THE GUEST HAS BASH. wanted_login_shell is
 # loginshell.sh's, which arrives ahead of this script, and `base ensure` moves an
 # account an older release created with /bin/sh. Finding 44. WSL-143.
+# >>> the account's creation: begin
 if id -u "$TK_USER" >/dev/null 2>&1; then
   say "account $TK_USER already exists"
 else
   TK_LOGIN_SHELL=$(wanted_login_shell)
+  # ⛔ TK_UID ONLY WHERE IT IS FREE. An image whose own account holds 1000, as
+  # ubuntu's does, refused the build outright. The account then takes the next
+  # free id, and the grants read the ids it got. WSL-188.
+  uid_taken=$(getent passwd "$TK_UID" 2>/dev/null | cut -d: -f1) || uid_taken=
+  if [ -n "$uid_taken" ]; then
+    say "uid $TK_UID is $uid_taken's, so $TK_USER takes the next free one"
+  fi
   if command -v useradd >/dev/null 2>&1; then
-    useradd --create-home --uid "$TK_UID" --shell "$TK_LOGIN_SHELL" "$TK_USER"
+    if [ -n "$uid_taken" ]; then
+      useradd --create-home --shell "$TK_LOGIN_SHELL" "$TK_USER"
+    else
+      useradd --create-home --uid "$TK_UID" --shell "$TK_LOGIN_SHELL" "$TK_USER"
+    fi
   elif command -v adduser >/dev/null 2>&1; then
-    adduser -D -u "$TK_UID" -s "$TK_LOGIN_SHELL" "$TK_USER"
+    if [ -n "$uid_taken" ]; then
+      adduser -D -s "$TK_LOGIN_SHELL" "$TK_USER"
+    else
+      adduser -D -u "$TK_UID" -s "$TK_LOGIN_SHELL" "$TK_USER"
+    fi
   else
     die "no useradd and no adduser"
   fi
-  say "created $TK_USER as uid $TK_UID, login shell $TK_LOGIN_SHELL"
+  say "created $TK_USER as uid $(id -u "$TK_USER"), login shell $TK_LOGIN_SHELL"
 fi
+# <<< the account's creation: end
 # ⚠ AN ACCOUNT THAT ALREADY EXISTS IS MOVED HERE TOO, so a re-provisioning repairs
 # a login shell the verifier refused because nothing can start it.
 login_said=$(apply_login_shell "$TK_USER") || login_said="the login shell of $TK_USER was not set"
@@ -453,15 +470,23 @@ esac
 # One range each, well clear of any real uid. A user with no range gets
 # "cannot set up namespace" from every run, which reads as a container failure
 # and is a missing line in a file.
+#
+# ⛔ A RANGE NO OTHER ACCOUNT HOLDS. 100000 was written whoever held it, so an
+# image whose own account had that range shared its ids with this account's
+# containers. The range starts past the highest one in the file, and never below
+# 100000. WSL-188.
+# >>> the id ranges: begin
 for f in /etc/subuid /etc/subgid; do
   [ -f "$f" ] || : > "$f"
   if grep -q "^$TK_USER:" "$f" 2>/dev/null; then
     say "$f already has a range for $TK_USER"
   else
-    printf '%s:100000:65536\n' "$TK_USER" >> "$f"
-    say "added a 65536 id range to $f"
+    range_start=$(awk -F: 'BEGIN { s = 100000 } $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $2 + $3 > s { s = $2 + $3 } END { print s }' "$f")
+    printf '%s:%s:65536\n' "$TK_USER" "$range_start" >> "$f"
+    say "added the 65536 ids from $range_start to $f"
   fi
 done
+# <<< the id ranges: end
 
 # -- engine configuration, for this account -----------------------------------
 # cgroup_manager: cgroupfs works in both supported init modes, and is required
@@ -474,8 +499,24 @@ done
 # events_logger: journald is not running here either, and the default logger
 # fails closed rather than falling back, so every run ends in an error about a
 # log nobody asked for.
-mkdir -p "$TK_HOME/.config/containers"
-CONF_PATH=$TK_HOME/.config/containers/containers.conf
+#
+# ⛔ DROP-INS, NOT THE MAIN FILES. Every re-provisioning wrote the account's
+# containers.conf and /etc/containers/registries.conf whole, so a mirror or a
+# proxy set in either was gone after the next ensure. The main files are the
+# operator's now. ⚠ The account's drop-in is 10-, so engines.sh's 50- switch to
+# the systemd manager still sorts after it and wins. WSL-188.
+# >>> the engine's settings: begin
+CONF_DIR=$TK_HOME/.config/containers/containers.conf.d
+mkdir -p "$CONF_DIR"
+CONF_PATH=$CONF_DIR/10-wsl-toolkit.conf
+# ⚠ THE MAIN FILE AN EARLIER RELEASE WROTE IS THIS TOOL'S OWN, AND IT GOES, read
+# by its first line. Kept, its slirp4netns pin would outlast a pasta installed
+# since. A main file anyone else wrote is left as it is. WSL-188.
+OLD_CONF=$TK_HOME/.config/containers/containers.conf
+if [ -f "$OLD_CONF" ] && [ "$(head -n 1 "$OLD_CONF")" = '# Written by wsl-toolkit. cgroupfs works with either configured init.' ]; then
+  rm -f "$OLD_CONF"
+  say "removed the containers.conf an earlier release wrote; its settings are now $CONF_PATH"
+fi
 {
   echo '# Written by wsl-toolkit. cgroupfs works with either configured init.'
   echo '[engine]'
@@ -504,13 +545,21 @@ fi
 # resolved through the engine's own alias table, so the same string is two
 # different images on two machines. Enforcing here means an agent that types a
 # short name gets a refusal naming the rule rather than a surprise image.
-mkdir -p /etc/containers
-cat > /etc/containers/registries.conf <<'CONF'
+REG_PATH=/etc/containers/registries.conf.d/99-wsl-toolkit.conf
+mkdir -p /etc/containers/registries.conf.d
+# ⛔ A MAIN FILE IN THE V1 FORMAT TAKES NO DROP-IN. The engine refuses to mix the
+# two formats, so every pull would fail. That file is written whole, as before.
+if grep -q '^[[:space:]]*\[registries\.' /etc/containers/registries.conf 2>/dev/null; then
+  REG_PATH=/etc/containers/registries.conf
+  say "/etc/containers/registries.conf is in the v1 format, which takes no drop-in, so it is written whole"
+fi
+cat > "$REG_PATH" <<'CONF'
 # Written by wsl-toolkit. Every reference is fully qualified, everywhere.
 unqualified-search-registries = []
 short-name-mode = "enforcing"
 CONF
 chown -R "$TK_USER" "$TK_HOME/.config"
+# <<< the engine's settings: end
 
 # -- explicit Windows directory grants ---------------------------------------
 # ⭐ grants.sh writes the tool-owned /etc/fstab block, run by the executable right
@@ -529,6 +578,18 @@ chown -R "$TK_USER" "$TK_HOME/.config"
 # file is still reachable, and the boot script refreshes it at every start BEFORE
 # it unmounts.
 if [ "$TK_SHARED_TMPFS" = off ]; then
+  # >>> the shared resolver: begin
+  # ⛔ WAITED FOR, NOT READ ONCE. WSL writes the shared file as a distribution
+  # starts, and it was measured empty that early, so a base kept the resolver it
+  # had, empty or old. Ten seconds, a second at a time. WSL-188.
+  # ⚠ ONLY WHILE /mnt/wsl IS MOUNTED. A sealed base that is provisioned again
+  # closed it at its last start, so nothing writes the file there, and every
+  # re-provisioning paid the ten seconds for nothing. WSL-188.
+  resolv_wait=0
+  while [ ! -s /mnt/wsl/resolv.conf ] && [ "$resolv_wait" -lt 10 ] && grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; do
+    sleep 1
+    resolv_wait=$((resolv_wait + 1))
+  done
   # ⛔ THE SYMLINK IS REMOVED BEFORE ANYTHING IS WRITTEN. /etc/resolv.conf points
   # INTO the shared directory, so writing through it would put this base's
   # resolver in the tmpfs every other distribution can read and replace.
@@ -544,6 +605,7 @@ if [ "$TK_SHARED_TMPFS" = off ]; then
   fi
   resolvers=$(grep -c '^nameserver ' /etc/resolv.conf)
   say "wrote /etc/resolv.conf, $resolvers nameserver(s), before closing the shared tmpfs"
+  # <<< the shared resolver: end
 
   RESOLV_BLOCK='
 [network]

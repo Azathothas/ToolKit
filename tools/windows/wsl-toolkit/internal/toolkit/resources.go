@@ -118,6 +118,10 @@ type HostEngineHolding struct {
 	UnusedVolumes *int     `json:"unused_volumes"`
 	Commands      []string `json:"commands,omitempty"`
 	Error         string   `json:"error,omitempty"`
+
+	// LeftExports is the export containers a killed build left, found by
+	// ExportLabel. ⚠ Absent for wslc, which marks none. WSL-188.
+	LeftExports *int `json:"export_containers,omitempty"`
 }
 
 // ReadHostEngineHolding asks the host engine three read-only questions, each
@@ -193,8 +197,15 @@ func ReadHostEngineHolding(ctx context.Context) *HostEngineHolding {
 	if out, err := ask("volume", "ls", "--filter", "dangling=true", "--format", "{{.Name}}"); err == nil {
 		h.UnusedVolumes = count(out)
 	}
+	// ⭐ THE ONE THING HERE THAT IS THIS TOOL'S: an export container a killed
+	// build left, marked so it can be told apart. Still printed, not removed,
+	// as everything else here is. WSL-188.
+	if out, err := ask("ps", "-a", "--filter", "label="+ExportLabel, "--format", "{{.ID}}"); err == nil {
+		h.LeftExports = count(out)
+	}
 	h.Commands = []string{
 		e.Name + " system df",
+		e.Name + " container prune --force --filter label=" + ExportLabel,
 		e.Name + " image prune --force",
 		e.Name + " volume prune --force",
 		e.Name + " system prune -a --volumes --force",
@@ -611,7 +622,11 @@ func renderHostEngine(p func(string, ...any) error, h HostEngineHolding) error {
 	for _, row := range []struct {
 		label string
 		v     *int
-	}{{"dangling images", h.Dangling}, {"unused volumes", h.UnusedVolumes}} {
+	}{{"dangling images", h.Dangling}, {"unused volumes", h.UnusedVolumes}, {"export containers", h.LeftExports}} {
+		// ⚠ wslc marks no export, so its row would only ever say not answered.
+		if row.v == nil && row.label == "export containers" && strings.HasPrefix(h.Engine, "wslc ") {
+			continue
+		}
 		shown := "not answered"
 		if row.v != nil {
 			shown = fmt.Sprint(*row.v)

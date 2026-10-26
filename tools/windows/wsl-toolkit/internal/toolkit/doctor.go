@@ -302,14 +302,8 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 	}
 	report := DoctorReport{Schema: "agent-doctor/1", Generated: time.Now().UTC().Format(time.RFC3339),
 		Probe: map[string]any{"impl": "wsl-toolkit", "fast": o.Fast, "group": o.Group},
-		Host:  map[string]any{"os": runtime.GOOS, "arch": runtime.GOARCH, "flavor": "native", "wsl": false, "container": false, "kernel": "", "distro": runtime.GOOS, "distro_version": "", "shell": "native Go", "writable_tmp": "", "network": "unknown"},
+		Host:  map[string]any{"os": runtime.GOOS, "arch": doctorArch(), "flavor": "native", "wsl": false, "container": false, "kernel": "", "distro": runtime.GOOS, "distro_version": "", "shell": "native Go", "writable_tmp": "", "network": "unknown"},
 		Repo:  map[string]any{"is_git": false}, Notes: []string{}, Tools: make([]ToolProbe, len(selected))}
-	if runtime.GOARCH == "amd64" {
-		report.Host["arch"] = "x86_64"
-	}
-	if runtime.GOARCH == "arm64" {
-		report.Host["arch"] = "aarch64"
-	}
 	if runtime.GOOS == "linux" {
 		if os.Getenv("WSL_DISTRO_NAME") != "" || os.Getenv("WSL_INTEROP") != "" {
 			report.Host["wsl"], report.Host["flavor"] = true, "wsl"
@@ -376,13 +370,7 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 			bounded, cancel := context.WithTimeout(ctx, 6*time.Second)
 			out, stderr, err := Output(bounded, wsl.Resolved, "--list", "--quiet")
 			cancel()
-			report.Host["wsl_access"] = err == nil
-			if err == nil {
-				report.Host["wsl_distros"] = strings.Fields(out)
-			} else {
-				report.Host["wsl_error"] = strings.TrimSpace(out + " " + stderr)
-				report.Notes = append(report.Notes, "WSL is installed but this process cannot enumerate distributions. Retry the requested command through the agent approval flow, or use an explicitly started local helper.")
-			}
+			report.addWslListing(out, stderr, err)
 		}
 	}
 	if o.Net {
@@ -423,6 +411,81 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 		"Writable temporary storage was not probed: this report creates no files.",
 		"The resolved column is what would actually run. A scoop shim, a node .ps1 wrapper and a .cmd launcher all answer to --version and only one can be handed to CreateProcess.")
 	return report, nil
+}
+
+// doctorWsl is what doctor makes of one `wsl.exe --list --quiet`.
+type doctorWsl struct {
+	Access  bool     // this process may enumerate distributions
+	State   string   // listed, empty, refused, slow or failed
+	Distros []string // the names, where it listed them
+	Error   string   // what wsl.exe said, where it did not list
+	Note    string   // the sentence for the report's notes, or empty
+}
+
+// readDoctorWsl classifies one listing for doctor.
+//
+// ⛔ AN EMPTY OR A SLOW LIST IS NOT A REFUSAL. Doctor read every failure as
+// "this process cannot enumerate distributions" and sent the reader to the
+// approval flow, on a host with no distribution yet, or one whose WSL was still
+// starting when the bound ran out. Only the refusal markers are a refusal.
+// WSL-188.
+func readDoctorWsl(out, stderr string, err error) doctorWsl {
+	if err == nil {
+		return doctorWsl{Access: true, State: "listed", Distros: strings.Fields(out)}
+	}
+	said := strings.TrimSpace(out + " " + stderr)
+	if emptyMachine(out, stderr) {
+		return doctorWsl{Access: true, State: "empty", Distros: []string{}}
+	}
+	if errors.Is(classifyWslFailure(out, stderr, err), ErrWslDenied) {
+		return doctorWsl{State: "refused", Error: said, Note: "WSL is installed but this process cannot enumerate distributions. " +
+			"Retry the requested command through the agent approval flow, or use an explicitly started local helper."}
+	}
+	if registryEmptyAfter(err) {
+		return doctorWsl{Access: true, State: "empty", Distros: []string{}}
+	}
+	if ExitCode(err) == ExitTimeout {
+		return doctorWsl{State: "slow", Error: "wsl.exe --list did not answer in time", Note: "WSL did not answer the listing in time, " +
+			"so whether this process may enumerate distributions is not known. A WSL that was starting answers the next run."}
+	}
+	return doctorWsl{State: "failed", Error: said, Note: "wsl.exe --list failed, and not as a refusal of this process: " + firstLine(said)}
+}
+
+// doctorArch is the machine's architecture as uname spells it, the spelling the
+// other doctors write.
+//
+// ⛔ THE MACHINE'S, NOT THE EXECUTABLE'S. The amd64 build on an ARM64 Windows
+// reported x86_64 here, while its jobs ran linux/arm64 and selfupdate fetched
+// the arm64 build. WSL-188.
+func doctorArch() string {
+	switch arch := nativeArch(); arch {
+	case "amd64":
+		return "x86_64"
+	case "arm64":
+		return "aarch64"
+	default:
+		return arch
+	}
+}
+
+// addWslListing puts what wsl.exe's listing answered into the report's host row
+// and its notes. WSL-188.
+//
+// ⚠ A FUNCTION OF ITS OWN, so a case on any host drives it. Doctor asks wsl.exe on
+// Windows alone, and the case that drove this wiring through Doctor was skipped
+// everywhere else.
+func (report *DoctorReport) addWslListing(out, stderr string, err error) {
+	read := readDoctorWsl(out, stderr, err)
+	report.Host["wsl_access"] = read.Access
+	report.Host["wsl_state"] = read.State
+	if read.Access {
+		report.Host["wsl_distros"] = read.Distros
+	} else {
+		report.Host["wsl_error"] = read.Error
+	}
+	if read.Note != "" {
+		report.Notes = append(report.Notes, read.Note)
+	}
 }
 
 func WriteDoctor(w io.Writer, report DoctorReport, asJSON bool) error {

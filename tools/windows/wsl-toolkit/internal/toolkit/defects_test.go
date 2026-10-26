@@ -1404,9 +1404,11 @@ func TestTheAssetNameMatchesWhatIsPublished(t *testing.T) {
 	// name built from GOOS and GOARCH has to produce one of those on the hosts
 	// this tool ships for.
 	if runtime.GOOS == "windows" {
-		switch runtime.GOARCH {
+		// ⚠ THE MACHINE'S ARCHITECTURE, which the executable's is only on a
+		// machine that runs it natively. WSL-188.
+		switch nativeArch() {
 		case "amd64", "arm64":
-			if name != "wsl-toolkit-windows-"+runtime.GOARCH+".exe" {
+			if name != "wsl-toolkit-windows-"+nativeArch()+".exe" {
 				t.Fatalf("asset name %q would not be found in a release", name)
 			}
 		}

@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 253  open 9  blocked 5  done 239
+total 257  open 11  blocked 5  done 241
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 3 | 2 | 112 | 117 |
-| P3 | 6 | 3 | 23 | 32 |
-| **all** | **9** | **5** | **239** | **253** |
+| P2 | 3 | 2 | 113 | 118 |
+| P3 | 8 | 3 | 24 | 35 |
+| **all** | **11** | **5** | **241** | **257** |
 
 ---
 
@@ -282,14 +282,18 @@ total 253  open 9  blocked 5  done 239
 | WSL-185 | P2 | S | done | Ledger compaction is serialized only within one process | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-186 | P2 | M | done | The default base is a tag rebuilt daily, and no digest is recorded | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-187 | P2 | S | done | `--home` and `WSL_TOOLKIT_HOME` skip msysHostPath | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-188 | P2 | M | open | Fourteen smaller hardcoded assumptions the audit found, each cheap to fix | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-188 | P2 | M | done | Fourteen smaller hardcoded assumptions the audit found, each cheap to fix | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-189 | P1 | S | done | A grant that fails after it mounts leaves its new mount in place | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-190 | P1 | M | done | The fstab block holds only the last caller's grants, so a restart drops another configuration's mount | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-191 | P2 | S | done | The helper protocol still sends a forced rebuild for a preset switch | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-192 | P2 | S | done | A rebuild whose pull fails does not fall back to a local image | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-193 | P2 | S | done | An instance name that starts with `wsl-` doubles the prefix in its distribution name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-194 | P2 | S | done | A grant case fails under load and passes alone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-195 | P3 | S | open | `WSL_TOOLKIT_CACHE` skips msysHostPath, as `--home` did | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-195 | P3 | S | done | `WSL_TOOLKIT_CACHE` skips msysHostPath, as `--home` did | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-196 | P3 | M | open | A registry mirror or proxy cannot be set from the host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-197 | P3 | S | open | The presets' measurements were taken on one host with a non-default `.wslconfig` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-198 | P2 | M | open | On Alpine a restart mounts no grant, and a read-only grant is refused | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-199 | P3 | S | open | `engines.sh` calls `setpriv --reuid`, which BusyBox rejects | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

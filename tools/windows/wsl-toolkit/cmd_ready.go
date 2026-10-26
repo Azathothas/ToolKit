@@ -106,6 +106,9 @@ type readyBase struct {
 	Healthy    bool   `json:"healthy"`
 	Engine     string `json:"engine,omitempty"`
 	Identified bool   `json:"identified"`
+	// BuiltWith is the host engine `--ensure` built the base with, and its host.
+	// ⚠ Nil where this call built nothing. WSL-188.
+	BuiltWith *toolkit.BuildEngine `json:"built_with,omitempty"`
 }
 
 type readySmoke struct {
@@ -338,6 +341,7 @@ func (r *ReadyReport) fillBase(ctx context.Context, cfg toolkit.Config, cfgErr e
 	r.Base.Registered, r.Base.Healthy = st.Registered, st.Healthy
 	r.Base.Engine, r.Base.BuiltFrom = st.Engine, st.BuiltFrom
 	r.Base.Identified = st.Identity != nil
+	r.Base.BuiltWith = st.BuiltWith
 	for _, p := range st.Problems {
 		r.Problems = append(r.Problems, p)
 	}
@@ -530,6 +534,9 @@ func renderReady(r ReadyReport) {
 	fmt.Fprintf(out, "  base        %s, registered %v, usable %v\n", r.Base.Name, r.Base.Registered, r.Base.Healthy)
 	if r.Base.BuiltFrom != "" {
 		fmt.Fprintf(out, "  built from  %s\n", r.Base.BuiltFrom)
+	}
+	if r.Base.BuiltWith != nil {
+		fmt.Fprintf(out, "  built with  %s\n", r.Base.BuiltWith)
 	}
 	if r.Base.Engine != "" {
 		fmt.Fprintf(out, "  engine      %s\n", r.Base.Engine)

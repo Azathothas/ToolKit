@@ -106,7 +106,9 @@ for tool in sshd ssh-keygen curl sha256sum ss; do
 done
 if [ -n "$missing" ]; then
   say "installing what the door and the download need:$missing"
-  pacman -S --noconfirm --needed openssh curl coreutils iproute2 >/dev/null
+  # ⛔ -Syu, NOT -S. A bare -S installs from a package database as old as the
+  # rootfs, which a mirror may no longer serve, or into a partial upgrade. WSL-188.
+  pacman -Syu --noconfirm --needed openssh curl coreutils iproute2 >/dev/null
 fi
 for tool in sshd ssh-keygen curl sha256sum ss; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool is still absent after the package step"

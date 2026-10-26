@@ -1015,14 +1015,16 @@ func ValidateImageRef(ref string) error {
 // there. The cost of being wrong is a wrong answer that looks like a right one,
 // which is why this resolves instead of defaulting to silence.
 func NativePlatform() string {
-	switch runtime.GOARCH {
+	switch nativeArch() {
 	case "arm64":
 		return "linux/arm64"
 	case "386":
 		return "linux/386"
 	default:
 		// ⚠ The WSL guest's architecture follows the Windows host's, so the
-		// executable's own GOARCH is the honest proxy and needs no guest call.
+		// machine's own, read without a guest call, is the honest answer.
+		// ⛔ NOT THE EXECUTABLE'S GOARCH: the amd64 build on an ARM64 machine
+		// asked every job for amd64 under emulation. WSL-188.
 		return "linux/amd64"
 	}
 }

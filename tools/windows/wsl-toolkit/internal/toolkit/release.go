@@ -237,8 +237,12 @@ func versionPart(parts []string, i int) (int, bool) {
 }
 
 // AssetName is what this host's executable is called in a release.
+//
+// ⛔ THE MACHINE'S ARCHITECTURE, NOT THE RUNNING EXECUTABLE'S. The amd64 build on
+// an ARM64 Windows updated itself to the amd64 build again, and ran emulated for
+// good. selfupdate now fetches the build the machine runs natively. WSL-188.
 func AssetName() string {
-	return "wsl-toolkit-" + runtime.GOOS + "-" + runtime.GOARCH + ".exe"
+	return "wsl-toolkit-" + runtime.GOOS + "-" + nativeArch() + ".exe"
 }
 
 // UpdateResult is what one selfupdate did.

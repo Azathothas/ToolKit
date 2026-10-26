@@ -78,6 +78,9 @@ under the Git install. An agent's launcher, such as `muse.exe`, reads it the sam
 way. The directory is handed to the helper and to each detached child as one
 absolute path. `WSL-187`
 
+⭐ **`WSL_TOOLKIT_CACHE` is read the same way.** `WSL_TOOLKIT_CACHE=/d/cache` names
+`D:\cache`, not `C:\d\cache`, and it is handed on as one absolute path. `WSL-195`
+
 - `--script -` reads the command from stdin, so a generated script needs no file.
   An empty stdin is refused. `run`, `matrix`, `base exec`, `distro` and `bsd run`
   take it, and `run --detach` hands it to its owner as a file in the job's
@@ -1297,6 +1300,21 @@ the running base first, reads its grant back as the account, and then writes the
 configuration file in effect. So a later restart and `base ensure` mount the same
 directories. Nothing restarts, so nothing running in the base stops. `WSL-75`
 
+⭐ **The read-back runs as the account through `runuser`, or `su` where there is
+none, as on Alpine.** The account says whether its write landed. Where neither runs a
+shell as the account, the grant is refused in either mode, and its mount goes. The
+refusal names the tool that ran and its exit. The mount names the account's own uid
+and gid. `base ensure` verifies the uid, and the account owns the grant through it.
+`WSL-188`
+
+⭐ **On Alpine a read-only grant is remounted read-only.** BusyBox's `mount` drops `ro`
+for a Windows directory, so the mount comes up writable. The grant remounts it
+read-only at once, which holds. Both were measured on the alpine preset. `WSL-188`
+
+⚠ **On Alpine a restart mounts no grant.** WSL's `mount -a` fails there, measured on
+WSL 3.0.3 with the alpine preset. `base ensure` then exits 2, because a granted
+directory is not mounted. A base with grants is best built from another preset.
+
 ⛔ **Each changes its own target alone.** A mount under `/workspaces` that this
 configuration does not name stays mounted, because another configuration may hold
 it. A project's `wsl-toolkit.json` beside the home's own file is one. A
@@ -1436,6 +1454,17 @@ release left on `/bin/sh`. So an SSH session and `wsl.exe -d NAME -u USER` with 
 command start in bash. A herdr pane starts in bash by herdr's own `default_shell`,
 and `base exec` runs its script with `/bin/sh` whatever the login shell is. A shell
 somebody else gave the account is left. `WSL-143`
+
+⭐ **The account is uid 1000 where that is free, and the next free uid where the
+image holds it.** Its `/etc/subuid` and `/etc/subgid` ranges start past every range
+already there, and never below 100000. `WSL-188`
+
+⭐ **Provisioning's engine settings are drop-ins.** The account's are
+`~/.config/containers/containers.conf.d/10-wsl-toolkit.conf`, and the short-name rule is
+`/etc/containers/registries.conf.d/99-wsl-toolkit.conf`. A mirror or a proxy in either
+main file survives `base ensure`. ⚠ The account's `containers.conf` an earlier release
+wrote goes. A `registries.conf` in the v1 format takes no drop-in, so it is written
+whole. `WSL-188`
 
 ⚠ `passwordless_sudo: true` gives the configured account unrestricted guest root.
 Guest root can mount Windows paths by hand, so this setting serves a trusted agent
@@ -1615,6 +1644,9 @@ shell still cannot find it. `WSL-88`, `WSL-89`
 ⚠ **omp is a Bun program and the adapter installs Bun from the distribution.** npm's
 own `bun` package leaves `Bun's postinstall script was not run`, so the adapter takes
 the distribution's, which `bootstrap.sh` does not carry.
+
+⛔ **Every adapter installs with one `pacman -Syu --needed`.** A bare `-S`, or `-Sy`
+and then `-S`, is the partial upgrade Arch does not support. `WSL-188`
 
 ⛔ **A base carrying both pi and omp is REFUSED when they resolve to one extension
 directory.** Both read `PI_CODING_AGENT_DIR`, so one exported for pi redirects omp
@@ -1820,6 +1852,10 @@ After one `linux/arm64` run, a native run of the same image answers `aarch64` on
 an x86_64 host, with only a podman warning to say so. The resolved value is on
 the result. `WSL-64`
 
+⭐ **The native platform is the machine's, not the executable's.** The amd64 build
+on an ARM64 Windows names `linux/arm64`, as Windows reports the machine. `selfupdate`
+fetches the build the machine runs natively. `WSL-188`
+
 ⚠ **A shared kernel carries handlers this tool did not register.** The WSL2
 kernel outlives any one distribution, so a foreign-architecture rootfs may RUN
 rather than fail, which is the worse outcome. A freshly imported Alpine with no
@@ -2022,6 +2058,20 @@ the owned distributions, leftovers and snapshots. `resources --host-engine` adds
 what the host's own engine holds, and prints the commands that would free it
 without running them.
 
+⭐ **An export container a killed build left is counted.** Each export marks its
+container `wsl-toolkit.export=1`, and `resources --host-engine` counts the marked ones
+as `export_containers`. It prints the `container prune` that removes them, and runs
+nothing. `wslc` marks none. `WSL-188`
+
+⚠ **`doctor` reads an empty or a slow `wsl --list` as no refusal.** `host.wsl_state`
+is `listed`, `empty`, `refused`, `slow` or `failed`. Only `refused` sends the reader to
+the approval flow. An empty machine is read from WSL's error code too, and from its
+registry, in any language. `WSL-188`
+
+⭐ **`doctor` reports the machine's architecture.** `host.arch` is the machine's, as
+`uname` spells it. So the amd64 build on an ARM64 Windows reports `aarch64`, as its
+jobs run `linux/arm64`. `WSL-188`
+
 ## The address a distribution reaches this host at
 
 ```powershell
@@ -2062,6 +2112,11 @@ Four settings make a claim, and only four: `base.automount = off` claims
 `fs.windows-drives`, `base.interop = "off"` claims `interop.windows-path`,
 `base.passwordless_sudo = false` claims `priv.passwordless-sudo`, and
 `base.shared_tmpfs = "off"` claims `fs.mnt-wsl-shared`.
+
+⭐ **The drives are looked for where `/etc/wsl.conf` puts them.** `fs.windows-drives`,
+`interop.run-exe` and `interop.windows-path` read `[automount] root`, as the verifier
+does. An adopted distribution with `root = /windows` is measured there. One with
+`root = /` has its drives at `/c`, and is measured there too. `WSL-188`
 
 ⚠ **`base.interop = "off"` claims only the PATH door**, because the other two are
 not this tool's to promise. The `WSLInterop` `binfmt_misc` registration does **not**
@@ -2184,6 +2239,17 @@ does nothing else cannot resolve a name. So, in this order and no other:
 3. The boot script refreshes that file at every start, before it unmounts. A
    refresh that reads short leaves the working file alone.
 
+⚠ **Each waits up to ten seconds for WSL to write the shared file.** Read once, a
+start that came first kept an empty or old resolver. Provisioning waits only while
+`/mnt/wsl` is mounted, so a sealed base provisioned again keeps its resolver at once.
+`WSL-188`
+
+⚠ **So a sealed start keeps `/mnt/wsl` open for up to ten seconds, and the verifier
+waits for it.** WSL does not wait for a `[boot]` command. Measured on WSL 3.0.3, a
+command run at once after a restart found `/mnt/wsl` mounted and no boot log. The
+verifier waits up to fifteen seconds for the boot log's unmount line. A log that says
+the unmount failed is refused at once. `WSL-188`
+
 ⛔ **`shared_tmpfs: "off"` requires `automount: "off"`** and is refused otherwise.
 Closing the tmpfs while the Windows drives are mounted costs the resolver and seals
 nothing, because the drives are a wider channel than the tmpfs.
@@ -2193,6 +2259,14 @@ nothing, because the drives are a wider channel than the tmpfs.
 no nameserver, or which cannot resolve a name. ⚠ The last one matters because a
 `command=` value that wsl.conf's parser rejects does not run and says nothing. So
 the boot line is a bare path with no shell in it.
+
+⛔ **A name the base cannot resolve is not a verdict on it.** The verifier resolves
+the probe image's registry, `docker.io`, not `github.com`. A failure answers `not
+judged`, and names the base's own resolver. So `base ensure` restarts the base, and
+does nothing else. The restart runs the boot script, which refreshes
+`/etc/resolv.conf` from WSL's shared file. A resolver that still does not answer is
+refused by name, and the base is kept. A host with no network is not re-provisioned
+or rebuilt. `WSL-188`
 
 | a base with no grants and `shared_tmpfs: "off"` | result |
 | --- | --- |
@@ -2487,7 +2561,7 @@ security boundary**, and no page here says otherwise.
 | thing | needed for |
 | --- | --- |
 | Windows 10 2004+ or Windows 11, with WSL2 | everything |
-| a container engine on the host: podman, docker, or `wslc`, which WSL 3.0.1 and later carries | `base ensure`, once, to export the base rootfs, and `distro new --image`. ⭐ They are tried in that order, and one whose `info` fails is passed over, so podman with its machine stopped gives way to the next. `wslc` takes no `--platform`, so what it pulls is read back and an image for another architecture is refused. `WSL-110` |
+| a container engine on the host: podman, docker, or `wslc`, which WSL 3.0.1 and later carries | `base ensure`, once, to export the base rootfs, and `distro new --image`. ⭐ They are tried in that order, and one whose `info` fails is passed over, so podman with its machine stopped gives way to the next. `wslc` takes no `--platform`, so what it pulls is read back and an image for another architecture is refused. `WSL-110`. ⛔ An engine that answers for another architecture, through a remote connection or context, is passed over with its host named. So is docker in Windows-containers mode. Each engine but the last one installed has 20 seconds for `info`, not 90. ⭐ A build's answer names its engine and the host that engine answers from, as `built_with` in `--json` and a `built with` line. The helper's answer and `ready --ensure` carry it too. `WSL-188` |
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 

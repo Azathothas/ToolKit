@@ -71,8 +71,8 @@ wsl-toolkit base exec --help
 `--dir /workspaces/proj` into `C:/Program Files/Git/workspaces/proj` before the tool
 starts, and the tool refuses the rewrite. `export MSYS_NO_PATHCONV=1
 MSYS2_ARG_CONV_EXCL='*'` stops it, and the tool then reads a host path such as
-`"$PWD"` in MSYS's spelling, `--home` and `WSL_TOOLKIT_HOME` included. Every example
-here is PowerShell.
+`"$PWD"` in MSYS's spelling, `--home`, `WSL_TOOLKIT_HOME` and `WSL_TOOLKIT_CACHE`
+included. Every example here is PowerShell.
 
 ⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** `cmd | Select-Object`
 gives you the pipeline's status, not the tool's. Read `$LASTEXITCODE` on the line
@@ -208,6 +208,13 @@ sees, ask one, where ACCOUNT is `base.user`:
 
 ```powershell
 wsl-toolkit base exec --root -c "runuser -l ACCOUNT -c 'COMMAND'"
+```
+
+A base with no `runuser`, as on Alpine, takes `su` instead, its options before the
+account:
+
+```powershell
+wsl-toolkit base exec --root -c "su -l -c 'COMMAND' ACCOUNT"
 ```
 
 ```powershell

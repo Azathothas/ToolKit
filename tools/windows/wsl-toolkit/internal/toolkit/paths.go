@@ -286,7 +286,8 @@ func RemoveInside(root, path string) error {
 //
 // ⭐ A caller who moved the state directory moves the cache with it, which is
 // what moving a state directory is normally for. `WSL_TOOLKIT_CACHE` overrides
-// both.
+// both. ⚠ The executable settles it to one absolute path, read the way MSYS
+// maps it, before anything reads it here. WSL-195.
 func CacheDir() (string, error) {
 	if v := strings.TrimSpace(os.Getenv("WSL_TOOLKIT_CACHE")); v != "" {
 		return filepath.Abs(v)

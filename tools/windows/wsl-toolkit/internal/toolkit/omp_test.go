@@ -112,7 +112,7 @@ func TestTheWrapperIsDetectedByItsMarkerAndNotByItsPath(t *testing.T) {
 // binary, which this repository refuses.
 func TestBunComesFromTheDistributionAndNotFromNpm(t *testing.T) {
 	script := ompScript(t)
-	if !strings.Contains(script, "pacman -S --noconfirm bun") {
+	if !strings.Contains(script, "pacman -Syu --noconfirm --needed bun") {
 		t.Error("the adapter no longer installs bun from the distribution, which omp needs to run at all")
 	}
 	// ⛔ CODE ONLY. The comment above the install says what npm does and why it is
@@ -161,5 +161,43 @@ func TestSeparateAgentDirSurvivesAStoredConfiguration(t *testing.T) {
 	}
 	if len(got.Base.Adapters) != 1 || !got.Base.Adapters[0].SeparateAgentDir {
 		t.Fatalf("loading dropped separate_agent_dir: %+v", got.Base.Adapters)
+	}
+}
+
+// ⛔ WSL-188: EVERY PACKAGE AN ADAPTER INSTALLS COMES IN ONE SYNC AND UPGRADE. omp
+// refreshed with `-Sy` and then installed with `-S`, the partial upgrade Arch does
+// not support, and herdr and muse installed with a bare `-S` from a package
+// database as old as the rootfs. Code lines only, for the reason
+// TestBunComesFromTheDistributionAndNotFromNpm gives.
+func TestEveryAdapterInstallsThroughOneSyncAndUpgrade(t *testing.T) {
+	entries, err := adapterTree.ReadDir("adapters")
+	if err != nil {
+		t.Fatal(err)
+	}
+	installs := 0
+	for _, entry := range entries {
+		body, err := adapterScript(entry.Name(), "install.sh")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for n, line := range strings.Split(string(body), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
+				continue
+			}
+			for i, f := range fields[:len(fields)-1] {
+				if f != "pacman" || !strings.HasPrefix(fields[i+1], "-S") {
+					continue
+				}
+				installs++
+				if fields[i+1] != "-Syu" || !strings.Contains(line, "--needed") {
+					t.Errorf("%s/install.sh:%d installs with %q, not one `pacman -Syu --needed` transaction: %s", entry.Name(), n+1, fields[i+1], strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+	// ⚠ FOUR: omp's, herdr's and muse's two. A scan that read nothing fails.
+	if installs < 4 {
+		t.Fatalf("the adapters' installers hold %d pacman installs; want at least the four this case was written over", installs)
 	}
 }
