@@ -41,5 +41,13 @@ func nativeArch() string {
 			return "arm"
 		}
 	}
-	return runtime.GOARCH
+	return executableArch
 }
+
+// executableArch is the executable's own architecture, which a machine Windows
+// cannot name falls back to.
+//
+// ⚠ A VARIABLE, so a case can make it differ from every machine it answers for.
+// On an arm64 host a lost ARM64 row fell back to runtime.GOARCH, arm64, and the
+// case that guards it stayed green on the hardware it exists for. WSL-188.
+var executableArch = runtime.GOARCH

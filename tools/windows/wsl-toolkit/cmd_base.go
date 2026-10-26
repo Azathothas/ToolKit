@@ -450,6 +450,11 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)
 	}
+	// ⭐ A BUILD NAMES THE ENGINE IT BUILT WITH, AND ITS HOST, on every route. The
+	// helper's own log is the helper's. WSL-188.
+	if st.BuiltWith != nil {
+		fmt.Fprintf(out, "  built with  %s\n", st.BuiltWith)
+	}
 	fmt.Fprintf(out, "  account     %s\n", st.User)
 	fmt.Fprintf(out, "  automount   %s\n", automountRow(st.Access))
 	fmt.Fprintf(out, "  interop     %s\n", st.Access.Interop)

@@ -151,6 +151,9 @@ type BaseState struct {
 	// Naming says, for the default instance, which name the base runs under, why,
 	// and how to move to the canonical one. ⚠ Nil for a named instance. WSL-167.
 	Naming *BaseNaming `json:"naming,omitempty"`
+	// BuiltWith is the host engine this call built the base with, and the host it
+	// answered from. ⚠ Nil where this call built nothing. WSL-188.
+	BuiltWith *BuildEngine `json:"built_with,omitempty"`
 }
 
 // BaseAccessState is what the base is configured to reach on Windows.
@@ -196,6 +199,10 @@ type Base struct {
 	// name rolled back by unregistering THAT process's base, with no marker
 	// demanded. WSL-172.
 	imported bool
+	// builtWith is the host engine the last build asked for its rootfs. ⚠ Each
+	// build sets it before its export, and only a build's answer carries it, so a
+	// plain ensure on a helper that keeps this Base adds nothing. WSL-188.
+	builtWith *BuildEngine
 	// disks answers WSL's registrations, each distribution's name and the
 	// directory of its disk. Nil reads the registry. WSL-177.
 	disks func() (map[string]string, error)
@@ -911,6 +918,19 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 					b.log("restarting over another configuration's grant, as asked: " + h.Target + ", granted by " + h.File)
 				}
 			}
+			// ⛔ A SEALED BASE WHOSE RESOLVER DID NOT ANSWER IS RESTARTED, AND ONLY
+			// THAT. Read as not judged, ensure returned before the restart, which is
+			// the one step that refreshes the base's /etc/resolv.conf. A start whose
+			// wait ran out then kept the last boot's resolver, and its refusal said to
+			// wait for the registry. Re-provisioning and a rebuild change nothing
+			// there. After the grant refusal above, and only by the owner. WSL-188.
+			var sr *SealedResolverError
+			if errors.As(last, &sr) {
+				if err := b.assertOwner("restarted", "base ensure"); err != nil {
+					return st, err
+				}
+				return b.restartForResolver(ctx, st, sr)
+			}
 			// ⛔ ONLY THE OWNER RE-PROVISIONS. It writes the guest's settings from
 			// this configuration and restarts the base under every job. After the
 			// refusals above, which change nothing, so their diagnoses still show.
@@ -972,7 +992,9 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 	if err := b.writeRecord(); err != nil {
 		return st, err
 	}
-	return b.finishEnsure(ctx, st)
+	// ⭐ A BUILD'S ANSWER NAMES THE ENGINE IT BUILT WITH, AND ITS HOST. WSL-188.
+	built, err := b.finishEnsure(ctx, st)
+	return b.withBuild(built), err
 }
 
 // adoptStoredGrants replaces the grants this base was handed with the ones its
@@ -1323,7 +1345,7 @@ func (b *Base) prepareRebuild(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	b.log(fmt.Sprintf("host engine: %s, platform %s", engine.Name, engine.Platform()))
+	b.useEngine(engine)
 	rootfs, err := b.exportRootfs(ctx, engine, b.diskBytes())
 	if err != nil {
 		return "", fmt.Errorf("%s was NOT removed: %w", b.cfg.Base.Name, err)
@@ -1524,7 +1546,7 @@ func (b *Base) freshRootfs(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("the base is built from an OCI image, so a host engine is required: %w", err)
 	}
-	b.log(fmt.Sprintf("host engine: %s, platform %s", engine.Name, engine.Platform()))
+	b.useEngine(engine)
 	return b.exportRootfs(ctx, engine, 0)
 }
 
@@ -1948,6 +1970,9 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, verifyScript, env, 20*time.Minute)
 	drives := parseAutomount(out)
 	if err != nil || code != 0 {
+		if sr, ok := sealedResolverFailure(code, stderr); ok {
+			return verifyReport{Automount: drives}, sr
+		}
 		if nj, ok := probeNotJudged(VerifyImage, code, stderr); ok {
 			return verifyReport{Automount: drives}, nj
 		}
@@ -2086,6 +2111,72 @@ func probeNotJudged(image string, code int, stderr string) (*ProbeNotJudgedError
 		return nil, false
 	}
 	return &ProbeNotJudgedError{Image: image, Registry: imageRegistry(image), Reason: reason}, true
+}
+
+// SealedResolverError is a sealed base whose own resolver, /etc/resolv.conf, did
+// not answer a lookup of the probe's registry. WSL-188.
+//
+// ⛔ NOT A PULL THE REGISTRY REFUSED, AND NOT A BROKEN BASE. A host with no
+// network answers nothing too, so it is not re-provisioned or rebuilt. But the
+// file is the base's, refreshed from WSL's shared one only by the boot script at
+// a start, so a start whose wait ran out keeps the last boot's resolver. Ensure
+// restarts the base for it, and nothing else.
+type SealedResolverError struct {
+	Registry string
+	Reason   string
+}
+
+func (e *SealedResolverError) Error() string {
+	return fmt.Sprintf("not judged: this sealed base's resolver, /etc/resolv.conf, did not answer for %s, the probe's registry: %s",
+		e.Registry, e.Reason)
+}
+
+// sealedResolverFailure reads verify.sh's resolver failure: its exit code and
+// its own `verify-resolver:` line, both. WSL-188.
+func sealedResolverFailure(code int, stderr string) (*SealedResolverError, bool) {
+	if code != verifyNotJudged {
+		return nil, false
+	}
+	reason, ok := lastPrefixed(stderr, "verify-resolver: ")
+	if !ok {
+		return nil, false
+	}
+	return &SealedResolverError{Registry: registryName(VerifyImage), Reason: reason}, true
+}
+
+// resolverRefusal is what Ensure answers when a sealed base's resolver still did
+// not answer after the restart that refreshes it. WSL-188.
+//
+// ⛔ IT NAMES THE BASE'S RESOLVER AND THE RESTART THAT WAS MADE. Waiting for the
+// registry alone never ends while the base holds a stale file, and the restart is
+// what refreshes it. Nothing here removes the base.
+func (b *Base) resolverRefusal(sr *SealedResolverError) error {
+	return fmt.Errorf("%w. %s was restarted, which refreshes /etc/resolv.conf from WSL's shared file, and it still does not answer. "+
+		"It was NOT re-provisioned or rebuilt. Its boot script says what it read in /run/wsl-toolkit-boot.log, which %s shows. "+
+		"Run %s again once this machine resolves %s",
+		sr, b.cfg.Base.Name, ToolCommand("base exec --root -c 'cat /run/wsl-toolkit-boot.log'"), ToolCommand("base ensure"), sr.Registry)
+}
+
+// restartForResolver restarts a sealed base whose resolver did not answer, and
+// verifies it again. WSL-188.
+//
+// ⚠ A FAILURE OF ANOTHER KIND AFTER THE RESTART IS RETURNED, NOT ACTED ON. It is
+// news this ensure did not decide on, and the next ensure reads it fresh.
+func (b *Base) restartForResolver(ctx context.Context, st BaseState, sr *SealedResolverError) (BaseState, error) {
+	b.log("⛔ " + sr.Registry + " did not resolve in " + b.cfg.Base.Name + ", so it is restarted alone: its boot script refreshes /etc/resolv.conf from WSL's shared file. Nothing is re-provisioned or rebuilt")
+	if err := b.restart(ctx); err != nil {
+		return st, err
+	}
+	report, err := b.verify(ctx)
+	if err == nil {
+		b.log("the engine answers: " + report.Engine)
+		return b.finishEnsure(ctx, st)
+	}
+	var again *SealedResolverError
+	if errors.As(err, &again) {
+		return st, b.resolverRefusal(again)
+	}
+	return st, fmt.Errorf("restarted for its resolver, and it still does not verify: %w", err)
 }
 
 // probePullFailure is verify.sh's pull failure whose cause is the base, which an

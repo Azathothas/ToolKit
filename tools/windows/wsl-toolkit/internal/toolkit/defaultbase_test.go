@@ -538,6 +538,9 @@ func TestAHelperGuestChangesNothingOnlyTheOwnerMay(t *testing.T) {
 		{"recreate", []string{"verify=ok", "binfmt=ok"}, true, false, "NOT rebuilt"},
 		{"repair", []string{"verify=ok", "binfmt=ok"}, false, true, "NOT repaired"},
 		{"re-provision", []string{"binfmt=ok"}, false, false, "NOT re-provisioned"},
+		// ⛔ A SEALED BASE'S RESOLVER IS ANSWERED WITH A RESTART, and only the
+		// owner restarts it. WSL-188.
+		{"resolver restart", []string{"verify=unresolved-until-restart", "binfmt=ok"}, false, false, "NOT restarted"},
 		{"adapters", []string{"verify=ok", "binfmt=ok"}, false, false, ""},
 	} {
 		t.Run(tc.why, func(t *testing.T) {
@@ -567,6 +570,9 @@ func TestAHelperGuestChangesNothingOnlyTheOwnerMay(t *testing.T) {
 			}
 			if strings.Contains(h.guestScripts(t), "provision-complete") {
 				t.Fatalf("a guest's %s re-provisioned the base", tc.why)
+			}
+			if i := callAt(h.calls(t), "wsl --terminate"); i >= 0 {
+				t.Fatalf("a guest's %s restarted the base: %v", tc.why, h.calls(t))
 			}
 			assertKept(t, h, b, disk)
 		})

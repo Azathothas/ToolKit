@@ -3,6 +3,7 @@
 package toolkit
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -180,6 +181,19 @@ func fakeWslMain(state string, args []string) int {
 			return 1
 		}
 		_, _ = os.Stdout.Write(marker)
+		return 0
+	}
+	// ⚠ A MARKER WRITTEN THROUGH THE ARCHIVE CHANNEL lands where the case's read
+	// finds it, so a build can be stamped. WSL-188.
+	if len(args) > 2 && args[0] == "-d" && args[len(args)-1] == "/etc" && has(args[1]) {
+		tr := tar.NewReader(os.Stdin)
+		if _, err := tr.Next(); err != nil {
+			return 1
+		}
+		marker, _ := io.ReadAll(tr)
+		if err := os.WriteFile(filepath.Join(state, "identity.json"), marker, 0o600); err != nil {
+			return 96
+		}
 		return 0
 	}
 	script, _ := io.ReadAll(os.Stdin)

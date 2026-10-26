@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -89,18 +88,16 @@ func TestDoctorReadsAnEmptyOrSlowListAsNoRefusal(t *testing.T) {
 
 // ⛔ WSL-188: AND DOCTOR'S REPORT CARRIES WHAT IT READ. An empty machine in another
 // language reads `wsl_access` true, `wsl_state` empty and no distribution, with no
-// note sending the reader to the approval flow. Doctor asks wsl.exe on Windows
-// alone, so elsewhere this cannot fail and is skipped.
+// note sending the reader to the approval flow. ⚠ The report is filled from the
+// listing's answer, so this runs on every host. Doctor asks wsl.exe on Windows
+// alone, and the case that went through Doctor was skipped everywhere else.
 func TestDoctorReportsAnEmptyMachineAsEmpty(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("doctor asks wsl.exe on Windows alone")
-	}
-	h := newFakeHost(t)
-	h.say(t, "listing", "localized-empty")
-	report, err := Doctor(context.Background(), DoctorOptions{Fast: true, Group: "agent"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	previous := readRegistrations
+	t.Cleanup(func() { readRegistrations = previous })
+	readRegistrations = func() (map[string]string, error) { return map[string]string{}, nil }
+	report := DoctorReport{Host: map[string]any{}, Notes: []string{}}
+	exited := &ProcessError{Code: 1, Op: "process", Err: errors.New("exit status 1"), Started: true}
+	report.addWslListing("Das Windows-Subsystem fuer Linux hat keine installierten Distributionen.", "", exited)
 	if report.Host["wsl_state"] != "empty" || report.Host["wsl_access"] != true {
 		t.Errorf("doctor reported an empty machine as wsl_state %v, wsl_access %v", report.Host["wsl_state"], report.Host["wsl_access"])
 	}

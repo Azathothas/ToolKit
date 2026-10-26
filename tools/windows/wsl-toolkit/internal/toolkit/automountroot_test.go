@@ -5,6 +5,7 @@
 package toolkit
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,6 +48,9 @@ func TestBothReadersOfTheAutomountRootAgree(t *testing.T) {
 		{"a hand-set root", "[automount]\nroot = /windows\n", "/windows"},
 		{"a quoted root", "[automount]\nroot = \"/drives\"\n", "/drives"},
 		{"a root with a trailing slash", "[automount]\nroot = /w/\n", "/w"},
+		// ⛔ WSL-188: THE LONE SLASH IS A ROOT, which puts the drives at /c. Every
+		// trailing slash was stripped, so it read as unset and /mnt was searched.
+		{"a root of /", "[automount]\nroot = /\n", "/"},
 		// ⚠ The LAST one wins, which is what a parser reading top to bottom
 		// does and what both files must agree on.
 		{"two root keys", "[automount]\nroot = /a\nroot = /b\n", "/b"},
@@ -121,6 +125,85 @@ func TestDoorsLooksForTheDrivesUnderTheAutomountRoot(t *testing.T) {
 	} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("doors.sh does not say %q under the root %s:\n%s", want, root, out)
+		}
+	}
+}
+
+// ⛔ WSL-188: AND A ROOT OF / IS KEPT. `root = /` puts the drives at /c, and the
+// reader stripped its lone slash, so doors looked under /mnt and reported the
+// drives closed and no Windows directory on PATH. ⚠ A path on no drive is not
+// read as one, which a root of / would make every path.
+func TestDoorsReadsARootOfSlash(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX shell on this host")
+	}
+	dir := t.TempDir()
+	conf := seedFile(t, dir, "wsl.conf", "[automount]\nroot = /\n")
+	mounts := seedFile(t, dir, "mounts", "C:\\134 /c 9p rw 0 0\nnone /mnt/wsl tmpfs rw 0 0\n")
+	reader := strings.NewReplacer("/etc/wsl.conf", filepath.ToSlash(conf), "/proc/mounts", filepath.ToSlash(mounts)).
+		Replace(mustExtract(t, "doors.sh", "drive_root=$(", "say fs.windows-drives closed"))
+	path := mustExtract(t, "doors.sh", `case ":$PATH:" in`, "esac")
+	run := func(onPath string) string {
+		t.Helper()
+		script := "say() { printf '%s|%s|%s\\n' \"$1\" \"$2\" \"$3\"; }\n" + reader + "\nfi\nPATH=" + onPath + "\n" + path + "\n"
+		out, err := exec.Command(sh, "-c", script).CombinedOutput()
+		if err != nil {
+			t.Fatalf("doors.sh's drive rows did not run: %v: %s", err, out)
+		}
+		return string(out)
+	}
+	out := run("/usr/bin:/c/Windows")
+	for _, want := range []string{"fs.windows-drives|open|mounted: /c ", "interop.windows-path|open|"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("doors.sh does not say %q under a root of /:\n%s", want, out)
+		}
+	}
+	if out := run("/usr/bin:/bin"); !strings.Contains(out, "interop.windows-path|closed|") {
+		t.Errorf("doors.sh read a PATH on no drive as a Windows directory under a root of /:\n%s", out)
+	}
+}
+
+// ⛔ WSL-188: THE VERIFIER COUNTS THE DRIVES UNDER A ROOT OF / TOO. It searched
+// /mnt, so a base adopted with `root = /` read its drives as off: automount off
+// verified over a guest with a drive mounted, and rw refused one that kept it.
+func TestTheVerifierCountsTheDrivesUnderARootOfSlash(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX shell on this host")
+	}
+	dir := t.TempDir()
+	conf := seedFile(t, dir, "wsl.conf", "[automount]\nroot = /\n")
+	mounts := seedFile(t, dir, "mounts", "C:\\134 /c 9p rw,noatime,aname=drvfs 0 0\nnone /mnt/wsl tmpfs rw 0 0\n")
+	section := markedSection(t, verifyScript, "the windows drives")
+	for from, to := range map[string]string{
+		"/etc/wsl.conf":                 filepath.ToSlash(conf),
+		"\ndrive_mounts=/proc/mounts\n": "\ndrive_mounts='" + filepath.ToSlash(mounts) + "'\n",
+	} {
+		if n := strings.Count(section, from); n != 1 {
+			t.Fatalf("the drive section names %q %d times, want once", strings.TrimSpace(from), n)
+		}
+		section = strings.Replace(section, from, to, 1)
+	}
+	for _, c := range []struct {
+		setting, said string
+		code          int
+	}{
+		{AutomountReadWrite, "automount rw", 0},
+		{AutomountOff, "a Windows drive is mounted below / even though automount is off", 3},
+	} {
+		cmd := exec.Command(sh, "-c", "set -eu\n"+section)
+		cmd.Env = append(os.Environ(), "TK_AUTOMOUNT="+c.setting)
+		out, err := cmd.CombinedOutput()
+		code := 0
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			code = ee.ExitCode()
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if code != c.code || !strings.Contains(string(out), c.said) {
+			t.Errorf("automount %s over a drive at /c answered exit %d, want %d saying %q:\n%s", c.setting, code, c.code, c.said, out)
 		}
 	}
 }

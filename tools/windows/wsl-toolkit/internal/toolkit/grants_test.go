@@ -288,6 +288,9 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 // account's ids are account.ids's two, and it has none while that file is absent.
 // WSL-188.
 //
+// ⚠ mount COMES UP rw WHATEVER ITS LINE SAYS while dir holds mount.drops-ro, as
+// BusyBox's was measured to, and `mount -o remount,ro` then makes it ro. WSL-188.
+//
 // ⛔ su PERMUTES, as BusyBox's and util-linux's were both measured to: -s and -c take
 // their value wherever they stand, a later -c replaces an earlier one, and what is
 // left, in order, is the account and then the shell's arguments. WSL-188.
@@ -330,6 +333,17 @@ id() {
   case "$1" in -u) echo "$id_uid" ;; -g) echo "$id_gid" ;; *) return 1 ;; esac
 }
 mount() {
+  if [ "$1" = -o ] && [ "$2" = remount,ro ]; then
+    printf 'mount -o remount,ro %s\n' "$3" >> "$TK_TEST_DIR/log"
+    sr_keep=
+    while read -r sr_source sr_target sr_type sr_options sr_rest; do
+      if [ "$sr_target" = "$3" ]; then sr_options="ro,${sr_options#*,}"; fi
+      sr_keep="$sr_keep$sr_source $sr_target $sr_type $sr_options $sr_rest
+"
+    done < "$TK_TEST_DIR/mounts"
+    printf '%s' "$sr_keep" > "$TK_TEST_DIR/mounts"
+    return 0
+  fi
   printf 'mount %s\n' "$1" >> "$TK_TEST_DIR/log"
   if [ -e "$TK_TEST_DIR/mount.fail" ]; then
     rm -f "$TK_TEST_DIR/mount.fail"
@@ -345,6 +359,7 @@ mount() {
       break
     fi
   done < "$TK_TEST_DIR/fstab"
+  [ ! -e "$TK_TEST_DIR/mount.drops-ro" ] || sm_mode=rw
   printf '%s %s drvfs %s,noatime 0 0\n' "$sm_from" "$1" "$sm_mode" >> "$TK_TEST_DIR/mounts"
 }
 su_count=0

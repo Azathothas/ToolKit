@@ -49,9 +49,12 @@ say identity info "account=$(id -un) uid=$(id -u) distro=${WSL_DISTRO_NAME:-unse
 # TestBothReadersOfTheAutomountRootAgree drives both readers. WSL-188.
 drive_root=$(
   sed -n 's/^[[:space:]]*root[[:space:]]*=[[:space:]]*//p' /etc/wsl.conf 2>/dev/null |
-    tail -n 1 | tr -d '"' | sed 's#/*$##'
+    tail -n 1 | tr -d '"' | sed 's#\(.\)/*$#\1#'
 )
 [ -n "$drive_root" ] || drive_root=/mnt
+# ⛔ `root = /` PUTS THE DRIVES AT /c, AND IS KEPT, as verify.sh keeps it. Empty
+# stands for it from here, so "$drive_root"/c is /c. WSL-188.
+[ "$drive_root" != / ] || drive_root=
 drives=$(awk -v root="$drive_root/" 'index($2, root) == 1 && substr($2, length(root) + 1) ~ /^[A-Za-z]$/ {printf "%s ", $2}' /proc/mounts 2>/dev/null)
 if [ -n "$drives" ]; then
   say fs.windows-drives open "mounted: $drives"
@@ -174,8 +177,10 @@ fi
 # ⭐ THE ONE INTEROP DOOR THIS TOOL CAN ACTUALLY PROMISE. appendWindowsPath is
 # written by the provisioner and is decidable on every base, with nothing fetched
 # and nothing reachable required.
+# ⚠ A DIRECTORY ON A DRIVE, one letter below the root. Under `root = /` any path
+# would have matched, /usr/bin too. WSL-188.
 case ":$PATH:" in
-  *:"$drive_root"/*) say interop.windows-path open "a Windows directory is on PATH: $PATH" ;;
+  *:"$drive_root"/[[:alpha:]]/* | *:"$drive_root"/[[:alpha:]]:*) say interop.windows-path open "a Windows directory is on PATH: $PATH" ;;
   *) say interop.windows-path closed 'no Windows directory on PATH' ;;
 esac
 say interop.env info "WSLENV=${WSLENV:-unset}"

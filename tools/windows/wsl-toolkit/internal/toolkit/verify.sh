@@ -45,9 +45,13 @@ drive_mounts=/proc/mounts
 # every drive mounted.
 drive_root=$(
   sed -n 's/^[[:space:]]*root[[:space:]]*=[[:space:]]*//p' /etc/wsl.conf 2>/dev/null |
-    tail -n 1 | tr -d '"' | sed 's#/*$##'
+    tail -n 1 | tr -d '"' | sed 's#\(.\)/*$#\1#'
 )
 [ -n "$drive_root" ] || drive_root=/mnt
+# ⛔ `root = /` PUTS THE DRIVES AT /c, AND IS KEPT. Every trailing slash was
+# stripped, the lone one too, so the root read as unset and /mnt was searched.
+# Empty stands for it from here, so "$drive_root"/c is /c. WSL-188.
+[ "$drive_root" != / ] || drive_root=
 drives_ro=0
 drives_rw=0
 while read -r _source live_target _type live_options _rest; do
@@ -74,7 +78,7 @@ printf 'automount %s\n' "$drives"
 case "$TK_AUTOMOUNT" in
   off)
     if [ "$drives" != off ]; then
-      printf 'verify: a Windows drive is mounted below %s even though automount is off\n' "$drive_root" >&2
+      printf 'verify: a Windows drive is mounted below %s even though automount is off\n' "${drive_root:-/}" >&2
       exit 3
     fi
     # ⛔ ABSENT, NOT EMPTY. An empty mount point left by the first start answers
@@ -88,7 +92,7 @@ case "$TK_AUTOMOUNT" in
     ;;
   ro|rw)
     if [ "$drives" != "$TK_AUTOMOUNT" ]; then
-      printf 'verify: automount is %s, and below %s %s mount(s) are read-only and %s writable\n' "$TK_AUTOMOUNT" "$drive_root" "$drives_ro" "$drives_rw" >&2
+      printf 'verify: automount is %s, and below %s %s mount(s) are read-only and %s writable\n' "$TK_AUTOMOUNT" "${drive_root:-/}" "$drives_ro" "$drives_rw" >&2
       exit 3
     fi
     ;;
@@ -183,6 +187,19 @@ printf 'passwordless-sudo %s\n' "$TK_PASSWORDLESS_SUDO"
 # than sealed by it. WSL-68.
 case "$TK_SHARED_TMPFS" in
   off)
+    # ⛔ THE BOOT SCRIPT IS WAITED FOR, fifteen seconds at most, while /mnt/wsl is
+    # mounted and its log has not reached the unmount. WSL does not wait for a
+    # [boot] command: measured on WSL 3.0.3 on an alpine base, a command run at
+    # once after a restart found /mnt/wsl mounted and no boot log. The script waits
+    # up to ten seconds for the shared resolver first, so a verifier that read the
+    # mount table at once refused a base about to seal, and ensure re-provisioned
+    # it. A log that says the unmount failed is not waited on. WSL-188.
+    vw=0
+    while [ "$vw" -lt 15 ] && grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null &&
+      ! grep -q '^shared tmpfs' /run/wsl-toolkit-boot.log 2>/dev/null; do
+      sleep 1
+      vw=$((vw + 1))
+    done
     if grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; then
       printf 'verify: base.shared_tmpfs is off and /mnt/wsl is still mounted, so every distribution here still shares it\n' >&2
       exit 3
@@ -201,12 +218,17 @@ case "$TK_SHARED_TMPFS" in
     #
     # ⛔ AND ITS FAILURE IS NOT A VERDICT ON THE BASE. A host whose own network is
     # down answers nothing too, and a re-provisioning or a rebuild changes nothing
-    # there. It exits 4 with a `verify-pull:` line, as a probe the registry refused
-    # does, and the base is kept. The name asked is the probe's own registry, which
-    # the pull needs, not github.com. WSL-188.
+    # there. The name asked is the probe's own registry, which the pull needs, not
+    # github.com. WSL-188.
+    #
+    # ⛔ IT EXITS 4 WITH ITS OWN `verify-resolver:` LINE, NOT A PULL'S. Read as a
+    # pull the registry refused, it kept the base from the restart too, and only a
+    # restart runs the boot script that refreshes this file from WSL's shared one.
+    # A start whose wait ran out kept the last boot's resolver until then. Ensure
+    # restarts the base alone for this line. WSL-188.
     if command -v getent >/dev/null 2>&1 && ! getent hosts "$TK_IMAGE_REGISTRY" >/dev/null 2>&1; then
       printf 'verify: base.shared_tmpfs is off and this base cannot resolve a name, %s, so the resolver it was left with does not answer\n' "$TK_IMAGE_REGISTRY" >&2
-      printf 'verify-pull: lookup %s: the resolver in /etc/resolv.conf did not answer\n' "$TK_IMAGE_REGISTRY" >&2
+      printf 'verify-resolver: lookup %s: the resolver in /etc/resolv.conf did not answer\n' "$TK_IMAGE_REGISTRY" >&2
       exit 4
     fi
     ;;

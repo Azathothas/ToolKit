@@ -550,6 +550,15 @@ while read -r mode target; do
     changed=true
     # ⛔ RECORDED, so a read-back that then fails takes this mount away. WSL-189.
     printf '%s\n' "$target" >> "$WORK/mounted"
+    # ⛔ BUSYBOX'S mount DROPS ro FOR A WINDOWS DIRECTORY, measured on alpine: the
+    # grant came up rw, the account could write in it, and the read-back refused
+    # it. A remount read-only holds, also measured, so a read-only grant works
+    # there. Elsewhere the mount is ro already and nothing is remounted. WSL-188.
+    if [ "$mode" = ro ] && [ "$(live_mode "$target")" = rw ]; then
+      mount -o remount,ro "$target" 2>"$WORK/mount.err" ||
+        fail_back "$target came up writable and could not be remounted read-only: $(head -1 "$WORK/mount.err")"
+      say "remounted $target ro, which its mount had dropped"
+    fi
     say "mounted $target $mode"
   fi
 done < "$WORK/targets"
@@ -566,13 +575,21 @@ done < "$WORK/targets"
 # su and util-linux's both permute, so a `-c` among the shell's arguments replaced
 # su's own. Measured on alpine and debian: the probe then ran with `sh` as its path.
 # WSL-188.
+#
+# ⚠ aa_said NAMES THE TOOL THAT RAN AND HOW IT EXITED, for the refusal. It blamed
+# runuser and su both, when su is asked only where runuser is not there. So the
+# caller runs this with its answer in a file, not in a subshell that loses it.
 as_account() {
   aa_script=$1
   shift
   aa_code=0
   runuser -u "$TK_USER" -- sh -c "$aa_script" sh "$@" 2>/dev/null || aa_code=$?
+  aa_said="runuser exited $aa_code"
   [ "$aa_code" = 127 ] || return "$aa_code"
-  su -s /bin/sh -c "$aa_script" "$TK_USER" sh "$@" 2>/dev/null
+  aa_code=0
+  su -s /bin/sh -c "$aa_script" "$TK_USER" sh "$@" 2>/dev/null || aa_code=$?
+  aa_said="there is no runuser, and su exited $aa_code"
+  return "$aa_code"
 }
 
 # ⛔ THE ANSWER IS READ, NOT THE EXIT CODE. A read-only grant passed whenever the
@@ -581,19 +598,25 @@ as_account() {
 # else is a read-back that did not happen. WSL-188.
 # The probe path reaches the account's shell as $1, so no Windows path is ever
 # shell source; the single quotes are what keep it an argument.
+#
+# ⛔ `true`, NOT `:`. A failed redirect on `:`, a special builtin, ends a POSIX
+# shell. Measured with bash as sh on arch and BusyBox's ash on alpine: a write the
+# mount refused answered nothing, exit 1, so every read-only grant was refused as
+# not read back. `true` answers `refused` there. WSL-188.
 # shellcheck disable=SC2016
-probe_write='if : > "$1" 2>/dev/null; then rm -f "$1"; echo writable; else echo refused; fi'
+probe_write='if true > "$1" 2>/dev/null; then rm -f "$1"; echo writable; else echo refused; fi'
 while read -r mode target; do
   [ -n "$target" ] || continue
   [ "$target" = "$OWN" ] || continue
   [ "$(live_mode "$target")" = "$mode" ] || fail_back "$target is not a live $mode Windows mount after mounting it"
   probe="$target/.wsl-toolkit-write-probe.$$"
-  wrote=$(as_account "$probe_write" "$probe") || wrote=
+  as_account "$probe_write" "$probe" > "$WORK/wrote" || :
+  wrote=$(cat "$WORK/wrote")
   case "$mode:$wrote" in
     rw:writable | ro:refused) ;;
     rw:refused) fail_back "$TK_USER cannot write in $target" ;;
     ro:writable) fail_back "$target is writable by $TK_USER and granted read-only" ;;
-    *) fail_back "$target could not be read back as $TK_USER: neither runuser nor su ran a shell as the account" ;;
+    *) fail_back "$target could not be read back as $TK_USER: $aa_said, and no shell as the account answered" ;;
   esac
   printf 'grant %s %s\n' "$mode" "$target"
 done < "$WORK/targets"

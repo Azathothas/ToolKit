@@ -2,11 +2,236 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a sealed base's resolver failure has its own line",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "      printf 'verify-resolver: lookup %s: the resolver in /etc/resolv.conf did not answer\\n' \"$TK_IMAGE_REGISTRY\" >&2\n",
+      "replace": "      printf 'verify-pull: lookup %s: the resolver in /etc/resolv.conf did not answer\\n' \"$TK_IMAGE_REGISTRY\" >&2\n",
+      "run": "TestASealedBaseThatCannotResolveIsNotJudged",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier reads a sealed resolver's failure as the base's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif sr, ok := sealedResolverFailure(code, stderr); ok {\n\t\t\treturn verifyReport{Automount: drives}, sr\n\t\t}\n",
+      "replace": "",
+      "run": "TestASealedBaseWhoseResolverDidNotAnswerIsRestarted|TestASealedResolverThatStillDoesNotAnswerIsRefusedByName",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: ensure restarts a sealed base whose resolver did not answer",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tif errors.As(last, &sr) {\n",
+      "replace": "\t\t\tif false && errors.As(last, &sr) {\n",
+      "run": "TestASealedBaseWhoseResolverDidNotAnswerIsRestarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only the owner restarts a sealed base for its resolver",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\t\tif err := b.assertOwner(\"restarted\", \"base ensure\"); err != nil {\n\t\t\t\t\treturn st, err\n\t\t\t\t}\n",
+      "replace": "",
+      "run": "TestAHelperGuestChangesNothingOnlyTheOwnerMay",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a resolver that still does not answer is refused by name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\treturn st, b.resolverRefusal(again)\n",
+      "replace": "\t\treturn st, again\n",
+      "run": "TestASealedResolverThatStillDoesNotAnswerIsRefusedByName",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier waits for the boot script's unmount",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    while [ \"$vw\" -lt 15 ] && grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null &&\n",
+      "replace": "    while false &&\n",
+      "run": "TestTheVerifierWaitsForTheBootScriptsUnmount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a boot log that says the unmount failed is not waited on",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "      ! grep -q '^shared tmpfs' /run/wsl-toolkit-boot.log 2>/dev/null; do\n",
+      "replace": "      true; do\n",
+      "run": "TestTheVerifierWaitsForTheBootScriptsUnmount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a build's answer names its engine and host",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\treturn b.withBuild(built), err\n",
+      "replace": "\treturn built, err\n",
+      "run": "TestABuildThroughTheHelperNamesItsEngineAndHost",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a build keeps the host its engine answered from",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/buildengine.go",
+      "find": "\tb.builtWith = &BuildEngine{Name: e.Name, Platform: e.Platform(), Host: e.Host}\n",
+      "replace": "\tb.builtWith = &BuildEngine{Name: e.Name, Platform: e.Platform()}\n",
+      "run": "TestABuildThroughTheHelperNamesItsEngineAndHost",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure prints the engine a build used",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\tif st.BuiltWith != nil {\n\t\tfmt.Fprintf(out, \"  built with  %s\\n\", st.BuiltWith)\n\t}\n",
+      "replace": "",
+      "run": "TestABaseEnsureThroughTheHelperSaysWhereItWasBuilt",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: ready carries the engine a build used",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\tr.Base.BuiltWith = st.BuiltWith\n",
+      "replace": "",
+      "run": "TestReadyEnsureThroughTheHelperSaysWhereItWasBuilt",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: ready prints the engine a build used",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\tif r.Base.BuiltWith != nil {\n\t\tfmt.Fprintf(out, \"  built with  %s\\n\", r.Base.BuiltWith)\n\t}\n",
+      "replace": "",
+      "run": "TestReadyEnsureThroughTheHelperSaysWhereItWasBuilt",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a machine Windows cannot name falls back to the executable's architecture",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/arch.go",
+      "find": "\treturn executableArch\n",
+      "replace": "\treturn runtime.GOARCH\n",
+      "run": "TestTheMachinesArchitectureIsReadNotTheExecutables|TestDoctorReportsTheMachinesArchitecture",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doctor reports the machine's architecture",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doctor.go",
+      "find": "\tswitch arch := nativeArch(); arch {\n",
+      "replace": "\tswitch arch := runtime.GOARCH; arch {\n",
+      "run": "TestDoctorReportsTheMachinesArchitecture",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doctor's host row asks for the machine's architecture",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doctor.go",
+      "find": "\"arch\": doctorArch(),",
+      "replace": "\"arch\": runtime.GOARCH,",
+      "run": "TestDoctorReportsTheMachinesArchitecture",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier keeps a root of /",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    tail -n 1 | tr -d '\"' | sed 's#\\(.\\)/*$#\\1#'\n",
+      "replace": "    tail -n 1 | tr -d '\"' | sed 's#/*$##'\n",
+      "run": "TestBothReadersOfTheAutomountRootAgree|TestTheVerifierCountsTheDrivesUnderARootOfSlash",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doors keeps a root of /",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "    tail -n 1 | tr -d '\"' | sed 's#\\(.\\)/*$#\\1#'\n",
+      "replace": "    tail -n 1 | tr -d '\"' | sed 's#/*$##'\n",
+      "run": "TestBothReadersOfTheAutomountRootAgree|TestDoorsReadsARootOfSlash",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier finds drives at /c under a root of /",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "[ \"$drive_root\" != / ] || drive_root=\n",
+      "replace": "",
+      "run": "TestTheVerifierCountsTheDrivesUnderARootOfSlash",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doors finds drives at /c under a root of /",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "[ \"$drive_root\" != / ] || drive_root=\n",
+      "replace": "",
+      "run": "TestDoorsReadsARootOfSlash",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doors reads only a directory on a drive as a Windows one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "  *:\"$drive_root\"/[[:alpha:]]/* | *:\"$drive_root\"/[[:alpha:]]:*) say interop.windows-path open",
+      "replace": "  *:\"$drive_root\"/*) say interop.windows-path open",
+      "run": "TestDoorsReadsARootOfSlash",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a read-back refusal names runuser and its exit",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  aa_said=\"runuser exited $aa_code\"\n",
+      "replace": "  aa_said=\"neither runuser nor su ran a shell as the account\"\n",
+      "run": "TestAGrantThatCannotBeReadBackIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a read-back through su names su and its exit",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  aa_said=\"there is no runuser, and su exited $aa_code\"\n",
+      "replace": "",
+      "run": "TestAGrantThatCannotBeReadBackIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the read-back keeps what its function said",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  as_account \"$probe_write\" \"$probe\" > \"$WORK/wrote\" || :\n  wrote=$(cat \"$WORK/wrote\")\n",
+      "replace": "  wrote=$(as_account \"$probe_write\" \"$probe\") || wrote=\n",
+      "run": "TestAGrantThatCannotBeReadBackIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a read-only grant BusyBox mounted writable is remounted",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    if [ \"$mode\" = ro ] && [ \"$(live_mode \"$target\")\" = rw ]; then\n",
+      "replace": "    if false; then\n",
+      "run": "TestAReadOnlyGrantThatCameUpWritableIsRemountedReadOnly",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the read-back's probe writes with true, not a special builtin",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "probe_write='if true > \"$1\" 2>/dev/null;",
+      "replace": "probe_write='if : > \"$1\" 2>/dev/null;",
+      "run": "TestTheReadBackProbeAnswersInARealShell",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a grant's read-back hands su its options before the account",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/grants.sh",
-      "find": "  su -s /bin/sh -c \"$aa_script\" \"$TK_USER\" sh \"$@\" 2>/dev/null\n",
-      "replace": "  su -s /bin/sh \"$TK_USER\" -c '\"$0\" \"$@\"' sh -c \"$aa_script\" sh \"$@\" 2>/dev/null\n",
+      "find": "  su -s /bin/sh -c \"$aa_script\" \"$TK_USER\" sh \"$@\" 2>/dev/null || aa_code=$?\n",
+      "replace": "  su -s /bin/sh \"$TK_USER\" -c '\"$0\" \"$@\"' sh -c \"$aa_script\" sh \"$@\" 2>/dev/null || aa_code=$?\n",
       "run": "TestAGrantIsReadBackThroughSuWhereThereIsNoRunuser",
       "args": []
     },
@@ -23,7 +248,7 @@
       "label": "wsl-toolkit: doctor reports the state of its wsl listing",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/doctor.go",
-      "find": "\t\t\treport.Host[\"wsl_state\"] = read.State\n",
+      "find": "\treport.Host[\"wsl_state\"] = read.State\n",
       "replace": "",
       "run": "TestDoctorReportsAnEmptyMachineAsEmpty",
       "args": []
@@ -32,8 +257,8 @@
       "label": "wsl-toolkit: doctor reports an empty machine as one it may enumerate",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/doctor.go",
-      "find": "\t\t\treport.Host[\"wsl_access\"] = read.Access\n",
-      "replace": "\t\t\treport.Host[\"wsl_access\"] = err == nil\n",
+      "find": "\treport.Host[\"wsl_access\"] = read.Access\n",
+      "replace": "\treport.Host[\"wsl_access\"] = err == nil\n",
       "run": "TestDoctorReportsAnEmptyMachineAsEmpty",
       "args": []
     },
@@ -59,7 +284,7 @@
       "label": "wsl-toolkit: a sealed base that cannot resolve is not judged",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/verify.sh",
-      "find": "      printf 'verify-pull: lookup %s: the resolver in /etc/resolv.conf did not answer\\n' \"$TK_IMAGE_REGISTRY\" >&2\n      exit 4\n",
+      "find": "      printf 'verify-resolver: lookup %s: the resolver in /etc/resolv.conf did not answer\\n' \"$TK_IMAGE_REGISTRY\" >&2\n      exit 4\n",
       "replace": "      exit 3\n",
       "run": "TestASealedBaseThatCannotResolveIsNotJudged",
       "args": []
@@ -140,7 +365,7 @@
       "label": "wsl-toolkit: a grant that cannot be read back is refused",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/grants.sh",
-      "find": "    *) fail_back \"$target could not be read back as $TK_USER: neither runuser nor su ran a shell as the account\" ;;\n",
+      "find": "    *) fail_back \"$target could not be read back as $TK_USER: $aa_said, and no shell as the account answered\" ;;\n",
       "replace": "    *) ;;\n",
       "run": "TestAGrantThatCannotBeReadBackIsRefused",
       "args": []
@@ -308,7 +533,7 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: Windows is asked for its own machine",
+      "label": "wsl-toolkit: Windows is asked for its own machine, a Windows-only row, since IsWow64Process2 is a Windows call",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/arch_windows.go",
       "find": "\tif r == 0 || native == 0 {\n",
@@ -437,8 +662,8 @@
       "label": "wsl-toolkit: doors reads the automount root as verify does",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/doors.sh",
-      "find": "    tail -n 1 | tr -d '\"' | sed 's#/*$##'\n",
-      "replace": "    head -n 1 | tr -d '\"' | sed 's#/*$##'\n",
+      "find": "    tail -n 1 | tr -d '\"' | sed 's#\\(.\\)/*$#\\1#'\n",
+      "replace": "    head -n 1 | tr -d '\"' | sed 's#\\(.\\)/*$#\\1#'\n",
       "run": "TestBothReadersOfTheAutomountRootAgree",
       "args": []
     },
@@ -464,8 +689,8 @@
       "label": "wsl-toolkit: doors reads a Windows directory on PATH under the automount root",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/doors.sh",
-      "find": "  *:\"$drive_root\"/*) say interop.windows-path open",
-      "replace": "  *:/mnt/*) say interop.windows-path open",
+      "find": "  *:\"$drive_root\"/[[:alpha:]]/* | *:\"$drive_root\"/[[:alpha:]]:*) say interop.windows-path open",
+      "replace": "  *:/mnt/[[:alpha:]]/* | *:/mnt/[[:alpha:]]:*) say interop.windows-path open",
       "run": "TestDoorsLooksForTheDrivesUnderTheAutomountRoot",
       "args": []
     },

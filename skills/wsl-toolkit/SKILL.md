@@ -210,6 +210,13 @@ sees, ask one, where ACCOUNT is `base.user`:
 wsl-toolkit base exec --root -c "runuser -l ACCOUNT -c 'COMMAND'"
 ```
 
+A base with no `runuser`, as on Alpine, takes `su` instead, its options before the
+account:
+
+```powershell
+wsl-toolkit base exec --root -c "su -l -c 'COMMAND' ACCOUNT"
+```
+
 ```powershell
 wsl-toolkit base doors
 ```
