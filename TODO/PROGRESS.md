@@ -10,11 +10,11 @@ standing rules and the rulings in force, and history is in git, the entries and
 ## State
 
 ```text
-session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
+session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z; it ends on wsl-toolkit-v8.0.0
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
-head            this commit: wsl-toolkit 7.0.2 published from a031bcf, installed and driven
-entries         total 257  open 6  blocked 5  done 246
-this session    ruling 31
+head            this commit: wsl-toolkit 8.0.0 published from 5e0bdcf, installed and driven
+entries         total 257  open 5  blocked 5  done 247
+this session    ruling 31, then rulings 32 to 35
 ```
 
 ## Baseline
@@ -23,109 +23,77 @@ Measured on this host unless a row says read.
 
 | what | value | read from |
 | --- | --- | --- |
-| the gate | 24 checks; 131 to 245 s a run | `tools/check/main.go`; the last three runs |
-| `check-go.ps1` | 72 to 75 s | the last two runs |
-| CI's Linux jobs in containers | Go 68 to 82 s, ShellCheck 0.9.0 over 52 scripts 30 to 43 s | the last two runs |
-| mutation rows | 1,458 at `a0ec0f6` | `tools/repo/mutations.json` |
-| CI | 8 jobs, 3 of them required; a `wsl-toolkit` push 465 s with 12 shards of 241 to 421 s; a `tools/check` push 335 s | `gh run view` on `a0ec0f6` and `8848d92` |
-| the pre-push proof | 173 rows, ShellCheck and the go job in 408 s; a push with no new row 227 s | the last three pushes |
-| the acceptance suite | 102 cases quick, 109 full; 399 s with the installed 7.0.0 | `acceptance.ps1`; the last run |
-| the last release | `wsl-toolkit-v7.0.2`, 22 assets, 7 release jobs green | `gh release view`, `gh run view` |
+| the gate | 24 checks, run at once; 280 to 600 s a run with two builders loading the host | `tools/check/main.go`; the last eight runs |
+| mutation rows | 1,821 at `5e0bdcf` | `tools/repo/mutations.json` |
+| CI | 8 jobs, 3 of them required; a `wsl-toolkit` push 465 to 658 s, its 12 shards at most 526 s; a push of the record alone 358 s | `gh run view` on the last nine runs |
+| the pre-push proof | ShellCheck, the go job and the added rows in containers, one at a time: 88 rows in 894 s, 173 in 408 s, none in about 230 s | the last eight pushes |
+| the acceptance suite | 104 cases quick, 111 full; 750 s quick with the installed 8.0.0 on a fresh instance | `acceptance.ps1`; the last run |
+| the last release | `wsl-toolkit-v8.0.0`, 22 assets, 19 release jobs green | `gh release view`, `gh run view` |
 | this host | Windows 11 Pro 26300, PowerShell 7.6.7, WSL 3.0.3.0, git 2.55.0, Go 1.27.0 | the doctor |
 
 ### This host's state
 
 | | what is there, and how to undo it |
 | --- | --- |
-| the tool | `%USERPROFILE%\bin\wsl-toolkit.exe` 7.0.2, from `selfupdate`; the next `selfupdate` replaces it. `gc --include-live --apply` and `gc --images --apply` on 2026-10-21 left the jobs base with no job, session or image of this work |
-| distributions | `podman-machine-default`, stopped and WSL's default; `wsl-toolkit`, the jobs base, 58.4 GB; `wsl-toolkit-base`, the operator's base, 1.9 GB, rebuilt on 2026-10-21 with the herdr adapter alone. All three are stopped: the operator asked for `wsl --shutdown` at the pause. ⚠ Neither base disk is sparse |
+| the tools | `%USERPROFILE%\bin\wsl-toolkit.exe` 8.0.0, from `selfupdate`, beside `.wsl-toolkit-previous-7.0.2.exe`. `text-tool.exe` from the same release, beside `.text-tool-previous.exe`. The next `selfupdate` removes the old tool |
+| distributions | `podman-machine-default`, stopped and WSL's default; `wsl-toolkit`, the default base under its older name, 7.3 GiB, its disk not sparse. `wsl-toolkit-base` is unregistered with no copy, as ruling 33 says |
+| WSL's memory | `.wslconfig` caps the VM at `memory=16GB` and `swap=8GB`, with `autoMemoryReclaim=gradual`. The operator approved the cap after the VM reached 19.5 GB |
 | the podman connection | `podman-machine-default-root`, because the machine's rootless socket is dead (finding 76 of the old record). Undo with `podman system connection default podman-machine-default` once that socket works |
-| the package's copy of the state directory | removed on 2026-10-21 under ruling 31, with its 503 job directories, `WSL-118`. A Bash shell this desktop app starts recreates it when it runs the tool. The job that explains finding 8 is kept at `.tmp/finding8-4e94faa38b4c9c1c` |
-| `wsl-toolkit-base` | runs `wsl-toolkit-binfmt.service` and the operator's own `qemu-binfmt-restore.service`; ruling 31 retires the second. It holds the test grant `.tmp/wsl78/proj` at `/workspaces/proj` |
-| `wslc` | the Arch and Alpine images this work pulled are removed. The `debian`, `wgcf-connector` and `rust` images are not this work's and stay |
-| scratch under `.tmp` | emptied on 2026-10-21, 2.9 GB, except `finding8-4e94faa38b4c9c1c`, `bsd67-driver` (kept by `WSL-67`), the test grant `wsl78` and the empty `go-tmp` |
+| the package's copy of the state directory | absent. A Bash shell this desktop app starts recreates it when it runs the tool, `WSL-118` |
+| the skills | the three the skills manager installed match `main`, and so does this host's profile copy of `wsl-toolkit` |
+| scratch under `.tmp` | build outputs and label files of this work, the empty `go-tmp`, `bsd67-driver` (kept by `WSL-67`) and `finding8-4e94faa38b4c9c1c` |
 
 ## This session
 
-- ⭐ **Asked the operator four questions and recorded the answers as ruling 31**
-  in `RULES.md`.
-- ⭐ **The record is rewritten to the model.** The old `PROGRESS.md`, the index's
-  ordering argument and four session tables are in `docs/HISTORY/record.md` word
-  for word. Five read-only passes sorted its 116 findings, 30 rulings, reviews and
-  host notes against the tree, and every finding still open is an entry.
-- ⭐ **58 entries filed**, `WSL-120` to `WSL-163`, `TOOL-29` to `TOOL-37` and
-  `DOC-09` to `DOC-13`. The rulings still in force are `RULES.md` section 8.
-- ⭐ **The record check holds the shape**, `TOOL-29`, and the docs check's
-  cited-path rule runs for the first time, `TOOL-30`.
+- ⭐ **Three releases**: `wsl-toolkit-v7.0.1` and `v7.0.2`, the critical and data-loss
+  fixes, then `v8.0.0`, a major. Each was published, self-updated here and driven.
+- ⭐ **8.0.0 merged nine groups of builders** after the F-groups, `WSL-167`, `WSL-193`
+  and `WSL-131`. Each group was built in its own worktree, reviewed adversarially and
+  repaired. Every break has its section in `docs/consumers.md`.
+- ⭐ **CI proves every row in under 11 minutes**, where it took 23, `TOOL-39`. Its probes
+  job then exposed three cases that two `go test` runs at once broke, and each is fixed.
+- ⭐ **Rulings 32 to 35** settled the canonical base, its name, the major version and the
+  exit codes. `WSL-196` to `WSL-199` are filed from the last drives.
 
 ## In progress
 
-⭐ **Resumed 2026-10-24T01:18:23Z.** A read-only triage of every consumer found
-workloads blocked, so the critical fixes shipped first as `wsl-toolkit-v7.0.1`:
-`WSL-168`, and the first parts of `WSL-137` and `WSL-169`. It is installed on this
-host and driven on the jobs base.
-
-7.0.2 takes the audit's data-loss findings in four groups. Each was built in its own
-worktree, reviewed by two adversarial passes a round, repaired and merged into
-`main`: `WSL-169`, `WSL-171` to `WSL-175`, `WSL-177`, `WSL-179`, `WSL-181`,
-`WSL-182` and `WSL-185`. The merge met G1 and G4 in the grant ledger, and a case
-holds the result. It is published from `a031bcf`, installed on this host and driven.
-
-The 7.1.0 work waits on local, unpushed branches, each unmerged and ungated:
-`wip/f6a-adapters` (finished; the triage found four things to fix before it merges),
-`wip/f1-jobs`, `wip/f2-run-config`, `wip/f4-base-exec`, `wip/f5a-base-runtime`,
-`wip/f5b-base-build`, `wip/f6b-fixes` and `wip/f7-tooling`. ⛔ `wip/f4-base-exec` and
-`wip/f6b-fixes` each carry a regression the triage found, and `wip/f4` and `wip/f5b`
-add the same test file, so neither merges as it is.
+Nothing. The open entries are the work order's item 13.
 
 ## The work order, set by the operator on 2026-10-21
 
 Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
 
-1. ⛔ **Hotfix `wsl-toolkit-v7.0.1` first**, because workloads are blocked today: `WSL-168`,
-   which stops every Debian base with systemd at `base ensure`; `WSL-169`, which can
-   destroy a base; and the half of `WSL-137` that clears a stale run state in `run`,
-   `matrix` and `base exec`, which every consumer of the jobs base meets after a reboot.
-   **Closed:** 7.0.1 shipped; `WSL-137`'s other half is merged for 8.0.0.
-2. ⛔ **Then `wsl-toolkit-v7.0.2`, the audit's data-loss fixes**, grouped by code area so
-   the builders do not collide: the base's lifecycle `WSL-171`, `WSL-177`, `WSL-172`,
-   `WSL-175` and the rest of `WSL-169`; the ledger `WSL-173` and `WSL-185`; the probe and
-   the QEMU step `WSL-174`, `WSL-181` and `WSL-182`; grants `WSL-179`. **Closed:** all
-   eleven are done and merged; the release follows CI.
-3. **The record and the checks that hold it**, first, because every later commit
-   is checked by them: `DOC-10`, `TOOL-29`, `TOOL-30`, `DOC-09`, `TOOL-31`,
-   `TOOL-35`, `DOC-13`, `DOC-11` and `DOC-12`. **Closed:** `DOC-11` and `DOC-12` last, from `r8/docs`.
-4. **The survey's asks**, in parallel by code area: jobs `WSL-120`, `WSL-121`,
-   and the cap in `WSL-136` (F1); `run` and the configuration `WSL-122`,
-   `WSL-123`, `WSL-128`, `WSL-129`, `WSL-131`, `WSL-161` (F2); `base exec`
-   `WSL-124`, `WSL-125`, `WSL-133`, `WSL-146` (F4); the base's runtime
-   `WSL-126`, `WSL-130` and the limits in `WSL-136` (F5a); the base's build
-   `WSL-137`, `WSL-140`, `WSL-143`, `WSL-147`, `WSL-150`, `WSL-153`, `WSL-155`
-   (F5b). **Closed:** all merged, `WSL-128` last from `r8/inputs`.
-5. **The old record's open findings, and the audit's `WSL-176`, `WSL-178`, `WSL-180`,
-   `WSL-183` to `WSL-188`, `WSL-170` and `DOC-15`**: adapters `WSL-139`, `WSL-141`, `WSL-144`,
-   `WSL-157` (F6a); fixes `WSL-149`, `WSL-151`, `WSL-152`, `WSL-154`, `WSL-156`,
-   `WSL-160`, `WSL-162`, `WSL-163`, `WSL-164` (F6b); and here `WSL-132`, `WSL-142`,
-   `WSL-145` and `WSL-148`. **Closed:** all merged; the `r8/*` groups finished the audit's rows and
-   `DOC-15`. `WSL-188`'s two larger parts are split into entries of their own.
-6. **The tooling**: `TOOL-32`, `TOOL-33`, `TOOL-37` and `TOOL-38`, and `text-tool`'s
-   `WSL-165`. **Closed:** all five done; the last three merged from `rb/f7-tooling`.
-7. **The skills**, `DOC-14`, reviewed against what the tool does once the builders are
-   merged, and installed.
-8. **`wsl-toolkit-v7.1.0`**: every branch merged and gated, CI's Linux jobs in
-   containers, three reviews, CI green, published, this host moved to it by
-   `selfupdate`, the new behaviour driven, and the acceptance suite on a fresh
-   instance.
+1. ⛔ **Hotfix `wsl-toolkit-v7.0.1`**: `WSL-168`, `WSL-169` and the first half of
+   `WSL-137`. **Closed:** 7.0.1 shipped.
+2. ⛔ **`wsl-toolkit-v7.0.2`, the audit's data-loss fixes**: `WSL-169`, `WSL-171` to
+   `WSL-175`, `WSL-177`, `WSL-179`, `WSL-181`, `WSL-182` and `WSL-185`. **Closed:** 7.0.2
+   shipped.
+3. **The record and the checks that hold it**: `DOC-10`, `TOOL-29`, `TOOL-30`, `DOC-09`,
+   `TOOL-31`, `TOOL-35`, `DOC-13`, `DOC-11` and `DOC-12`. **Closed:** all done.
+4. **The survey's asks**: `WSL-120` to `WSL-126`, `WSL-128` to `WSL-131`, `WSL-133`,
+   `WSL-136`, `WSL-137`, `WSL-140`, `WSL-143`, `WSL-146`, `WSL-147`, `WSL-150`, `WSL-153`,
+   `WSL-155` and `WSL-161`. **Closed:** all in 8.0.0.
+5. **The old record's open findings and the audit's rows**: `WSL-170`, `WSL-176`,
+   `WSL-178`, `WSL-180`, `WSL-183` to `WSL-188`, `DOC-15`, `WSL-139`, `WSL-141`, `WSL-144`,
+   `WSL-157`, `WSL-149`, `WSL-151`, `WSL-152`, `WSL-154`, `WSL-156`, `WSL-160`, `WSL-162` to
+   `WSL-164`, `WSL-132`, `WSL-142`, `WSL-145` and `WSL-148`. **Closed:** all in 8.0.0.
+6. **The tooling**: `TOOL-32`, `TOOL-33`, `TOOL-37`, `TOOL-38` and `WSL-165`.
+   **Closed:** all done.
+7. **The skills**, `DOC-14`, reviewed against the merged tool and installed.
+   **Closed:** done and installed.
+8. **The release**, planned as 7.1.0 and made 8.0.0 by ruling 34: every branch merged
+   and gated, CI green, published, `selfupdate`, driven, the acceptance suite on a fresh
+   instance. **Closed:** `wsl-toolkit-v8.0.0`, 104 of 104.
 9. **This host**, ruling 31: the package's copy emptied, the operator's
-   `qemu-binfmt-restore.service` retired, the installed skills updated.
-10. **Now this release**, ruling 35: `WSL-127` and `WSL-166`, exit codes that change, each a
-   break that rides in 8.0.0. **Closed:** both merged from `r8/exits`.
-11. **One base under a canonical name**, ruling 32: `WSL-167`, which removes
-   `wsl-toolkit-base`. First after the pause, before the builders' merges. Then
-   `WSL-193`, a `wsl-` prefix on a new instance's name, in the same code. **Closed:**
-   both merged; `wsl-toolkit-base` is unregistered with no copy, as ruling 33 says.
+   `qemu-binfmt-restore.service` retired with `wsl-toolkit-base`, the installed skills
+   updated. **Closed:** all three.
+10. **The exit codes**, ruling 35: `WSL-127` and `WSL-166`. **Closed:** both in 8.0.0.
+11. **One base under a canonical name**, ruling 32: `WSL-167`, then `WSL-193`.
+    **Closed:** both in 8.0.0.
 12. **Blocked, each on what its entry names**: `WSL-134`, `WSL-135`, `WSL-138`,
-   `WSL-158` and `WSL-159`.
+    `WSL-158` and `WSL-159`.
+13. **Next**: `WSL-198`, a grant on an Alpine base after a restart, first. Then
+    `WSL-199`, `WSL-196`, `WSL-197`, which needs a stock host, and `TOOL-40`.
 
 ## Open questions for the operator
 
@@ -137,7 +105,13 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    with the numbers.
 3. **`WSL-134` and `WSL-135`** need the operator at the desktop: a real terminal
    window, and three sign-ins.
-4. **The base disks are not sparse.** `base reclaim` needs `wsl --shutdown`
-   first, which stops every distribution, so it is the operator's step.
-5. **Settled 2026-10-25T00:57:20Z, ruling 34:** the release is 8.0.0, `WSL-141`'s herdr
-   default moves to 0.9.5, and a project lends a named instance every jobs key.
+4. **The base disk is not sparse.** `base reclaim` needs `wsl --shutdown` first,
+   which stops every distribution, so it is the operator's step.
+5. **The consumer register is public, and three consumers are private.**
+   `docs/consumers.md` keeps the names of pg-toolkit, dash.vpn.ajam.dev and
+   tcp.ts.relay.ajam.dev, the commands each calls and what each must do, and
+   leaves out their file paths, lines and commits. Should those come back?
+6. **`WSL-197` needs a host with WSL's defaults**, to build each preset once; this
+   host's `.wslconfig` is not one.
+7. **This base keeps its older name `wsl-toolkit`.** Moving it to `wsl-toolkit-jobs`
+   deletes its disk, home and images, so it waits on the operator's word.

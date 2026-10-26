@@ -793,7 +793,7 @@ gh release view wsl-toolkit-v7.0.0     22 assets: 2 wsl-toolkit, 4 text-tool, 4 
 ## DOC-14. The skills tell an agent things the tool does not do
 
 **Source** the review of the three skills, 2026-10-21, and the operator, 2026-10-21: "have the skill files been updated/cleaned"
-**Category** docs, **Priority** P2, **Effort** M, **Status** open
+**Category** docs, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -832,7 +832,13 @@ Exit 0, and the installed copies match the tree.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/doc-14`, for 8.0.0.** Every claim in the three skills was checked against the merged tool, a build of it and the manual. `base ensure` is offered as what can restart a base, never as the answer to most problems, and `base recreate` and `base remove --yes` only when the user asks. The owner rule, the reserved instance names, a project's lent `jobs` keys, 125 for a forwarding command's own failure, the helper's `/7`, and `text-tool`'s exit table are stated as the tool has them. The agents snippet carries the `schema` `config validate` asked for.
+
+The review found `stop` exiting 0 for an id nothing ran; `933659e` and `5e0bdcf` fixed it, with a case on each route.
+
+Prove: `check.sh skills` exits 0. The three copies the skills manager installed were updated from `main` after the push and match the tree byte for byte, as does this host's profile copy of `wsl-toolkit`.
+
+⚠ herdr's own flags and Muse, pi and omp were checked against the guides only: the default base has no herdr adapter.
 
 ## DOC-15. The consumer register misses one consumer and describes another's call wrongly
 

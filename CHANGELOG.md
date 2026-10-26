@@ -26,7 +26,18 @@ entry. A superseded one is amended in place with a dated note.
 ### 2026-10-26T18:58:29Z: `wsl-toolkit` is 8.0.0, a major: the default base's name and owner, a job's code apart from the tool's, and a base that survives its restarts
 
 **Record:** `WSL-120` to `WSL-133`, `WSL-136`, `WSL-137`'s second half, `WSL-139` to `WSL-157`, `WSL-160` to `WSL-164`, `WSL-166`, `WSL-167`, `WSL-170`, `WSL-176`, `WSL-178`, `WSL-180`, `WSL-183`, `WSL-184` and `WSL-186` to `WSL-195`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md); `DOC-11`, `DOC-12`, `DOC-14` and `DOC-15` in [`TODO/docs.md`](TODO/docs.md); rulings 33 to 35 in [`TODO/RULES.md`](TODO/RULES.md). Every break has its section in [`docs/consumers.md`](docs/consumers.md). The work filed `WSL-196` to `WSL-199`.
-**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v8.0.0` from this commit.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v8.0.0` from `5e0bdcf`, **22 assets** with a cosign
+bundle each and `SHA256SUMS`. All 19 release jobs green: the whole mutation table in 12 shards,
+herdr 0.9.5 on four targets, the publish, and the smoke that fetches the release and drives it.
+Amended at the deploy: the version commit `62cd60f` was refused by the pre-push proof, whose
+Linux go job found a case that needed `wsl.exe`. `5e0bdcf` fixed the case, and the tag followed CI green.
+
+⭐ **Driven after the publish.** `selfupdate` put 8.0.0 on this host, its SHA-256 verified, and
+`text-tool` was replaced from the same release. The owner's `base ensure` on `wsl-toolkit` exited 0
+in 24 s with no restart: it moved the login shell to bash and installed the boot script. A job's
+own 2 answered 2, a refused flag 125, a `stop` of an unknown id 2, and a `wait` by an 8-character
+prefix 0. `base status --probe` answers healthy. On a fresh instance, the acceptance suite passed
+**104 of 104** in 750 s, and the instance was removed after.
 
 ⛔ **A major release.** Read [`docs/consumers.md`](docs/consumers.md) before moving a caller to it. The breaks below are the ones most callers meet.
 

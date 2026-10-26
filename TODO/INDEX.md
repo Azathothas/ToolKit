@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 257  open 6  blocked 5  done 246
+total 257  open 5  blocked 5  done 247
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 2 | 2 | 114 | 118 |
+| P2 | 1 | 2 | 115 | 118 |
 | P3 | 4 | 3 | 28 | 35 |
-| **all** | **6** | **5** | **246** | **257** |
+| **all** | **5** | **5** | **247** | **257** |
 
 ---
 
@@ -53,7 +53,7 @@ total 257  open 6  blocked 5  done 246
 | DOC-11 | P3 | S | done | Lessons the old record held have no live page | [`docs.md`](docs.md) |
 | DOC-12 | P3 | S | done | The muse-code guide starts an agent named `muse` and then prompts `work` | [`docs.md`](docs.md) |
 | DOC-13 | P3 | S | done | The router and the rules count the release and CI wrong | [`docs.md`](docs.md) |
-| DOC-14 | P2 | M | open | The skills tell an agent things the tool does not do | [`docs.md`](docs.md) |
+| DOC-14 | P2 | M | done | The skills tell an agent things the tool does not do | [`docs.md`](docs.md) |
 | DOC-15 | P3 | S | done | The consumer register misses one consumer and describes another's call wrongly | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
