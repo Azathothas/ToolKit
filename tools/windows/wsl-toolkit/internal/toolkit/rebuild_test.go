@@ -230,18 +230,6 @@ func fakeWslMain(state string, args []string) int {
 	return 1
 }
 
-// fakeEngineUp says whether a fake engine answers: podman while the case's
-// engine file says up, and docker or wslc while engine-docker or engine-wslc
-// does. WSL-188.
-func fakeEngineUp(state, role string) bool {
-	name := "engine"
-	if role != "podman" {
-		name = "engine-" + role
-	}
-	up, _ := os.ReadFile(filepath.Join(state, name))
-	return strings.TrimSpace(string(up)) == "up"
-}
-
 // fakeEngineMain is podman, docker or wslc. Only podman answers, and only while
 // the case has said the engine is up; it then exports a rootfs of a few bytes.
 // ⚠ A case may make docker or wslc answer too, and say what each one's `info`
@@ -310,6 +298,18 @@ func fakeEngineMain(state, role string, args []string) int {
 		return 125
 	}
 	return 0
+}
+
+// fakeEngineUp says whether a fake engine answers: podman while the case's
+// engine file says up, and docker or wslc while engine-docker or engine-wslc
+// does. WSL-188.
+func fakeEngineUp(state, role string) bool {
+	name := "engine"
+	if role != "podman" {
+		name = "engine-" + role
+	}
+	up, _ := os.ReadFile(filepath.Join(state, name))
+	return strings.TrimSpace(string(up)) == "up"
 }
 
 // fakeHost is one case's fake WSL and engines, and the journal they share.
