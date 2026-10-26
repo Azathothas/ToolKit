@@ -14,23 +14,26 @@ import (
 
 // ⛔ ONLY `cat` SAYING THE FILE IS MISSING IS AN ABSENCE. `cat` names the path
 // for an I/O error on a damaged disk too, and that read as a base with no marker.
-// A guest WSL did not start is told apart from one that started.
+// A guest WSL did not start is told apart from one that started, BusyBox's `cat`
+// included, which names no path for a read error.
 func TestOnlyAMissingMarkerIsAnAbsence(t *testing.T) {
 	h := newFakeHost(t)
 	_, _, _ = fakeBuiltBase(t, h, DefaultBaseImage)
 	w := &Wsl{Path: h.wsl}
 
-	h.say(t, "identity", "eio")
-	_, err := w.ReadIdentity(context.Background(), fakeBaseName)
-	if errors.Is(err, ErrNoIdentity) || !errors.Is(err, ErrIdentityUnread) || errors.Is(err, ErrGuestUnstartable) {
-		t.Fatalf("a marker cat could not read answered %v; want a failure to read it, from a guest that started", err)
-	}
-	if !strings.Contains(err.Error(), "Input/output error") {
-		t.Fatalf("the reason cat gave is not carried: %v", err)
+	for _, how := range []string{"eio", "busybox-eio"} {
+		h.say(t, "identity", how)
+		_, err := w.ReadIdentity(context.Background(), fakeBaseName)
+		if errors.Is(err, ErrNoIdentity) || !errors.Is(err, ErrIdentityUnread) || errors.Is(err, ErrGuestUnstartable) {
+			t.Fatalf("%s: a marker cat could not read answered %v; want a failure to read it, from a guest that started", how, err)
+		}
+		if !strings.Contains(err.Error(), "Input/output error") && !strings.Contains(err.Error(), "I/O error") {
+			t.Fatalf("%s: the reason cat gave is not carried: %v", how, err)
+		}
 	}
 
 	h.say(t, "identity", "unreadable")
-	_, err = w.ReadIdentity(context.Background(), fakeBaseName)
+	_, err := w.ReadIdentity(context.Background(), fakeBaseName)
 	if !errors.Is(err, ErrGuestUnstartable) || !errors.Is(err, ErrIdentityUnread) || errors.Is(err, ErrNoIdentity) {
 		t.Fatalf("a guest WSL did not start answered %v; want a guest that could not be started", err)
 	}

@@ -225,8 +225,11 @@ func (w *Wsl) ReadIdentity(ctx context.Context, name string) (Identity, error) {
 	// damaged disk too, and that was read as a guest with no marker. The guest
 	// started, and nothing was learned about the marker. WSL-183.
 	// ⚠ The words are the C locale's, which a guest this tool provisions keeps.
-	if code == 1 && bounded.Err() == nil && strings.Contains(errBuf.String(), IdentityPath) {
-		if strings.Contains(errBuf.String(), "No such file") {
+	// ⚠ BusyBox's `cat` names no path for a read error. Measured on Alpine's, with
+	// an EIO: `cat: read error: I/O error`, exit 1. So the guest is known to have
+	// started by `cat` naming itself on stderr, and not by the path. WSL-183.
+	if code == 1 && bounded.Err() == nil && catAnswered(errBuf.String()) {
+		if strings.Contains(errBuf.String(), IdentityPath) && strings.Contains(errBuf.String(), "No such file") {
 			return id, fmt.Errorf("%s %w", name, ErrNoIdentity)
 		}
 		return id, fmt.Errorf("%w: %s started, and cat could not read %s: %s", ErrIdentityUnread, name, IdentityPath, guestFailure(errBuf.String()))
@@ -252,6 +255,19 @@ func (w *Wsl) ReadIdentity(ctx context.Context, name string) (Identity, error) {
 			ErrNotOwned, name, id.Name)
 	}
 	return id, nil
+}
+
+// catAnswered says `cat` itself wrote to stderr. GNU's names itself as it was
+// called, `/bin/cat:`, and BusyBox's as `cat:`. wsl.exe failing to start a guest
+// writes neither. WSL-183.
+func catAnswered(stderr string) bool {
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "/bin/cat: ") || strings.HasPrefix(line, "cat: ") {
+			return true
+		}
+	}
+	return false
 }
 
 // WriteIdentity stamps a distribution as this tool's. It runs as root, at the

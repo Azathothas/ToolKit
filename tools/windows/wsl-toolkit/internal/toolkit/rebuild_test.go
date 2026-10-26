@@ -173,6 +173,11 @@ func fakeWslMain(state string, args []string) int {
 			fmt.Fprintf(os.Stderr, "/bin/cat: %s: Input/output error\n", IdentityPath)
 			return 1
 		}
+		// ⚠ BusyBox's `cat` says it with no path, as Alpine's does.
+		if how, ok := said("identity"); ok && strings.TrimSpace(how) == "busybox-eio" {
+			fmt.Fprintln(os.Stderr, "cat: read error: I/O error")
+			return 1
+		}
 		marker, err := os.ReadFile(filepath.Join(state, "identity.json"))
 		if err != nil {
 			// What `cat` says about a missing file: the path, so the read is

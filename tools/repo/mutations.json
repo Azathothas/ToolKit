@@ -5,9 +5,18 @@
       "label": "wsl-toolkit: only cat's missing file reads as a base with no marker",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/identity.go",
-      "find": "\t\tif strings.Contains(errBuf.String(), \"No such file\") {\n",
-      "replace": "\t\tif true {\n",
+      "find": "\t\tif strings.Contains(errBuf.String(), IdentityPath) && strings.Contains(errBuf.String(), \"No such file\") {\n",
+      "replace": "\t\tif strings.Contains(errBuf.String(), IdentityPath) {\n",
       "run": "TestOnlyAMissingMarkerIsAnAbsence|TestAnOwnedBaseThatCannotStartIsRemoved",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: BusyBox's cat naming no path is still a guest that started",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "strings.HasPrefix(line, \"/bin/cat: \") || strings.HasPrefix(line, \"cat: \")",
+      "replace": "strings.HasPrefix(line, \"/bin/cat: \")",
+      "run": "TestOnlyAMissingMarkerIsAnAbsence",
       "args": []
     },
     {
@@ -8122,9 +8131,9 @@
     {
       "label": "wsl-toolkit: only cat naming the missing marker is an absence",
       "file": "internal/toolkit/identity.go",
-      "find": "\tif code == 1 && bounded.Err() == nil && strings.Contains(errBuf.String(), IdentityPath) {\n",
+      "find": "\tif code == 1 && bounded.Err() == nil && catAnswered(errBuf.String()) {\n",
       "replace": "\tif code != 0 || err != nil {\n",
-      "run": "TestAMarkerReadThatCouldNotAskIsNotAnAbsence",
+      "run": "TestAMarkerReadThatCouldNotAskIsNotAnAbsence|TestOnlyAMissingMarkerIsAnAbsence",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
