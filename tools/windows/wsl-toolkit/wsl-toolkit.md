@@ -2073,6 +2073,11 @@ it. A base with no compiler reports all three `unknown`. On a scratch base, the
 account created a KVM virtual machine and was told the GPU adapter count. The
 vsock connect to the host timed out. `WSL-156`
 
+⛔ **The helper does not carry `base doors`.** The probe mounts, writes and opens
+sockets in the base, which the restricted helper protocol does not accept. So
+`--via-helper` is refused with exit 2 while a helper serves. The reason names the
+session's WSL approval path, and nothing runs in the base. `WSL-142`
+
 ⛔ **This is a report, not a boundary.** Nothing in this tree shows a WSL
 distribution to be a security boundary. This command exists so that a sentence
 about a base is made of what was tried rather than of settings.

@@ -138,7 +138,13 @@ answers, and a file not restored byte for byte fails the case. `WSL-132`
 
 ⭐ **An instance with a configuration of its own runs every case.** The cases
 that ask which working-directory file wins ask from an empty home. A helper's
-scratch home asks for the base the suite runs on. `WSL-132`
+scratch home asks for the base the suite runs on. On a scratch instance whose file
+asks for systemd and passwordless sudo, `-Quick` passed every case. The file kept
+its bytes, and the base kept both. `WSL-132`
+
+⭐ **One case meets `base doors --via-helper` from a helper that is serving.** It
+reads the refusal's exit 2 and its reason. With no helper, the same call is refused
+for another reason, so the case cannot pass without one. `WSL-142`
 
 ⭐ **A herdr `--remote` client is proved by its own probe**, because nothing in the
 Go suite can see it: a release and a development build of it answer the same
