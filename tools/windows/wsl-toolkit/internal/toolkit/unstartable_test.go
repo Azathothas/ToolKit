@@ -5,7 +5,9 @@ package toolkit
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -136,4 +138,123 @@ func TestABaseThatCannotStartNamesItsRemoval(t *testing.T) {
 	if !named {
 		t.Fatalf("a probe of a base that cannot start reads %q; want the reason and the removal named", st.Problems)
 	}
+}
+
+// firstWayForward is the remediation `ready` names first: the first one that is
+// repairable and not advisory.
+func firstWayForward(st BaseState) (Remediation, bool) {
+	for _, r := range st.Remediations {
+		if r.Repairable && !r.Advisory {
+			return r, true
+		}
+	}
+	return Remediation{}, false
+}
+
+// ⛔ THE DEFECT: `ready` over a base whose marker could not be read named `base
+// ensure`, which refuses that base, and under `ready --ensure` it named the
+// command that had just failed. The probe, the ensure's refusal and the helper's
+// answer each carry the rebuild as the way forward, and what it costs.
+func TestWhatReadyReadsOfABaseWhoseMarkerCannotBeRead(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	h.say(t, "identity", "unreadable")
+	wantRebuild := func(how string, st BaseState) {
+		t.Helper()
+		r, ok := firstWayForward(st)
+		if !ok || r.ID != UnreadMarkerID || !strings.HasSuffix(r.Command, "base recreate") {
+			t.Fatalf("%s: ready would name %+v; want the rebuild, from %+v", how, r, st.Remediations)
+		}
+		if !strings.Contains(r.Costs, "home, credentials and images") {
+			t.Fatalf("%s: the rebuild does not say what it costs: %q", how, r.Costs)
+		}
+	}
+
+	st, err := b.Status(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRebuild("ready", st)
+
+	st, err = b.EnsureWith(context.Background(), false, false)
+	if err == nil || !errors.Is(err, ErrIdentityUnread) {
+		t.Fatalf("an ensure over a base that cannot start answered %v; want the refusal", err)
+	}
+	wantRebuild("ready --ensure", st)
+
+	code, msg, st := helperStateOver(t, b)(`{}`)
+	if code == http.StatusOK || !strings.Contains(msg, ErrIdentityUnread.Error()) {
+		t.Fatalf("an ensure through the helper answered %d %q; want the refusal", code, msg)
+	}
+	wantRebuild("ready --ensure through the helper", st)
+	assertKept(t, h, b, disk)
+}
+
+// ⛔ A LIVE BUILD IS NOT ADVISED AWAY. A marker read that fails while another
+// process holds the base's lock may be that build's restart, and the probe told
+// the reader to remove the base it was making.
+func TestAProbeDuringABuildDoesNotAdviseAnUnreadBaseAway(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, _ := fakeBuiltBase(t, h, DefaultBaseImage)
+	h.say(t, "identity", "unreadable")
+	release, err := lockBaseAt(context.Background(), b.home, "base recreate", func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := b.Status(context.Background(), true)
+	release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := strings.Join(st.Problems, "\n")
+	if strings.Contains(said, "base remove") || !strings.Contains(said, "running `base recreate`") || !strings.Contains(said, "once that ends") {
+		t.Fatalf("a probe during a build said %q", st.Problems)
+	}
+	if _, ok := remediationNamed(st, UnreadMarkerID); ok {
+		t.Fatalf("a probe during a build names the rebuild: %+v", st.Remediations)
+	}
+	// ⭐ AND ONCE THE LOCK IS FREE, THE SAME BASE NAMES ITS REMOVAL.
+	st, err = b.Status(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := remediationNamed(st, UnreadMarkerID); !ok || !strings.Contains(strings.Join(st.Problems, "\n"), "base remove --yes") {
+		t.Fatalf("a probe after the build said %q, %+v", st.Problems, st.Remediations)
+	}
+}
+
+// ⛔ A MISSING MARKER IS AN ABSENCE IN ANY LANGUAGE. Only `cat`'s English said so,
+// and nothing held a guest to it, so a German guest's missing marker read as one
+// that could not be read: the removal passed over the ledger and went on the disk
+// folder alone. The read sets the C locale itself.
+func TestAMissingMarkerInAnotherLanguageIsStillAnAbsence(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	if err := os.Remove(filepath.Join(h.state, "identity.json")); err != nil {
+		t.Fatal(err)
+	}
+	h.say(t, "identity", "german")
+	if _, err := b.wsl.ReadIdentity(context.Background(), fakeBaseName); !errors.Is(err, ErrNoIdentity) || errors.Is(err, ErrIdentityUnread) {
+		t.Fatalf("a German guest's missing marker answered %v; want no marker", err)
+	}
+	// ⚠ No ledger record says this tool's build stopped before its marker, so the
+	// removal is refused, as for any base with no marker.
+	if err := b.Remove(context.Background()); err == nil || !errors.Is(err, ErrNoIdentity) {
+		t.Fatalf("removing a German guest with no marker answered %v; want the refusal", err)
+	}
+	assertKept(t, h, b, disk)
+}
+
+// ⛔ A MARKER THAT DOES NOT PARSE IS NOT ONE THAT COULD NOT BE READ. It was read,
+// and it says nothing this tool wrote, so the removal on the disk folder alone does
+// not reach it.
+func TestAMarkerThatDoesNotParseStillRefusesARemoval(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	h.say(t, "identity.json", "{this is not the marker")
+	err := b.Remove(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "does not parse") || errors.Is(err, ErrIdentityUnread) {
+		t.Fatalf("removing a base whose marker does not parse answered %v; want the refusal", err)
+	}
+	assertKept(t, h, b, disk)
 }

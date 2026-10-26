@@ -202,8 +202,14 @@ func (w *Wsl) ReadIdentity(ctx context.Context, name string) (Identity, error) {
 	// `cat` and nothing else: no shell expansion of the path, and a missing file
 	// is a nonzero exit rather than an empty answer that reads as a marker with
 	// no fields in it.
+	//
+	// ⛔ IN THE C LOCALE, SET HERE. Its words decide below whether the marker is
+	// missing, and nothing held a guest to English: a guest whose locale is German
+	// read a missing marker as one that could not be read, so `base ensure`
+	// refused the stamp and `base remove` passed over the ledger. `env` keeps the
+	// argv free of a shell, and `cat` still names itself. WSL-183.
 	code, err := w.ExecDirect(bounded, name, "root", "",
-		[]string{"/bin/cat", IdentityPath}, nil, out, errBuf, 2*time.Minute)
+		[]string{"/usr/bin/env", "LC_ALL=C", "/bin/cat", IdentityPath}, nil, out, errBuf, 2*time.Minute)
 	// ⛔ A NONZERO EXIT IS AN ANSWER, NOT A FAILURE TO ASK. `cat` on a missing
 	// file exits 1, and ExecDirect reports every nonzero exit as an error too,
 	// so reading `err != nil` first reported "could not read the marker" about a
@@ -224,7 +230,7 @@ func (w *Wsl) ReadIdentity(ctx context.Context, name string) (Identity, error) {
 	// ⛔ AND ONLY ITS "No such file". `cat` names the path for an I/O error on a
 	// damaged disk too, and that was read as a guest with no marker. The guest
 	// started, and nothing was learned about the marker. WSL-183.
-	// ⚠ The words are the C locale's, which a guest this tool provisions keeps.
+	// ⚠ The words are the C locale's, which the read above sets.
 	// ⚠ BusyBox's `cat` names no path for a read error. Measured on Alpine's, with
 	// an EIO: `cat: read error: I/O error`, exit 1. So the guest is known to have
 	// started by `cat` naming itself on stderr, and not by the path. WSL-183.

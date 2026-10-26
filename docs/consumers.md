@@ -307,6 +307,10 @@ asked for replaces a refusal, and a refusal replaces a stamp.
 | `base recreate`, and a `--preset` switch that rebuilds, rebuild such a base. 7.x refused both | relied on those refusals to keep it | runs neither on a base it means to keep |
 | `cat` failing on the marker for any reason but a missing file reads as an unread marker. `base ensure` refuses such a base with exit 2, where 7.x stamped it from this machine's record | relied on that ensure adopting the base | frees the disk from the program holding it, or runs `base recreate` |
 | that refusal, and the `base status --probe` problem, add the likely causes and name `base remove --yes` and `base recreate` | matches the problem's words exactly | reads the exit code, or matches `could not be read` |
+| the state that refusal prints with `--json`, and `base status --probe --json`, add the remediation `identity-unread`, naming `base recreate` and what it deletes | | reads it, or ignores it |
+| `ready` over such a base names `base recreate` first, with `--ensure` or without it. 7.x named `base ensure`, which refused it | runs `ready`'s first remediation without asking | reads the remediation's `costs`, and asks before it deletes a home |
+| a probe while another process holds the base's lock names that process, and names neither command | matches the probe's words exactly | runs the probe again once that process ends |
+| the marker is read through `/usr/bin/env LC_ALL=C`, so a missing marker reads as missing in any guest language | built a base from an image with no `/usr/bin/env` | adds it to the image, as coreutils and BusyBox do |
 
 ### ⭐ What recording the digest adds, and what a caller reads
 
@@ -318,6 +322,8 @@ asked for replaces a refusal, and a refusal replaces a stamp.
 | `base status` prints a `digest` row naming the image at that digest, where a build of this release recorded one | treats every line of `base status` as one it knows | reads `--json` |
 | the guest's `/etc/wsl-toolkit-identity.json` and the instance's `base.json` add `digest` | reads either file | reads it, or ignores it |
 | a build prints a `digest:` line, or a ⚠ line saying none is recorded | treats every stderr line of a build as one it knows | reads the exit code, or `--json` |
+| a build whose digest could not be read carries the advisory `digest-unrecorded` in its state, with the reason. `--json`, the helper's answer and `ready`'s notes carry it | treats every remediation as one it knows | ignores an advisory it does not know |
+| the digest is the repository's, which the registry names for the tag. Where podman also names its platform manifest's, that one is not kept | pins a base by the platform manifest's digest | reads the `digest` row, which names the image at the repository's digest |
 
 ### ⚠ What a `--preset` switch through the helper changes, and what a caller does
 
@@ -329,6 +335,8 @@ no release speaks yet, and its `base/ensure` request gains `switch`.
 | `base ensure --preset` through the helper rebuilds only where the base, read under its lock, is not built from the preset. 7.x rebuilt it every time | relied on a switch through the helper to rebuild a base already built from the preset | runs `base recreate` |
 | `--preset` without `--save` through the helper builds the preset's image. 7.x sent the file's image, and built that | relied on the helper building the file's image beside a `--preset` | drops `--preset` |
 | a request to `/v1/base/ensure` with both `force` and `switch` is refused with HTTP 400, and nothing changes | sends its own requests to the helper | sends one of the two |
+| the client sends `switch` only for a switch, so a plain ensure still reaches a helper built before the field | | needs to do nothing |
+| through the helper, a `--preset` switch's stderr line says it asks the helper to switch the base. 7.x said the base rebuilds | treats every stderr line as one it knows | reads the exit code, or `--json` |
 
 ### ⚠ What building from the engine's own copy changes, and what a caller does
 
@@ -337,7 +345,8 @@ fails no longer exits 2 where the engine holds the image, a change by the table 
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
-| a build whose pull fails exports the copy the host engine already holds for this machine's platform. Two ⚠ lines say so, with the copy's digest. 7.x exited 2 and kept the base | relied on a failed pull to stop a rebuild, so a base is only built from the registry's current image | removes the engine's copy before the rebuild, or reads the `digest` row after it |
+| a build whose pull fails exports the copy the host engine already holds for this machine's platform. Its state carries the advisory `built-from-local-copy`, naming the copy's digest. 7.x exited 2 and kept the base | relied on a failed pull to stop a rebuild, so a base is only built from the registry's current image | removes the engine's copy before the rebuild, or reads the advisory after it |
+| that advisory reaches `--json`, the helper's answer and `ready`'s notes. `run --ensure-base` through the helper prints it, and a direct build prints two ⚠ lines | treats every stderr line, or every remediation, as one it knows | reads the exit code, and ignores an advisory it does not know |
 | a refusal for a failed pull adds why the engine's own copy was not used: it holds none, or one for another platform | matches the refusal's words exactly | reads the exit code |
 
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does

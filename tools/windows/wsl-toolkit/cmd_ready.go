@@ -401,6 +401,12 @@ func baseRemediationFor(st toolkit.BaseState, err error) string {
 		if rem, ok := toolkit.StaleRunStateRemediation(err.Error()); ok {
 			return rem.Command
 		}
+		// ⛔ A MARKER NOTHING COULD READ IS REFUSED BY `base ensure`, so the ensure is
+		// never the answer to it. A helper whose state carries no remediation still
+		// sends the refusal's words. WSL-183.
+		if rem, ok := toolkit.UnreadMarkerRemediationFor(err.Error()); ok {
+			return rem.Command
+		}
 	}
 	return toolkit.ToolCommand("base ensure")
 }

@@ -180,6 +180,12 @@ func fakeWslMain(state string, args []string) int {
 		}
 		marker, err := os.ReadFile(filepath.Join(state, "identity.json"))
 		if err != nil {
+			// ⚠ A GUEST WHOSE LOCALE IS GERMAN, WHEN THE CASE SAYS SO: `cat` says
+			// it in German unless the call set the C locale. WSL-183.
+			if how, ok := said("identity"); ok && strings.TrimSpace(how) == "german" && !hasArg(args, "LC_ALL=C") {
+				fmt.Fprintf(os.Stderr, "/bin/cat: %s: Datei oder Verzeichnis nicht gefunden\n", IdentityPath)
+				return 1
+			}
 			// What `cat` says about a missing file: the path, so the read is
 			// an answer and not a failure to ask.
 			fmt.Fprintf(os.Stderr, "/bin/cat: %s: No such file or directory\n", IdentityPath)
@@ -233,6 +239,16 @@ func fakeWslMain(state string, args []string) int {
 	}
 	fmt.Fprintln(os.Stderr, "the fake WSL runs no guest script")
 	return 1
+}
+
+// hasArg says whether args holds want as one argument.
+func hasArg(args []string, want string) bool {
+	for _, a := range args {
+		if a == want {
+			return true
+		}
+	}
+	return false
 }
 
 // fakeEngineMain is podman, docker or wslc. Only podman answers, and only while

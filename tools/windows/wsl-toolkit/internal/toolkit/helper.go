@@ -72,8 +72,9 @@ import (
 // version 6 helper sends neither, so a job it ran would read as one that never
 // started, and an end it lost as the payload's own 2. WSL-127.
 // ⚠ VERSION 7 ALSO CARRIES `switch` on base/ensure, a `--preset` switch the helper
-// decides under the base's lock. It rides in the same unreleased version, so no
-// helper that speaks 7 lacks it. WSL-191.
+// decides under the base's lock. It rides in the same unreleased version, and a
+// build of 7 from before it refuses the field. So a client sends it only for a
+// switch, and every other ensure still reaches such a helper. WSL-191.
 const HelperSchema = "wsl-toolkit-helper/7"
 
 // HelperEndpoint is what a client reads to find a listening helper.

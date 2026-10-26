@@ -400,6 +400,7 @@ func TestGcCachesIsTheCachesAlone(t *testing.T) {
 // reads it with exit 2, whatever that command answers otherwise. ⚠ `run`
 // answers a job's own code, so its refusal is toolkit.ExitTool. WSL-127.
 func TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration(t *testing.T) {
+	noRegistrations(t)
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	t.Setenv(toolkit.InstanceEnv, "")
 	tree := t.TempDir()

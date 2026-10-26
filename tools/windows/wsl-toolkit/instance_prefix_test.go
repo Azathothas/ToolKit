@@ -16,6 +16,7 @@ import (
 // prefixMainCase is a fresh state root with nothing selected.
 func prefixMainCase(t *testing.T) string {
 	t.Helper()
+	noRegistrations(t)
 	previous := toolkit.SelectedInstance
 	t.Cleanup(func() { toolkit.SelectedInstance = previous })
 	root := t.TempDir()

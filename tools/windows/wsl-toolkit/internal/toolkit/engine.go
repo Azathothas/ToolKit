@@ -222,6 +222,64 @@ type ExportedImage struct {
 	// Digest is the image's digest as the engine named it, or empty where it
 	// named none. WSL-186.
 	Digest string
+	// DigestUnread is why a pulled image's digest is not recorded, or empty.
+	// WSL-186.
+	DigestUnread string
+	// Local says the pull failed and the copy the engine already held was
+	// exported instead, and Engine and Platform say whose copy, for which
+	// machine. ⚠ That copy may be older than the registry's. WSL-192.
+	Local    bool
+	Engine   string
+	Platform string
+}
+
+// BuiltFromLocalCopyID is the advisory a base built from the engine's own copy
+// carries. WSL-192.
+const BuiltFromLocalCopyID = "built-from-local-copy"
+
+// localCopyRemediation is the advisory a build from the engine's own copy of
+// image earns, or false where the pull answered.
+//
+// ⛔ THE BUILD SAID IT ON ITS LOG ALONE. Through the helper that log is the
+// helper's, and no field said it, so a caller got a base built from a copy that
+// may be stale and was never told. The state carries it now, so the helper's
+// answer, `--json` and `ready` do. WSL-192.
+func (x ExportedImage) localCopyRemediation(image string) (Remediation, bool) {
+	if !x.Local {
+		return Remediation{}, false
+	}
+	return Remediation{
+		ID: BuiltFromLocalCopyID,
+		What: fmt.Sprintf("the pull of %s failed, so the base was built from the copy %s already held for %s, %s",
+			image, x.Engine, x.Platform, digestWords(x.Digest)),
+		Costs:      "that copy may be older than the registry's image. Once the registry answers, base recreate builds from its image",
+		Command:    ToolCommand("base recreate"),
+		Repairable: true,
+		Advisory:   true,
+	}, true
+}
+
+// DigestUnrecordedID is the advisory a build whose digest could not be read
+// carries. WSL-186.
+const DigestUnrecordedID = "digest-unrecorded"
+
+// unrecordedDigestRemediation is the advisory a build of image whose digest was
+// not read earns, or false where it was.
+//
+// ⛔ ONLY THE BUILD'S LOG SAID IT, and through the helper that log is the
+// helper's. A `digest` left out of the state read the same as a base an older
+// release built. WSL-186.
+func (x ExportedImage) unrecordedDigestRemediation(image string) (Remediation, bool) {
+	if x.Local || x.DigestUnread == "" {
+		return Remediation{}, false
+	}
+	return Remediation{
+		ID:       DigestUnrecordedID,
+		What:     "no digest is recorded for the image this base was built from: " + x.DigestUnread,
+		Costs:    "the base works as it is. Once the tag of " + image + " moves, nothing here names the image it was built from",
+		Command:  ToolCommand("base status --json") + "  # its digest stays empty until a rebuild records one",
+		Advisory: true,
+	}, true
 }
 
 // ExportRootfs turns an image reference into a rootfs archive on the host.
@@ -296,7 +354,7 @@ func (e *Engine) export(ctx context.Context, ref, tarPath string, log func(strin
 		if localErr != nil {
 			return got, fmt.Errorf("%w%s %v", pullErr, stopAfter(pullErr.Error()), localErr)
 		}
-		got = ExportedImage{Digest: img.digestFor(ref)}
+		got = ExportedImage{Digest: img.digestFor(ref), Local: true, Engine: e.Name, Platform: e.Platform()}
 		log("⚠ " + pullErr.Error())
 		log(fmt.Sprintf("⚠ building from the copy of %s that %s already holds, for linux/%s, %s. It may be older than the registry's",
 			ref, e.Name, e.Arch, digestWords(got.Digest)))
@@ -305,7 +363,7 @@ func (e *Engine) export(ctx context.Context, ref, tarPath string, log func(strin
 			return got, err
 		}
 		if forBase {
-			got.Digest = e.digestOf(ctx, ref, log)
+			got.Digest, got.DigestUnread = e.digestOf(ctx, ref, log)
 		}
 	}
 
@@ -414,41 +472,53 @@ func (e *Engine) localImage(ctx context.Context, ref string) (engineImage, error
 }
 
 // digestOf is the digest the engine names for an image it has just pulled, or
-// empty, said either way. ⚠ A digest that cannot be read leaves the build as it
-// was before digests were recorded. Refusing a base over it would trade a working
-// build for a field. WSL-186.
-func (e *Engine) digestOf(ctx context.Context, ref string, log func(string)) string {
+// empty and why, said either way. ⚠ A digest that cannot be read leaves the build
+// as it was before digests were recorded. Refusing a base over it would trade a
+// working build for a field. WSL-186.
+func (e *Engine) digestOf(ctx context.Context, ref string, log func(string)) (string, string) {
 	img, err := e.inspectImage(ctx, ref)
 	if err != nil {
 		log("⚠ the digest of " + ref + " could not be read, so none is recorded: " + err.Error())
-		return ""
+		return "", "the digest of " + ref + " could not be read: " + err.Error()
 	}
 	d := img.digestFor(ref)
 	if d == "" {
 		log("⚠ " + e.Name + " names no digest for " + ref + ", so none is recorded")
-		return ""
+		return "", e.Name + " names no digest for " + ref
 	}
 	log("digest: " + d)
-	return d
+	return d, ""
 }
 
-// digestFor is the digest img names for ref. It is the engine's own digest where
-// it names one, as podman does, or else the digest of ref's repository among its
-// repository digests, as docker names it.
+// digestFor is the digest img names for ref: the digest of ref's repository
+// among its repository digests, which is what the registry names for the tag.
+// Only where the repository has none is it the engine's own digest.
 //
-// ⚠ THE TWO ARE NOT THE SAME KIND, and either pins a pull to this image. Measured
-// with the base's own podman and docker.io/library/alpine:latest: `Digest` is the
-// amd64 manifest's, and `RepoDigests` holds it beside the index's. WSL-186.
+// ⛔ THE REPOSITORY'S DIGEST, NOT PODMAN'S OWN. Measured with the base's own podman
+// and docker.io/library/alpine:latest: `Digest` is the amd64 manifest's, and
+// `RepoDigests` holds it beside the index's. docker and wslc name the index's
+// alone. Preferring `Digest` recorded one image as two digests, by engine, and
+// podman's pinned one platform. The index's pins the same image on any engine.
+// WSL-186.
 func (img engineImage) digestFor(ref string) string {
-	if isImageDigest(img.Digest) {
-		return img.Digest
-	}
 	want := repositoryOf(ref)
+	own := ""
 	for _, rd := range img.RepoDigests {
 		name, d, ok := strings.Cut(rd, "@")
 		if ok && isImageDigest(d) && repositoryOf(name) == want {
-			return d
+			// ⚠ The platform manifest's digest is podman's `Digest` too, and the
+			// index's is the other.
+			if d != img.Digest {
+				return d
+			}
+			own = d
 		}
+	}
+	if own != "" {
+		return own
+	}
+	if isImageDigest(img.Digest) {
+		return img.Digest
 	}
 	return ""
 }

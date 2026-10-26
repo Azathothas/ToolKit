@@ -414,8 +414,19 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 				"%s carries no identity marker, so this tool cannot confirm it built it. `base ensure` adopts one it has a record for", b.cfg.Base.Name))
 		}
 	} else if errors.Is(err, ErrIdentityUnread) {
-		// ⭐ WHAT REMOVES IT IS NAMED, beside why the marker was not read. WSL-183.
-		st.Problems = append(st.Problems, err.Error()+stopAfter(err.Error())+" "+unreadMarkerAdvice())
+		if holder, building := b.buildRunning(); building {
+			// ⛔ A LIVE BUILD IS NOT ADVISED AWAY HERE EITHER. A read that timed out
+			// or failed during a build's restart told the reader to remove the base
+			// that build was making. WSL-183.
+			st.Problems = append(st.Problems, fmt.Sprintf("%s%s It is being changed by %s, which may be its build. Run this again once that ends",
+				err.Error(), stopAfter(err.Error()), holder))
+		} else {
+			// ⭐ WHAT REMOVES IT IS NAMED, beside why the marker was not read. WSL-183.
+			st.Problems = append(st.Problems, err.Error()+stopAfter(err.Error())+" "+unreadMarkerAdvice())
+			// ⛔ AND IT IS THE REMEDIATION. It was a problem's words alone, so `ready`
+			// answered `base ensure`, which refuses this base. WSL-183.
+			st.Remediations = append(st.Remediations, UnreadMarkerRemediation())
+		}
 	} else {
 		st.Problems = append(st.Problems, err.Error())
 	}
@@ -761,6 +772,10 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 		return st, err
 	}
 	defer release()
+	// ⛔ WHAT AN EARLIER BUILD EXPORTED IS NOT THIS ENSURE'S. The helper keeps one
+	// Base across calls, so a plain ensure after a build from the engine's own copy
+	// said the same of a base it did not build. WSL-192.
+	b.exported = ExportedImage{}
 	// ⛔ THE GRANTS ARE READ AGAIN UNDER THE LOCK. `base grant` and `base revoke`
 	// change them while holding it, so a build that waited for one went on with
 	// the grants it read before: a revoked grant was written back into the fstab
@@ -843,6 +858,12 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 		// RELABELLED Alpine because the probe passed, and `base status` then
 		// reported no drift over a guest whose /etc/os-release still said Arch.
 		if err := b.reconcileIdentity(ctx); err != nil {
+			// ⛔ THE REFUSAL CARRIES THE COMMAND THAT MOVES IT. Without it `ready
+			// --ensure` answered `base ensure`, the command that had just refused,
+			// and the helper's state carried nothing better. WSL-61, WSL-183.
+			if errors.Is(err, ErrIdentityUnread) {
+				st.Remediations = append(st.Remediations, UnreadMarkerRemediation())
+			}
 			return st, err
 		}
 		if report, err := b.verify(ctx); err == nil {
@@ -1075,6 +1096,15 @@ func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error
 		if binfmtErr != nil {
 			s.Remediations = append(s.Remediations, binfmtStepRemediation(binfmtErr))
 		}
+		// ⭐ A BASE BUILT FROM THE ENGINE'S OWN COPY SAYS SO IN ITS STATE, and the
+		// helper's answer, `--json` and `ready` carry it. WSL-192.
+		if r, ok := b.exported.localCopyRemediation(b.cfg.Base.Image); ok {
+			s.Remediations = append(s.Remediations, r)
+		}
+		// ⭐ AND ONE WHOSE DIGEST COULD NOT BE READ SAYS THAT. WSL-186.
+		if r, ok := b.exported.unrecordedDigestRemediation(b.cfg.Base.Image); ok {
+			s.Remediations = append(s.Remediations, r)
+		}
 		return s
 	}
 	ensured, adaptersErr := b.applyAdapters(ctx)
@@ -1273,6 +1303,37 @@ func unreadMarkerAdvice() string {
 	return fmt.Sprintf("A damaged disk does this, and so does one another program holds, such as a virus scanner or a backup. "+
 		"From the state directory that owns it, %s removes it and %s rebuilds it",
 		ToolCommand("base remove --yes"), ToolCommand("base recreate"))
+}
+
+// UnreadMarkerID is the remediation a base whose marker nothing could read
+// earns. WSL-183.
+const UnreadMarkerID = "identity-unread"
+
+// UnreadMarkerRemediation is that remediation: the command that rebuilds the
+// base, and what the rebuild costs. WSL-183.
+//
+// ⛔ REPAIRABLE, SO `ready` NAMES IT AS THE WAY FORWARD, AND ITS COST SAYS WHAT
+// IS LOST. `ready` answered `base ensure`, which refuses this base, and under
+// `ready --ensure` that was the command that had just failed. WSL-61.
+func UnreadMarkerRemediation() Remediation {
+	return Remediation{
+		ID:   UnreadMarkerID,
+		What: "the base's identity marker could not be read, so this tool cannot check what the base is, and base ensure refuses it",
+		Costs: "a damaged disk does this, and so does one a virus scanner or a backup holds. Free the disk first. " +
+			"The rebuild deletes the base's home, credentials and images, and only the state directory that owns it may run it",
+		Command:    ToolCommand("base recreate"),
+		Repairable: true,
+	}
+}
+
+// UnreadMarkerRemediationFor classifies a refusal by its words, as a helper's
+// arrives. ⚠ A helper whose state carries no remediation still names this one.
+// WSL-183.
+func UnreadMarkerRemediationFor(msg string) (Remediation, bool) {
+	if !strings.Contains(msg, ErrIdentityUnread.Error()) {
+		return Remediation{}, false
+	}
+	return UnreadMarkerRemediation(), true
 }
 
 // stopAfter is what ends the sentence s: nothing where s ends with a full stop

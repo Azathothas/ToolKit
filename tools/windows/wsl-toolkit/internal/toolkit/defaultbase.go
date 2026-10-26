@@ -52,6 +52,21 @@ var ErrNotOwner = errors.New("this state directory does not own the base")
 // answer for a host it does not have; production reads the registry.
 var readRegistrations = registeredDisks
 
+// RegistrationsForCase makes WSL's registrations answer what read answers, and
+// returns what puts the registry back. ⛔ FOR A CASE ONLY, and nothing outside
+// a test calls it.
+//
+// ⛔ A CASE OUTSIDE THIS PACKAGE READ THE OPERATOR'S OWN REGISTRY. Loading a
+// configuration resolves the default base's name from it, so a host with both
+// default names refused the case's configuration, and the case failed with
+// nothing wrong in the code. The base's name and the helper's guest flag came
+// from that registry too. WSL-191.
+func RegistrationsForCase(read func() (map[string]string, error)) (restore func()) {
+	previous := readRegistrations
+	readRegistrations = read
+	return func() { readRegistrations = previous }
+}
+
 // IsDefaultBaseName reports whether a distribution name is one the default
 // instance's base may run under: the canonical one or the older one.
 func IsDefaultBaseName(name string) bool {

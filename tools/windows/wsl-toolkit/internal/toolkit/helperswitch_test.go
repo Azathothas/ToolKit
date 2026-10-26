@@ -35,6 +35,36 @@ func helperOver(t *testing.T, b *Base) func(body string) (int, string) {
 	}
 }
 
+// helperStateOver is helperOver answering the state the helper sent too.
+func helperStateOver(t *testing.T, b *Base) func(body string) (int, string, BaseState) {
+	t.Helper()
+	srv := &HelperServer{cfg: b.cfg, log: func(string) {}, runners: map[string]*Runner{},
+		runner: &Runner{cfg: b.cfg, base: b, wsl: b.wsl, home: b.home, log: func(string) {}}}
+	return func(body string) (int, string, BaseState) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		srv.handleBaseEnsure(rec, httptest.NewRequest(http.MethodPost, "/v1/base/ensure", strings.NewReader(body)))
+		var out struct {
+			Error string    `json:"error"`
+			State BaseState `json:"state"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("the helper answered %q: %v", rec.Body.String(), err)
+		}
+		return rec.Code, out.Error, out.State
+	}
+}
+
+// remediationNamed is the remediation id in st, or false.
+func remediationNamed(st BaseState, id string) (Remediation, bool) {
+	for _, r := range st.Remediations {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	return Remediation{}, false
+}
+
 // countCalls is how many calls start with prefix.
 func countCalls(calls []string, prefix string) int {
 	n := 0
@@ -141,5 +171,40 @@ func TestTheClientSendsASwitchApartFromARecreate(t *testing.T) {
 	}
 	if bodies[2]["force"] != false || bodies[2]["switch"] == true {
 		t.Errorf("an ensure crossed as %v; want neither", bodies[2])
+	}
+	// ⛔ AND switch IS NOT SENT AT ALL BUT FOR A SWITCH. A helper built before it
+	// refuses a field it does not know, so a plain ensure that carried it was
+	// refused there.
+	for i, body := range bodies[1:] {
+		if _, sent := body["switch"]; sent {
+			t.Errorf("request %d carried switch: %v; want the field left out", i+2, body)
+		}
+	}
+}
+
+// ⛔ THE DEFECT: a base built from the engine's own copy said so on the build's
+// log alone, and through the helper that log is the helper's. The state the helper
+// answers carries it now, and a later ensure of the same base does not.
+func TestAHelperBuildFromTheEnginesOwnCopySaysSoInItsState(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, _ := fakeBuiltBase(t, h, DefaultBaseImage)
+	fakeBuildable(t, h, fakeImage(DefaultBaseImage))
+	h.say(t, "pull", "refused")
+	ensure := helperStateOver(t, b)
+	code, msg, st := ensure(`{"force":true}`)
+	if code != http.StatusOK || msg != "" {
+		t.Fatalf("a recreate whose pull failed answered %d %q", code, msg)
+	}
+	r, ok := remediationNamed(st, BuiltFromLocalCopyID)
+	if !ok || !r.Advisory || !strings.Contains(r.What, fakeDigest) || !strings.Contains(r.What, "podman") ||
+		!strings.Contains(r.Costs, "older than the registry's") {
+		t.Fatalf("the state the helper answered carries %+v; want the advisory naming the copy and its digest", st.Remediations)
+	}
+	code, msg, st = ensure(`{}`)
+	if code != http.StatusOK || msg != "" {
+		t.Fatalf("an ensure after it answered %d %q", code, msg)
+	}
+	if _, ok := remediationNamed(st, BuiltFromLocalCopyID); ok {
+		t.Fatalf("an ensure that built nothing says the base was built from a local copy: %+v", st.Remediations)
 	}
 }

@@ -346,9 +346,15 @@ func (c *HelperClient) baseEnsure(ctx context.Context, mode rebuild, repair bool
 	// ⚠ force IS `base recreate` ALONE. A switch is its own field, and the helper
 	// refuses both together. WSL-191.
 	body := map[string]any{
-		"force": mode == rebuildAlways, "switch": mode == rebuildSwitch, "repair": repair, "config": c.cfg,
+		"force": mode == rebuildAlways, "repair": repair, "config": c.cfg,
 		"name_from": c.cfg.nameFrom, "guest": helperGuest(c.cfg),
 		"config_path": ownerFile(c.cfg),
+	}
+	// ⛔ switch IS SENT ONLY FOR A SWITCH. A helper built before it speaks the same
+	// version and refuses a field it does not know, so sent on every ensure it
+	// refused plain `base ensure`, `run --ensure-base` and `ready --ensure`. WSL-191.
+	if mode == rebuildSwitch {
+		body["switch"] = true
 	}
 	// ⛔ THE CALLER'S PULL STALL GOES WITH IT, read and refused here. The helper
 	// read its own environment, so the variable this caller set reached no

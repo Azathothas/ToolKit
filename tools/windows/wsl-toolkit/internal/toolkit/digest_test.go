@@ -91,6 +91,34 @@ func TestABuildRecordsTheDigestItWasBuiltFrom(t *testing.T) {
 	}
 }
 
+// ⛔ A DIGEST THAT COULD NOT BE READ WAS SAID ON THE BUILD'S LOG ALONE, and through
+// the helper that log is the helper's. The state says it, with why, and the build
+// still ends.
+func TestABuildWhoseDigestCannotBeReadSaysSoInItsState(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, _ := fakeBuiltBase(t, h, DefaultBaseImage)
+	fakeBuildable(t, h, fakeImage(DefaultBaseImage))
+	if err := os.Remove(filepath.Join(h.state, "image.json")); err != nil {
+		t.Fatal(err)
+	}
+	st, err := b.EnsureWith(context.Background(), true, false)
+	if err != nil {
+		t.Fatalf("a rebuild whose digest could not be read failed: %v", err)
+	}
+	if st.Digest != "" {
+		t.Fatalf("the state names the digest %q; want none", st.Digest)
+	}
+	var found *Remediation
+	for i, r := range st.Remediations {
+		if r.ID == DigestUnrecordedID {
+			found = &st.Remediations[i]
+		}
+	}
+	if found == nil || !found.Advisory || found.Repairable || !strings.Contains(found.What, "image not known") {
+		t.Fatalf("the state carries %+v; want the advisory with why no digest is recorded", st.Remediations)
+	}
+}
+
 // ⭐ THE GUEST'S MARKER IS THE AUTHORITY. A probe reads the digest from it, and an
 // ensure writes this machine's record from it, as it does the image.
 func TestTheMarkersDigestIsReadAndRecorded(t *testing.T) {
@@ -143,22 +171,29 @@ func TestAStampCarriesTheRecordsDigest(t *testing.T) {
 	}
 }
 
-// ⛔ THE DIGEST IS THE IMAGE'S OWN, OR ITS REPOSITORY'S. podman names its own, and
-// docker names one per repository the image was pulled from. Another repository's
-// digest pins another image, so it is never taken.
+// ⛔ THE DIGEST IS THE REPOSITORY'S, as every engine names it. podman lists its
+// platform manifest's beside the index's, and docker the index's alone, so the
+// index's is taken where both are. Another repository's digest pins another
+// image, so it is never taken, and podman's own stands in only where the
+// repository has none.
 func TestTheDigestIsTheEnginesOrItsRepositorys(t *testing.T) {
 	other := "sha256:" + strings.Repeat("e", 64)
+	manifest := "sha256:" + strings.Repeat("c", 64)
+	const arch = "ghcr.io/pkgforge-dev/archlinux@"
 	for _, c := range []struct {
 		why  string
 		ref  string
 		img  engineImage
 		want string
 	}{
-		{"podman's own", DefaultBaseImage, engineImage{Digest: fakeDigest, RepoDigests: []string{"ghcr.io/pkgforge-dev/archlinux@" + other}}, fakeDigest},
-		{"docker's, for the repository asked for", DefaultBaseImage, engineImage{RepoDigests: []string{"docker.io/library/alpine@" + other, "ghcr.io/pkgforge-dev/archlinux@" + fakeDigest}}, fakeDigest},
+		{"the index's, which podman lists first", DefaultBaseImage, engineImage{Digest: manifest, RepoDigests: []string{arch + fakeDigest, arch + manifest}}, fakeDigest},
+		{"the index's, which podman lists second", DefaultBaseImage, engineImage{Digest: manifest, RepoDigests: []string{arch + manifest, arch + fakeDigest}}, fakeDigest},
+		{"podman's own, where it is the repository's only", DefaultBaseImage, engineImage{Digest: manifest, RepoDigests: []string{arch + manifest}}, manifest},
+		{"podman's own, where the repository names none", DefaultBaseImage, engineImage{Digest: manifest, RepoDigests: []string{"docker.io/library/alpine@" + other}}, manifest},
+		{"docker's, for the repository asked for", DefaultBaseImage, engineImage{RepoDigests: []string{"docker.io/library/alpine@" + other, arch + fakeDigest}}, fakeDigest},
 		{"a short name as docker spells it", "docker.io/library/alpine:latest", engineImage{RepoDigests: []string{"alpine@" + fakeDigest}}, fakeDigest},
 		{"another repository's only", DefaultBaseImage, engineImage{RepoDigests: []string{"docker.io/library/alpine@" + other}}, ""},
-		{"none that is a digest", DefaultBaseImage, engineImage{Digest: "sha256:short", RepoDigests: []string{"ghcr.io/pkgforge-dev/archlinux@sha256:NOTHEX"}}, ""},
+		{"none that is a digest", DefaultBaseImage, engineImage{Digest: "sha256:short", RepoDigests: []string{arch + "sha256:NOTHEX"}}, ""},
 	} {
 		if got := c.img.digestFor(c.ref); got != c.want {
 			t.Errorf("%s: %s names %q; want %q", c.why, c.ref, got, c.want)

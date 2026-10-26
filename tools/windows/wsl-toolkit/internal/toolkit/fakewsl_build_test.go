@@ -188,7 +188,7 @@ func buildFakeWslMain(dir string, args []string, stdin io.Reader, stdout, stderr
 		return 1
 	}
 	switch {
-	case len(argv) == 2 && argv[0] == "/bin/cat" && argv[1] == IdentityPath:
+	case len(argv) >= 2 && argv[len(argv)-2] == "/bin/cat" && argv[len(argv)-1] == IdentityPath:
 		call.Script = "identity-read"
 		if d.Marker == "" {
 			fmt.Fprintln(stderr, "cat: "+IdentityPath+": No such file or directory")
