@@ -85,7 +85,7 @@ func TestTheSharedTmpfsDoorIsClaimedOnlyWhenTheSettingIsOff(t *testing.T) {
 func TestTheProvisionerWritesTheResolverBeforeItClosesTheSharedTmpfs(t *testing.T) {
 	script := string(provisionScript)
 	resolver := strings.Index(script, "wrote /etc/resolv.conf,")
-	boot := strings.Index(script, "installed $SEAL_BOOT")
+	boot := strings.Index(script, "installed $BOOT_SCRIPT")
 	if resolver < 0 || boot < 0 {
 		t.Fatal("the provisioner no longer writes a resolver and a boot script for a closed shared tmpfs")
 	}
@@ -110,7 +110,7 @@ func TestTheProvisionerWritesTheResolverBeforeItClosesTheSharedTmpfs(t *testing.
 // path for that reason, and nothing else may go in it.
 func TestTheBootCommandIsABarePathWithNoShellInIt(t *testing.T) {
 	script := string(provisionScript)
-	const want = "SEAL_BOOT_LINE=\"command=$SEAL_BOOT\""
+	const want = "BOOT_LINE=\"command=$BOOT_SCRIPT\""
 	if !strings.Contains(script, want) {
 		t.Fatalf("the provisioner no longer sets the boot line to a bare path: want %s", want)
 	}

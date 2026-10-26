@@ -6,8 +6,10 @@ package toolkit
 // nothing and sources no account file. The directory order is a contract: a
 // user-installed tool wins over a system copy, and the inherited PATH is kept
 // after those entries with duplicates removed.
+//
+// ⚠ The run directory's name is the base's, guestRunRootPrefix. WSL-178.
 const userEnvironmentPrelude = `_wtk_uid=$(id -u) 2>/dev/null || { echo "wsl-toolkit: this guest has no id command" >&2; exit 2; }
-_wtk_run=/tmp/wsl-toolkit-run-$_wtk_uid
+_wtk_run=` + guestRunRootPrefix + `$_wtk_uid
 (umask 077; mkdir "$_wtk_run") 2>/dev/null || :
 if [ -L "$_wtk_run" ]; then echo "wsl-toolkit: $_wtk_run is a symlink and will not be used" >&2; exit 2; fi
 if [ ! -d "$_wtk_run" ]; then echo "wsl-toolkit: could not create $_wtk_run" >&2; exit 2; fi

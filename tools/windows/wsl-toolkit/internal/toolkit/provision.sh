@@ -46,6 +46,7 @@ die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 : "${TK_SHARED_TMPFS:?TK_SHARED_TMPFS is required}"
 : "${TK_PASSWORDLESS_SUDO:?TK_PASSWORDLESS_SUDO is required}"
 : "${TK_TOOLSET:?TK_TOOLSET is required}"
+: "${TK_BOOT_B64:?TK_BOOT_B64 is required}"
 
 # -- how the Windows drives appear ---------------------------------------------
 # ⛔ READ ONLY BY DEFAULT. WSL mounts every fixed drive under /mnt, and a job that
@@ -527,7 +528,6 @@ chown -R "$TK_USER" "$TK_HOME/.config"
 # and it is not interchangeable: a real resolver is written HERE, while the shared
 # file is still reachable, and the boot script refreshes it at every start BEFORE
 # it unmounts.
-SEAL_BOOT=/usr/local/lib/wsl-toolkit/seal-boot.sh
 if [ "$TK_SHARED_TMPFS" = off ]; then
   # ⛔ THE SYMLINK IS REMOVED BEFORE ANYTHING IS WRITTEN. /etc/resolv.conf points
   # INTO the shared directory, so writing through it would put this base's
@@ -545,61 +545,43 @@ if [ "$TK_SHARED_TMPFS" = off ]; then
   resolvers=$(grep -c '^nameserver ' /etc/resolv.conf)
   say "wrote /etc/resolv.conf, $resolvers nameserver(s), before closing the shared tmpfs"
 
-  # ⭐ THE BOOT COMMAND NAMES A SCRIPT AND CARRIES NO LOGIC. Measured on
-  # 2026-09-17: a `command=` whose value held nested quotes did not run at all,
-  # silently, and the only evidence was a marker file that never appeared. A path
-  # has nothing for wsl.conf's parser to get wrong.
-  install -d -m 0755 /usr/local/lib/wsl-toolkit
-  cat > "$SEAL_BOOT" <<'BOOTSH'
-#!/bin/sh
-# Written by wsl-toolkit. WSL runs this as root at every start of this
-# distribution, named by `command` in /etc/wsl.conf's [boot] section.
-#
-# ⛔ THE RESOLVER IS REFRESHED BEFORE THE UNMOUNT, AND A BAD READ CHANGES
-# NOTHING. The shared file is not always populated this early - measured empty on
-# 2026-09-17 - so a refresh that comes back short leaves the working file alone.
-# A resolver that works beats a fresher one that does not.
-set -u
-log=/run/wsl-toolkit-seal.log
-{
-  printf 'seal-boot %s\n' "$(date -u +%FT%TZ 2>/dev/null)"
-  if [ -s /mnt/wsl/resolv.conf ]; then
-    t=$(mktemp /etc/.resolv.XXXXXX 2>/dev/null) || t=
-    if [ -n "$t" ]; then
-      if grep -E '^(nameserver|search|options|domain) ' /mnt/wsl/resolv.conf > "$t" 2>/dev/null && [ -s "$t" ]; then
-        chmod 0644 "$t" && mv "$t" /etc/resolv.conf && printf 'resolver refreshed\n'
-      else
-        rm -f "$t"
-        printf 'resolver kept, the shared file gave nothing usable\n'
-      fi
-    fi
-  else
-    printf 'resolver kept, no shared file to read yet\n'
-  fi
-  if ! grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; then
-    printf 'shared tmpfs was not mounted\n'
-  elif umount /mnt/wsl 2>/dev/null || umount -l /mnt/wsl 2>/dev/null; then
-    printf 'shared tmpfs unmounted\n'
-  else
-    printf 'shared tmpfs NOT unmounted\n'
-  fi
-} > "$log" 2>&1
-# ⛔ ALWAYS 0. WSL treats a failing boot command as a start it should complain
-# about, and a base that will not start is worse than one whose tmpfs is open.
-# The log above is where the answer is, and `base doors` is what reads the result.
-exit 0
-BOOTSH
-  chmod 0755 "$SEAL_BOOT"
-  SEAL_BOOT_LINE="command=$SEAL_BOOT"
   RESOLV_BLOCK='
 [network]
 generateResolvConf=false'
-  say "installed $SEAL_BOOT, run at every start"
 else
-  rm -f "$SEAL_BOOT" 2>/dev/null || :
-  SEAL_BOOT_LINE=''
   RESOLV_BLOCK=''
 fi
+
+# -- the boot script, WSL-68 and WSL-178 ---------------------------------------
+# ⭐ THE BOOT COMMAND NAMES A SCRIPT AND CARRIES NO LOGIC. Measured on
+# 2026-09-17: a `command=` whose value held nested quotes did not run at all,
+# silently, and the only evidence was a marker file that never appeared. A path
+# has nothing for wsl.conf's parser to get wrong.
+#
+# ⛔ EVERY BASE HAS ONE NOW, NOT ONLY A SEALED ONE. The engine's run state lives
+# on the disk and names the boot it was written in, so every restart of WSL's VM
+# left podman refusing every container until a job cleared it. A base with no
+# systemd has no other way to clear it at a start. The seal's half still runs
+# only where base.shared_tmpfs is off. WSL-178.
+#
+# ⚠ THE TWO LINES BEFORE ITS TEXT ARE THIS CONFIGURATION'S, and they are the only
+# part provisioning writes into it. The account name was checked before it came.
+# The text is boot.sh, handed over as TK_BOOT_B64, which every `base ensure`
+# hands engines.sh too. WSL-178.
+# >>> the boot script's install: begin
+BOOT_SCRIPT=/usr/local/lib/wsl-toolkit/boot.sh
+install -d -m 0755 /usr/local/lib/wsl-toolkit
+{
+  printf '#!/bin/sh\nseal=%s\naccount=%s\n' "$TK_SHARED_TMPFS" "$TK_USER"
+  printf '%s' "$TK_BOOT_B64" | base64 -d
+} > "$BOOT_SCRIPT.new" || die "could not write $BOOT_SCRIPT"
+grep -qx '# <<< the boot script: end' "$BOOT_SCRIPT.new" ||
+  { rm -f "$BOOT_SCRIPT.new"; die "the boot script handed to provisioning was cut short"; }
+chmod 0755 "$BOOT_SCRIPT.new" || die "could not make $BOOT_SCRIPT executable"
+mv -f "$BOOT_SCRIPT.new" "$BOOT_SCRIPT" || die "could not install $BOOT_SCRIPT"
+BOOT_LINE="command=$BOOT_SCRIPT"
+say "installed $BOOT_SCRIPT, run at every start"
+# <<< the boot script's install: end
 
 # -- how WSL starts this distribution -----------------------------------------
 
@@ -617,7 +599,7 @@ default=$TK_USER
 
 [boot]
 systemd=$SYSTEMD_ENABLED
-$SEAL_BOOT_LINE
+$BOOT_LINE
 
 [automount]
 $AUTOMOUNT_BLOCK
@@ -649,6 +631,11 @@ wsl_conf=$(install_changed /etc/wsl.conf.wsl-toolkit.new /etc/wsl.conf) ||
   die "/etc/wsl.conf could not be written"
 say "/etc/wsl.conf: $wsl_conf"
 printf 'wsl-conf %s\n' "$wsl_conf"
+# ⛔ THE NAME AN EARLIER RELEASE GAVE THE BOOT SCRIPT GOES ONLY NOW, once the
+# wsl.conf that names boot.sh is in place. Removed before it, a provisioning that
+# died between the two left a sealed base naming a script that was gone, and its
+# next start kept /mnt/wsl mounted with nothing logged. WSL-178.
+rm -f /usr/local/lib/wsl-toolkit/seal-boot.sh
 
 # -- the drive mount points automount leaves behind ---------------------------
 # ⛔ NOT HERE ANY MORE. drives.sh removes them after the restart that applies

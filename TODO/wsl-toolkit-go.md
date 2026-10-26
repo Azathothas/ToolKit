@@ -15697,7 +15697,7 @@ image. 7.0.2 takes it.
 ## WSL-170. A job that runs podman inside its container can stop the whole base
 
 **Source** the triage of 2026-10-24, from podssh's record of 2026-10-13
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -15737,7 +15737,11 @@ Exit 0, then a job that runs a nested podman on a scratch base leaves the base r
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/runtime`, for 8.0.0.** A job whose nested engine finds no `/dev/fuse` is told the shape that works: `--user` with an account other than root, and `--device /dev/fuse`. The manual, the skill and the register say the same.
+
+Driven on a scratch base. The default nested shape failed with `fuse: device /dev/fuse not found`, exit 127, and printed the note. `--user podman --device /dev/fuse` printed `nested` and exited 0. The base kept running after both, as the Prove asks. Case `TestAJobWhoseEngineFoundNoFuseIsToldTheNestedShape` and two rows.
+
+⚠ **What stopped podssh's base is not found.** No shape driven here stopped one, and only small nested containers ran. The manual calls the cause unmeasured. `WSL-178` now clears an earlier start's run state, which was the harm podssh met after the stop.
 
 ## WSL-171. A failed re-provision of a registered, marked base unregisters it and deletes its disk
 
@@ -16132,7 +16136,7 @@ a fake-WSL case for each refusal, each with a mutation row red on Windows
 ## WSL-178. The rootless run root lives on disk-backed `/tmp`, so every distribution or VM restart makes podman's state stale
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 9; verified by two skeptics. The audit's note on entries: WSL-137, as an addendum.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -16175,7 +16179,16 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/runtime`, for 8.0.0.** The engine's run state is held to each start of the base, not to the kernel's boot. `wsl --terminate` keeps the boot id, so a check on the boot alone missed the commonest restart.
+
+- `stale.sh` marks the state with the start it belongs to; `repair.sh` reads the mark again under the lock and clears a state another start left.
+- A state with no mark, as an older build leaves it, is taken as this start's.
+- A live `conmon` of this account keeps the state, so a running container is never cut off.
+- Every owner's `base ensure` gives an existing base the boot script and its `wsl.conf` line, so a base an earlier release built gets it without a rebuild.
+
+Driven on a scratch base built by 7.0.2. Ensure wrote the boot line and restarted nothing. After `wsl --terminate`, the boot log cleared the state and the old container read `Exited`. A control with the mark removed kept the stale state. A live container kept it, and was cleared once removed. 62 rows went red on Linux, 13 on Windows; the rest need a POSIX shell.
+
+⚠ WSL runs a user command before the boot script's check ends, so podman typed at once can still meet an earlier start's state. The `conmon` guard keeps any container of this start. A restart of WSL's VM was not driven.
 
 
 ## WSL-179. A grant or revoke in live mode unmounts every `/workspaces` mount the caller's config does not name
@@ -16425,7 +16438,7 @@ Open.
 ## WSL-184. Session PIDs are trusted across base restarts
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 15; verified by two skeptics. The audit's note on entries: NONE (adjacent to WSL-126). Low severity.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16461,7 +16474,11 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/runtime`, for 8.0.0.** A session's ids are held to the start of the base that launched it, and one an older build started is held to its supervisor's command line. A reused id reads as lost, never as running, so `stop` cannot signal another process. `stop` reads its own script's `LOST` line and says it stopped nothing.
+
+Driven on a scratch base: a 7.0.2 session, a restart, and a bystander holding the supervisor's old pid. 7.0.2's `wait` said still running. This build's `wait` answered `ended. Exit 1`, `stop` said nothing was stopped, and the bystander kept running. Cases `TestASessionAnOlderBuildStartedIsHeldToItsSupervisorsCommandLine` and `TestAStopThatFindsItsSessionLostAnswersWhy`, with rows red on Linux.
+
+⚠ A restart of WSL's VM, and pid reuse after one, are covered by cases only.
 
 
 ## WSL-185. Ledger compaction is serialized only within one process

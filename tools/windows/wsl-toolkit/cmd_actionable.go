@@ -211,6 +211,9 @@ var examples = []struct{ What, Command string }{
 	{"wait for a job, or stop it", "wsl-toolkit wait JOB-ID --timeout 10m ; wsl-toolkit stop JOB-ID"},
 	{"a command in the base that outlives this client", `wsl-toolkit base exec --detach -c './serve.sh' ; wsl-toolkit logs SESSION-ID --follow`},
 	{"a device node and a second input file in the container", `wsl-toolkit run --image alpine --device /dev/kvm --input config.toml=.\app.toml -c 'ls -l /dev/kvm /in'`},
+	// ⭐ WSL-170: the nested shape measured on a scratch base, rootless inside the
+	// base's rootless engine, with no capability added.
+	{"a container engine inside a job, rootless inside the base's own", `wsl-toolkit run --image quay.io/podman/stable --user podman --device /dev/fuse -c 'podman run --rm docker.io/library/alpine echo nested'`},
 	{"a command no shell may touch, as base64 of its bytes", "wsl-toolkit run --image alpine --command-base64 ZWNobyBoaQo="},
 	{"why a job failed, after the container is gone", "wsl-toolkit inspect JOB-ID"},
 	{"inspect and remove one retained job", "wsl-toolkit inspect JOB-ID ; wsl-toolkit gc --job JOB-ID --apply"},

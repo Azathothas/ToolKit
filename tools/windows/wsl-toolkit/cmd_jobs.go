@@ -114,7 +114,9 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 		case before.Gone:
 			rep.Before, rep.Note = "gone", "the guest holds nothing for this session, so nothing was stopped"
 		case !before.Alive:
-			rep.Before, rep.Note = "ended", "the session had already ended, so nothing was stopped"
+			// ⛔ A SESSION THE BASE OUTLIVED IS SAID AS THAT, and nothing was
+			// signalled: its ids may name another agent's processes now. WSL-184.
+			rep.Before, rep.Note = "ended", goneNote(before, "the session had already ended")+", so nothing was stopped"
 			v := before.Verdict()
 			rep.Exit = &v
 			// ⭐ WHAT THE SESSION LEFT IN ITS SCOPE IS STILL ITS OWN, and a stop
@@ -124,17 +126,11 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 			held, still, err := toolkit.StopSessionLeftovers(ctx, w, rec, *grace)
 			applyLeftovers(&rep, held, still, err)
 		default:
-			rep.Before, rep.Stopped = "running", true
-			after, err := toolkit.StopSession(ctx, w, rec, *grace)
+			after, lost, err := toolkit.StopSession(ctx, w, rec, *grace)
 			if err != nil {
 				return exitFailed, err
 			}
-			rep.After = "ended"
-			if after.Alive {
-				rep.After = "running"
-			}
-			v := after.Verdict()
-			rep.Exit = &v
+			stoppedSession(&rep, after, lost)
 		}
 		return renderStop(rep, *asJSON)
 	}
@@ -487,7 +483,7 @@ func sessionEnd(ctx context.Context, rec toolkit.SessionRecord, tail int, stdout
 	case st.Gone:
 		out.Note, out.verdict = "the guest holds nothing for this session", exitFailed
 	case st.Exit == nil:
-		out.Note = "the session's supervisor is gone and no exit was recorded"
+		out.Note = goneNote(st, "the session's supervisor is gone and no exit was recorded")
 	}
 	// ⭐ THE SESSION'S OUTPUT IS DELIVERED HERE, by whoever reads its end, which
 	// is what makes `base exec --detach --artifacts` the attached command with
@@ -502,6 +498,40 @@ func sessionEnd(ctx context.Context, rec toolkit.SessionRecord, tail int, stdout
 		out.verdict = deliveryVerdict(out.verdict, out.Artifacts)
 	}
 	return out, nil
+}
+
+// stoppedSession fills a stop's report from what the stop of a session read as
+// running found, and the state after it.
+//
+// ⛔ A STOP THAT FOUND THE SESSION LOST SIGNALLED NOTHING, AND SAYS SO. The stop
+// script reads the session again before it sends anything, and over a session
+// the base outlived it prints LOST and exits 0. That was reported as `running`,
+// then stopped. WSL-184.
+func stoppedSession(rep *toolkit.StopReport, after toolkit.SessionState, lost string) {
+	if lost != "" {
+		after.Alive, after.Lost = false, lost
+		rep.Before, rep.Note = "ended", goneNote(after, "the session had already ended")+", so nothing was stopped"
+		v := after.Verdict()
+		rep.Exit = &v
+		return
+	}
+	rep.Before, rep.Stopped = "running", true
+	rep.After = "ended"
+	if after.Alive {
+		rep.After = "running"
+	}
+	v := after.Verdict()
+	rep.Exit = &v
+}
+
+// goneNote is what a reader is told about a session that is not running and
+// recorded no exit: why, where the base outlived it, and otherwise as given.
+// WSL-184.
+func goneNote(st toolkit.SessionState, otherwise string) string {
+	if why := st.LostReason(); why != "" {
+		return why
+	}
+	return otherwise
 }
 
 // deliveryVerdict is a session's exit once its output was delivered, or was not:

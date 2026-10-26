@@ -312,6 +312,11 @@ func renderSession(p func(string, ...any) error, s toolkit.SessionRecord, st *to
 		if err := p("    now         running\n"); err != nil {
 			return err
 		}
+	case st.LostReason() != "":
+		// WSL-184.
+		if err := p("    now         gone: %s\n", st.LostReason()); err != nil {
+			return err
+		}
 	default:
 		if err := p("    now         ended. Exit %d\n", st.Verdict()); err != nil {
 			return err

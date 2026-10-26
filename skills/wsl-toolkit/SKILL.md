@@ -246,6 +246,15 @@ answers with a session id that `logs`, `wait`, `stop` and `inspect` take. It hol
 `--timeout` itself, 30 minutes by default, so a server takes `--timeout 0`.
 ⛔ **Do not wrap a long command in `nohup` or `setsid` inside `base exec -c`**: nothing
 then keeps its output or its exit code, and nothing can stop it by id.
+A session the base restarted under is gone without an exit: `wait` answers 1 at
+once, and `stop` signals nothing.
+
+A job runs a nested podman rootless, and adds no capability. A job whose nested
+podman found no `/dev/fuse` is told this shape after its exit:
+
+```powershell
+wsl-toolkit run --image quay.io/podman/stable --user podman --device /dev/fuse -c 'podman run --rm docker.io/library/alpine echo nested'
+```
 
 `wsl-toolkit logs` lists every job and session of that instance with
 its state: `running`, `ended`, `detached` or `no owner`. With no `--instance`, it
@@ -279,7 +288,7 @@ It is refused through the helper.
 | a configuration field the tool does not know | compare it with `config --effective`. If its name and place are right, run `wsl-toolkit selfupdate` |
 | an adapter reports a problem | read the line. It names the file and the command |
 | the base is registered and nothing works | `wsl-toolkit --instance NAME base ensure --repair` |
-| Windows restarted WSL under it | the same `--repair`, which clears the stale boot id. ⛔ **`wsl --shutdown` breaks EVERY instance holding an engine.** The remediation names every other instance with its own `base ensure --repair`. Run each |
+| Windows restarted WSL under it | a job, `base exec` and each start of the base clear the engine state another boot or an earlier start left. A base an earlier release built gets the start's check at its first `base ensure` of this release. Where podman still refuses, the same `--repair` clears it. ⛔ **`wsl --shutdown` breaks EVERY instance holding an engine.** The remediation names every other instance with its own `base ensure --repair`. Run each |
 | a Windows launcher says it is another build | `base ensure` rewrites it |
 | `no such job` for a job another shell started | the other shell may name another `--instance`, or hold another state directory. `config` and `doctor` name a second copy. Call the tool from one kind of shell, or set `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%` |
 | a helper refusal reading `and this build speaks` | a helper from another release is still running. Each instance has its own: `wsl-toolkit --instance NAME helper stop`, then `wsl-toolkit --instance NAME helper serve --detach` |

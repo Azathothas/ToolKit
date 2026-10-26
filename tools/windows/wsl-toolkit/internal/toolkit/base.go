@@ -22,6 +22,16 @@ import (
 //go:embed provision.sh
 var provisionScript []byte
 
+// bootScript is the text of the script WSL runs at every start of a base.
+//
+// ⛔ ONE TEXT FOR TWO WRITERS. Provisioning writes it, and so does every
+// owner's `base ensure`, through engines.sh. A base that verifies is never
+// provisioned again, so the default base an earlier release built had no boot
+// script, and its run state was cleared by a job alone. WSL-178.
+//
+//go:embed boot.sh
+var bootScript []byte
+
 // packagesScript is the shared package table, generated from the block in
 // scripts/common/bootstrap.sh. TODO/RULES.md section 4 owns the rule.
 //
@@ -1580,6 +1590,8 @@ func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string,
 			"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
 			"TK_TOOLSET":           toolset,
 			"TK_SHARED_TMPFS":      sharedTmpfs,
+			// WSL-178: the boot script's text, which engines.sh is handed too.
+			"TK_BOOT_B64": base64.StdEncoding.EncodeToString(bootScript),
 		},
 		Timeout: 30 * time.Minute,
 		Stdout:  out,
@@ -2063,8 +2075,21 @@ func verifyError(user string, code int, stdout, stderr string) error {
 	// stdout before `podman run`, so a last line across both streams named a row
 	// and lost the `boot ID` words staleRunStateRemediation reads. WSL-152.
 	detail := guestReason(stderr, stdout)
-	return fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, detail)
+	err := fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, detail)
+	// ⭐ THE ENGINE'S RECORD, NOT ITS WORDS. verify.sh read the alive record beside
+	// this boot before the run, and a failure over another boot's record says so
+	// in this tool's words, which staleRunStateRemediation and `ready` read. A
+	// podman that words its refusal another way is still classified. WSL-178.
+	if hasLine(stdout, "run-state stale") {
+		return fmt.Errorf("%w; %s", err, staleRunStateWords)
+	}
+	return err
 }
+
+// staleRunStateWords is what a probe failure says where verify.sh read the
+// engine's record naming another boot. ⚠ It carries the two words
+// staleRunStateRemediation matches. WSL-178.
+const staleRunStateWords = "the engine's alive record names a boot id other than this boot's"
 
 // guestReason is the line worth reporting out of a guest command that writes
 // its report on stdout and its failure on stderr.
@@ -2196,6 +2221,21 @@ func (b *Base) captureAs(ctx context.Context, user string, script []byte, env ma
 	return out.String(), errBuf.String(), code, err
 }
 
+// guestRunRootPrefix names the directory the account's engine keeps its run
+// state in, and the account's uid ends it.
+//
+// ⛔ ONE PATH, NAMED ONCE. It was typed in the jobs' prologue, in `distro run
+// --user-env`'s, in the login profile and in `base image load`'s check. A copy
+// that moved alone would split the engine's state in two, which podman refuses
+// as `database configuration mismatch`. engines.sh is handed it as
+// TK_RUN_PREFIX. WSL-178.
+//
+// ⚠ IT STAYS ON /tmp, WHICH IS ON THE DISK HERE, AND THAT IS A CHOICE. podman's
+// database records the path, so moving it to a tmpfs refuses every base an
+// earlier release built. The state is made per boot instead: engines.sh clears
+// another boot's record at every start, and keeps the cleaner off it. WSL-178.
+const guestRunRootPrefix = "/tmp/wsl-toolkit-run-"
+
 // guestRuntimePrologue gives the account the runtime directory rootless podman
 // needs, which neither WSL nor runuser sets.
 //
@@ -2204,7 +2244,7 @@ func (b *Base) captureAs(ctx context.Context, user string, script []byte, env ma
 // where the account and the paths are known.
 func guestRuntimePrologue() []byte {
 	return []byte(`_tk_uid=$(id -u)
-_tk_run=/tmp/wsl-toolkit-run-$_tk_uid
+_tk_run=` + guestRunRootPrefix + `$_tk_uid
 (umask 077; mkdir "$_tk_run") 2>/dev/null || :
 if [ -L "$_tk_run" ] || [ ! -d "$_tk_run" ]; then
     echo "wsl-toolkit: $_tk_run is not a private directory" >&2; exit 2
@@ -2818,7 +2858,7 @@ func managedInstances() []string {
 // Nothing here takes a path from a caller, so there is no path to contain, and
 // TODO/RULES.md section 3 is the rule that says where that line is drawn.
 func (b *Base) repairRunState(ctx context.Context) (string, error) {
-	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, repairScript, nil, 2*time.Minute)
+	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, repairPayload(), nil, 2*time.Minute)
 	return out, repairRunStateVerdict(out, stderr, code, err)
 }
 
@@ -2844,6 +2884,11 @@ func repairRunStateVerdict(out, stderr string, code int, err error) error {
 	// the base works, as it does after a clear. WSL-137.
 	if strings.Contains(out, "run-state current: another caller cleared it first") {
 		return nil
+	}
+	// ⛔ A STATE KEPT IS NOT A REPAIR. repair.sh keeps an earlier start's state
+	// while a container of this start runs on it, and says why. WSL-178.
+	if why, ok := keptRunState(out); ok {
+		return fmt.Errorf("the run state was kept, because %s", why)
 	}
 	return fmt.Errorf("repair exited 0 without saying what it did: %s", guestFailure(out, stderr))
 }

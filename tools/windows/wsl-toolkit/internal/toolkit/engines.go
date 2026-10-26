@@ -5,6 +5,7 @@ package toolkit
 import (
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -49,6 +50,10 @@ func (b *Base) ensureEngines(ctx context.Context) error {
 
 // enginesRequest is the one run of engines.sh: as root, with the configuration's
 // settings in its environment.
+//
+// ⭐ IT CARRIES THE CHECK `run` SENDS, stale.sh and repair.sh behind the runtime
+// prologue, which engines.sh installs for the start of each boot. One text, so
+// the check at a start and the check before a job cannot drift. WSL-178.
 func (b *Base) enginesRequest(out io.Writer) ExecRequest {
 	return ExecRequest{
 		Distro: b.cfg.Base.Name, User: "root", Script: enginesScript,
@@ -58,6 +63,12 @@ func (b *Base) enginesRequest(out io.Writer) ExecRequest {
 			"TK_ROOT_ENGINE": strconv.FormatBool(b.cfg.Base.RootEngine),
 			"TK_RUNTIME_DIR": strconv.FormatBool(b.cfg.Base.RuntimeDir),
 			"TK_KVM":         strconv.FormatBool(b.cfg.Base.Kvm),
+
+			// WSL-178: the run directory, the check a start runs, and the script
+			// WSL runs at a start, which provisioning alone wrote.
+			"TK_RUN_PREFIX":    guestRunRootPrefix,
+			"TK_RUN_STATE_B64": base64.StdEncoding.EncodeToString(staleRunStatePayload()),
+			"TK_BOOT_B64":      base64.StdEncoding.EncodeToString(bootScript),
 		},
 		Timeout: 10 * time.Minute, Stdout: out, Stderr: out,
 	}

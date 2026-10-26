@@ -48,6 +48,25 @@
 #      around.
 set -eu
 
+# a_container_runs is true while a conmon of this account is live. Each container
+# has one, and a restart of the base ends every process, so a live one belongs
+# to a container of this start. ⚠ A process whose owner cannot be read counts,
+# and so does every one where this account cannot be named: the state is kept.
+# WSL-178.
+a_container_runs() {
+  acr_me=$(id -u 2>/dev/null) || return 0
+  for acr_p in /proc/[0-9]*; do
+    acr_c=
+    { read -r acr_c < "$acr_p/comm" || [ -n "$acr_c" ]; } 2>/dev/null || continue
+    [ "$acr_c" = conmon ] || continue
+    acr_u=$(sed -n 's/^Uid:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$acr_p/status" 2>/dev/null) || acr_u=
+    if [ -z "$acr_u" ] || [ "$acr_u" = "$acr_me" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # THE LOCK, which both ways in take here. A base with no flock clears as it did
 # before the lock existed, and stale.sh never reaches here without one. WSL-137.
 #
@@ -71,11 +90,23 @@ if [ -n "${XDG_RUNTIME_DIR:-}" ] && command -v flock >/dev/null 2>&1; then
   # lock meanwhile may have cleared the state and started a container, and podman
   # then wrote a record naming this boot. Nothing is removed under that engine.
   tk_record=missing
+  tk_earlier=
   if [ -s "$XDG_RUNTIME_DIR/libpod/tmp/alive" ]; then
     tk_cached=$(cat "$XDG_RUNTIME_DIR/libpod/tmp/alive" 2>/dev/null || :)
     tk_now=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || :)
     if [ -n "$tk_cached" ] && [ "$tk_cached" = "$tk_now" ]; then
       tk_record=this-boot
+      # ⛔ A RECORD OF THIS BOOT FROM AN EARLIER START OF THE BASE IS THAT START'S.
+      # `wsl --terminate` keeps the boot id and ends every process, so its state
+      # is read below as another boot's is, and stale.sh's mark says which start
+      # it was held to. ⚠ No mark, or no bootmark, keeps the boot id's answer.
+      # WSL-178.
+      tk_was=$(cat "$XDG_RUNTIME_DIR/.wsl-toolkit-run-state.start" 2>/dev/null || :)
+      tk_start=$(bootmark 2>/dev/null || :)
+      if [ -n "$tk_was" ] && [ -n "$tk_start" ] && [ "$tk_was" != "$tk_start" ]; then
+        tk_record=other-boot
+        tk_earlier=yes
+      fi
     elif [ -n "$tk_cached" ] && [ -n "$tk_now" ]; then
       tk_record=other-boot
     fi
@@ -89,6 +120,14 @@ if [ -n "${XDG_RUNTIME_DIR:-}" ] && command -v flock >/dev/null 2>&1; then
   fi
   if [ -n "${TK_STALE_BASE:-}" ] && [ "$tk_record" != other-boot ]; then
     printf 'run-state current: another caller cleared it first\n'
+    exit 0
+  fi
+  # ⛔ A CONTAINER OF THIS START KEEPS THE STATE IT RUNS ON. podman does not
+  # refuse an earlier start's record on this boot, so podman typed by hand before
+  # any check ran may have started one over it. Removing the state would take
+  # that container's own, so the state is kept and said. WSL-178.
+  if [ -n "$tk_earlier" ] && a_container_runs; then
+    printf 'run-state kept: a container of this start of the base runs on it\n'
     exit 0
   fi
 fi
@@ -184,6 +223,18 @@ if [ "$removed" -eq 0 ]; then
   # cannot answer and the environment's directories are not there either.
   echo "repair: found nothing to remove under $base, so the run state was not what was wrong" >&2
   exit 1
+fi
+# ⭐ THE CLEARED STATE IS HELD TO THIS START, under the lock, so the engine this
+# start begins on it is never read as an earlier start's. ⚠ A mark that cannot
+# be written is removed, and a later check reads no mark as current. WSL-178.
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  tk_mark=$XDG_RUNTIME_DIR/.wsl-toolkit-run-state.start
+  if tk_start=$(bootmark 2>/dev/null) && [ -n "$tk_start" ]; then
+    { printf '%s\n' "$tk_start" > "$tk_mark.$$" && mv -f "$tk_mark.$$" "$tk_mark"; } 2>/dev/null ||
+      rm -f "$tk_mark.$$" "$tk_mark" 2>/dev/null || :
+  else
+    rm -f "$tk_mark" 2>/dev/null || :
+  fi
 fi
 # ⛔ THIS TOKEN MEANS A DELETION HAPPENED. It does NOT mean the base works: the
 # run root is recreated by the next thing that touches the engine, so removing it

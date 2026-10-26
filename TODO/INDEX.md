@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 252  open 25  blocked 5  done 222
+total 252  open 22  blocked 5  done 225
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
-| P1 | 4 | 0 | 92 | 96 |
-| P2 | 15 | 2 | 100 | 117 |
+| P1 | 2 | 0 | 94 | 96 |
+| P2 | 14 | 2 | 101 | 117 |
 | P3 | 6 | 3 | 22 | 31 |
-| **all** | **25** | **5** | **222** | **252** |
+| **all** | **22** | **5** | **225** | **252** |
 
 ---
 
@@ -264,7 +264,7 @@ total 252  open 25  blocked 5  done 222
 | WSL-167 | P1 | M | done | Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-168 | P0 | S | done | `base ensure` fails registering the QEMU handlers on a base whose root podman has no D-Bus | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-169 | P1 | S | done | `base ensure --force` unregisters a working base before it knows it can build one | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-170 | P1 | M | open | A job that runs podman inside its container can stop the whole base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-170 | P1 | M | done | A job that runs podman inside its container can stop the whole base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-171 | P0 | S | done | A failed re-provision of a registered, marked base unregisters it and deletes its disk | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-172 | P0 | M | done | Nothing serializes base mutation: concurrent builds destroy each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-173 | P1 | S | done | `gc --apply` (even a scoped one) compacts the ledger and drops pending `stop` events, so a stopped job runs anyway | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -272,13 +272,13 @@ total 252  open 25  blocked 5  done 222
 | WSL-175 | P1 | S | done | Every re-provision ends in `wsl --terminate` whether or not anything changed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-176 | P2 | S | open | The 4-minute pull "stall" is really a minimum bandwidth, and the message says it is not a slow link | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-177 | P0 | S | done | A build deletes `<home>\base` whenever the configured name is not listed, without asking whose disk it is | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-178 | P1 | M | open | The rootless run root lives on disk-backed `/tmp`, so every distribution or VM restart makes podman's state stale | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-178 | P1 | M | done | The rootless run root lives on disk-backed `/tmp`, so every distribution or VM restart makes podman's state stale | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-179 | P1 | S | done | A grant or revoke in live mode unmounts every `/workspaces` mount the caller's config does not name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-180 | P2 | M | open | Nothing watches the host free space that the dynamic VHDX grows into | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-181 | P1 | S | done | The QEMU step is fatal on every ensure, and its root podman call is duplicated with the same D-Bus defect | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-182 | P1 | S | done | The privileged QEMU installer runs from a mutable Docker Hub tag | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-183 | P2 | S | open | A base that cannot start reads as "no identity marker", so remove and recreate refuse it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-184 | P2 | S | open | Session PIDs are trusted across base restarts | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-184 | P2 | S | done | Session PIDs are trusted across base restarts | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-185 | P2 | S | done | Ledger compaction is serialized only within one process | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-186 | P2 | M | open | The default base is a tag rebuilt daily, and no digest is recorded | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-187 | P2 | S | open | `--home` and `WSL_TOOLKIT_HOME` skip msysHostPath | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

@@ -45,6 +45,20 @@ func TestTheStaleRunStateVerdictIsReadFromWhatTheGuestSaid(t *testing.T) {
 			out:  "run-state stale: the engine recorded another boot of WSL\nrun-state kept: this base has no flock to clear it safely\n",
 			says: []string{"no flock to clear it safely, so a container will be refused. Run: wsl-toolkit base ensure --repair"},
 		},
+		// ⛔ WSL-178: an earlier start's state on this boot is said as that, and
+		// podman does not refuse it. The guest's own reason for keeping it is said.
+		{
+			name: "an earlier start's state cleared",
+			out: "run-state stale: the engine recorded an earlier start of this base\nrun-base /tmp/r (from the engine)\n" +
+				"removed /tmp/r/containers\nremoved /tmp/r/libpod/tmp\nrepaired run-state\n",
+			cleared: true,
+			says:    []string{"the engine's run state was left by an earlier start of this base, so it was cleared before this started: removed /tmp/r/containers"},
+		},
+		{
+			name: "an earlier start's state a container runs on",
+			out:  "run-state stale: the engine recorded an earlier start of this base\nrun-state kept: a container of this start of the base runs on it\n",
+			says: []string{"left by an earlier start of this base and a container of this start of the base runs on it, so podman may read that start's containers as running. The next job or start of the base clears it"},
+		},
 		{
 			name: "rule 5 refused", out: "run-state stale: the engine recorded another boot of WSL\n",
 			stderr: "repair: the engine's run base is /x and the stale boot id was read under /y, so nothing was removed\n",
@@ -267,8 +281,9 @@ func (h staleHarness) command(script []byte, stdout, stderr io.Writer) *exec.Cmd
 	return cmd
 }
 
+// ⚠ It carries bootmark, as every payload that ships does. WSL-178.
 func staleOnlyPayload() []byte {
-	return append(append(append([]byte{}, staleScript...), '\n'), repairScript...)
+	return runStateChecks()
 }
 
 func (h staleHarness) run(t *testing.T) (string, string, int) {
@@ -477,7 +492,7 @@ func TestRepairTakesTheRunStateLock(t *testing.T) {
 	h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
 	release := h.holdLock(t)
 	var stdout, stderr bytes.Buffer
-	cmd := h.command(append([]byte{}, repairScript...), &stdout, &stderr)
+	cmd := h.command(repairPayload(), &stdout, &stderr)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -519,6 +534,11 @@ func TestBaseEnsureRepairReadsWhatRepairShSaid(t *testing.T) {
 	if err := repairRunStateVerdict("run-state current: another caller cleared it first\n", "", 0, nil); err != nil {
 		t.Errorf("a state another caller had cleared first failed --repair: %v", err)
 	}
+	// ⛔ A state kept under a container of this start is no repair. WSL-178.
+	if err := repairRunStateVerdict("run-state kept: a container of this start of the base runs on it\n", "", 0, nil); err == nil ||
+		err.Error() != "the run state was kept, because a container of this start of the base runs on it" {
+		t.Errorf("a state kept under a container of this start: %v", err)
+	}
 	if err := repairRunStateVerdict("", "", 0, nil); err == nil || !strings.Contains(err.Error(), "without saying what it did") {
 		t.Errorf("a zero exit that said nothing: %v", err)
 	}
@@ -553,7 +573,7 @@ exec '`+flockPath+`' "$@"`)
 // which cleared in 7.0.0, exited 1 blaming a lock nobody held, and the automatic
 // clear never ran. WSL-137.
 func TestTheClearWorksWithBusyBoxFlock(t *testing.T) {
-	for name, payload := range map[string][]byte{"base ensure --repair": repairScript, "the stale check": staleOnlyPayload()} {
+	for name, payload := range map[string][]byte{"base ensure --repair": repairPayload(), "the stale check": staleOnlyPayload()} {
 		h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
 		busyboxFlock(t, h.bin)
 		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
@@ -579,7 +599,7 @@ func TestRepairKeepsAStateAnotherCallerClearedFirst(t *testing.T) {
 	h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
 	release := h.holdLock(t)
 	var stdout, stderr bytes.Buffer
-	cmd := h.command(append([]byte{}, repairScript...), &stdout, &stderr)
+	cmd := h.command(repairPayload(), &stdout, &stderr)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -611,7 +631,7 @@ func TestRepairKeepsAStateAnotherCallerClearedFirst(t *testing.T) {
 	missing := newStaleHarness(t, "", "")
 	stdout.Reset()
 	stderr.Reset()
-	code = exitOf(t, missing.command(append([]byte{}, repairScript...), &stdout, &stderr).Run())
+	code = exitOf(t, missing.command(repairPayload(), &stdout, &stderr).Run())
 	if code != 0 || !strings.Contains(stdout.String(), "repaired run-state") || missing.present("containers") {
 		t.Errorf("base ensure --repair over a missing record no longer clears: exit %d, out %q, stderr %q", code, stdout.String(), stderr.String())
 	}

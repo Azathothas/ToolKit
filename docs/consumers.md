@@ -178,6 +178,26 @@ They ship in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 | `bootstrap.sh` puts the account's prefix after the system path and rewrites the line an earlier run put first, so a name that exists in both resolves to the system path's | relies on the account's own copy of a name shadowing the system's | runs that copy by its full path |
 | `base ensure` refuses an interrupted build and names `base remove --yes`, where it removed and rebuilt it | expects ensure to recover an interrupted build alone | runs `base remove --yes`, then `base ensure` |
 
+### ⭐ What a restart of WSL changes, and what a caller reads
+
+`WSL-170`, `WSL-178` and `WSL-184`. Not released yet. No field a 7.0.2 document
+carries is removed. ⚠ Only a session the base restarted under answers another
+code. `wait` answers 1 where it waited or answered 124. `stop` exits 0 where it
+signalled another group and exited 1. Both ride in `wsl-toolkit-v8.0.0`.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a detached session the base restarted under reads as gone without an exit, after `wsl --terminate` as after a restart of WSL's VM. `wait` and `logs --follow` answer 1 at once, `inspect` prints `gone`, and `wait --json` adds `session.lost`, `restart` or `reused` | waited on such a session, which 7.0.2 did until whatever held its old supervisor id ended | reads `lost` |
+| a session a 7.x build started is held to its supervisor's own arguments. Where its supervisor id names a process without them, it reads as gone, with `lost` `reused` | waited on, or stopped, such a session after a restart | reads `lost` |
+| `stop` of such a session signals nothing and exits 0. Its `--json` reads `before` `ended` and `exit` 1. So does a stop that finds the session lost only as it reaches it, where it said `running` and `stopped` | relied on that stop to end the process group its old id names, which may be another agent's | nothing: that group is not the session's |
+| `gc` and `resources` read such a session as ended, where a reused supervisor id read as running. `gc --apply` removes it | kept such a session by its `running` state | nothing: its supervisor is gone |
+| every owner's `base ensure` writes `/usr/local/lib/wsl-toolkit/boot.sh` and names it in `/etc/wsl.conf`'s `[boot]`, sealed base or not. WSL runs it from the next start, so nothing restarts for it | edits `/etc/wsl.conf` itself, or expects it to change only at provisioning | leaves the line to this tool. A file this tool did not write, or one naming another boot command, is left as it is |
+| a sealed base's `/usr/local/lib/wsl-toolkit/seal-boot.sh` gives way to `boot.sh`, and its log moves from `/run/wsl-toolkit-seal.log` to `/run/wsl-toolkit-boot.log` | checks for `seal-boot.sh`, or reads its log | checks `boot.sh` and reads `/run/wsl-toolkit-boot.log` |
+| `base ensure` writes `/usr/local/lib/wsl-toolkit/run-state.sh` and `/etc/tmpfiles.d/wsl-toolkit.conf`, and on a systemd base enables `wsl-toolkit-run-state.service` | expects no unit of this tool's beside its own | leaves the unit to this tool |
+| the engine's state is held to a start of the base, in `.wsl-toolkit-run-state.start` beside its lock. A state an earlier start left is cleared at the next start and before each job, as another boot's was. A live `conmon` of the account keeps it | relied on podman reading an earlier start's containers as running after `wsl --terminate` | nothing: every process of that start ended |
+| a probe that fails over another boot's record ends its problem with this tool's words naming the boot id | matches the problem's text exactly | reads the `stale-run-state` remediation |
+| `examples` and the man page add the nested engine shape. `run` prints a stderr note naming it after a job whose nested podman found no `/dev/fuse` | treats every stderr line of `run` as one it knows | reads the job's own exit |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

@@ -401,6 +401,25 @@ printf 'engine %s\n' "$(podman --version 2>/dev/null | head -1)"
 printf 'runtime-dir %s\n' "${XDG_RUNTIME_DIR:-unset}"
 printf 'user %s uid %s\n' "$(id -un)" "$(id -u)"
 
+# >>> the run state's boot: begin
+# ⭐ THE ENGINE'S OWN RECORD, READ BESIDE THIS BOOT, before the engine is asked
+# anything. A run that fails over a record naming another boot is the state
+# `base ensure --repair` clears, whatever words podman chose for it, so the
+# failure is classified from this row and not from podman's text. WSL-178.
+#
+# ⚠ An absent record, an empty one and one naming this boot are all current, as
+# stale.sh reads them.
+run_state=current
+if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -s "$XDG_RUNTIME_DIR/libpod/tmp/alive" ]; then
+  rs_cached=$(cat "$XDG_RUNTIME_DIR/libpod/tmp/alive" 2>/dev/null) || rs_cached=
+  rs_now=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null) || rs_now=
+  if [ -n "$rs_cached" ] && [ -n "$rs_now" ] && [ "$rs_cached" != "$rs_now" ]; then
+    run_state=stale
+  fi
+fi
+printf 'run-state %s\n' "$run_state"
+# <<< the run state's boot: end
+
 # >>> the probe image: begin
 # ⛔ THE PULL IS ITS OWN STEP, BOUNDED, AND ITS FAILURE IS NOT A VERDICT. The run
 # below pulled with --pull=missing, so a registry that refused or did not answer
