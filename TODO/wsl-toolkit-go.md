@@ -16952,7 +16952,7 @@ its two rows: red on Windows and in golang:1.25
 
 ## Problem
 
-`WSL-187` settles `--home` and `WSL_TOOLKIT_HOME` through `msysHostPath` before anything reads them. `WSL_TOOLKIT_CACHE` still goes through `filepath.Abs` alone, so from Git Bash a value like `/c/Users/me/cache` names a directory `c` under the drive's root.
+`WSL-187` settles `--home` and `WSL_TOOLKIT_HOME` through `msysHostPath` before anything reads them. `WSL_TOOLKIT_CACHE` still goes through `filepath.Abs` alone, so from Git Bash a value like `/d/cache` names a directory `d` under the current drive's root.
 
 ## Premise
 
