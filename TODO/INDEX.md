@@ -20,7 +20,7 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 257  open 9  blocked 5  done 243
+total 257  open 6  blocked 5  done 246
 ```
 
 | priority | open | blocked | done | total |
@@ -28,8 +28,8 @@ total 257  open 9  blocked 5  done 243
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
 | P2 | 2 | 2 | 114 | 118 |
-| P3 | 7 | 3 | 25 | 35 |
-| **all** | **9** | **5** | **243** | **257** |
+| P3 | 4 | 3 | 28 | 35 |
+| **all** | **6** | **5** | **246** | **257** |
 
 ---
 
@@ -50,11 +50,11 @@ total 257  open 9  blocked 5  done 243
 | DOC-08 | P2 | L | done | The live pages carry dated measurements and the story of their own work again | [`docs.md`](docs.md) |
 | DOC-09 | P2 | M | done | The methodology is a month behind TEMPLATE | [`docs.md`](docs.md) |
 | DOC-10 | P1 | S | done | The record carries history, a findings list and every session's measurements | [`docs.md`](docs.md) |
-| DOC-11 | P3 | S | open | Lessons the old record held have no live page | [`docs.md`](docs.md) |
-| DOC-12 | P3 | S | open | The muse-code guide starts an agent named `muse` and then prompts `work` | [`docs.md`](docs.md) |
+| DOC-11 | P3 | S | done | Lessons the old record held have no live page | [`docs.md`](docs.md) |
+| DOC-12 | P3 | S | done | The muse-code guide starts an agent named `muse` and then prompts `work` | [`docs.md`](docs.md) |
 | DOC-13 | P3 | S | done | The router and the rules count the release and CI wrong | [`docs.md`](docs.md) |
 | DOC-14 | P2 | M | open | The skills tell an agent things the tool does not do | [`docs.md`](docs.md) |
-| DOC-15 | P3 | S | open | The consumer register misses one consumer and describes another's call wrongly | [`docs.md`](docs.md) |
+| DOC-15 | P3 | S | done | The consumer register misses one consumer and describes another's call wrongly | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |

@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 7.0.2 published from a031bcf, installed and driven
-entries         total 257  open 9  blocked 5  done 243
+entries         total 257  open 6  blocked 5  done 246
 this session    ruling 31
 ```
 
@@ -94,7 +94,7 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    eleven are done and merged; the release follows CI.
 3. **The record and the checks that hold it**, first, because every later commit
    is checked by them: `DOC-10`, `TOOL-29`, `TOOL-30`, `DOC-09`, `TOOL-31`,
-   `TOOL-35`, `DOC-13`, `DOC-11` and `DOC-12`.
+   `TOOL-35`, `DOC-13`, `DOC-11` and `DOC-12`. **Closed:** `DOC-11` and `DOC-12` last, from `r8/docs`.
 4. **The survey's asks**, in parallel by code area: jobs `WSL-120`, `WSL-121`,
    and the cap in `WSL-136` (F1); `run` and the configuration `WSL-122`,
    `WSL-123`, `WSL-128`, `WSL-129`, `WSL-131`, `WSL-161` (F2); `base exec`
@@ -106,7 +106,8 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    `WSL-183` to `WSL-188`, `WSL-170` and `DOC-15`**: adapters `WSL-139`, `WSL-141`, `WSL-144`,
    `WSL-157` (F6a); fixes `WSL-149`, `WSL-151`, `WSL-152`, `WSL-154`, `WSL-156`,
    `WSL-160`, `WSL-162`, `WSL-163`, `WSL-164` (F6b); and here `WSL-132`, `WSL-142`,
-   `WSL-145` and `WSL-148`.
+   `WSL-145` and `WSL-148`. **Closed:** all merged; the `r8/*` groups finished the audit's rows and
+   `DOC-15`. `WSL-188`'s two larger parts are split into entries of their own.
 6. **The tooling**: `TOOL-32`, `TOOL-33`, `TOOL-37` and `TOOL-38`, and `text-tool`'s
    `WSL-165`. **Closed:** all five done; the last three merged from `rb/f7-tooling`.
 7. **The skills**, `DOC-14`, reviewed against what the tool does once the builders are

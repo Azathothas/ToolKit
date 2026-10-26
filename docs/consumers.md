@@ -28,18 +28,21 @@ were checked rather than assuming the answer.
 ## The register
 
 Each row is read from the consumer's own tree, and a change to a fetched contract
-reads it again.
+reads it again. ⭐ A row names the commit it was read at, and the file and line of
+each call. `DOC-15`
 
 | consumer | current relationship | what it must do before moving |
 | --- | --- | --- |
-| `Azathothas/TEMPLATE`, at `docs/containers.md` and `docs/agent-tooling.md` | describes the tool as a PowerShell product and an executable, with a launcher | rewrite its guide from the latest manual |
-| `Azathothas/bit-cli`, at `scripts/wsl-tool.ps1` and `docs/containers.md` | its wrapper runs the deleted launcher at a pinned commit with SHA-256 pins, and its guide fetches `wsl-ephemeral.ps1` by raw URL at a commit it resolves | keep its current pin until it chooses to move, then choose an executable release, verify it, and translate its own invocation from the latest manual |
-| `Azathothas/podbox`, at `docs/containers.md`, `docs/agent-tooling.md` and `experiments/` | calls an installed executable with `--instance podbox`: `run --script`, `base status --probe`, `base ensure --probe`, `resources`, `gc --apply --older-than`, `gc --job ID --apply`, `hostaddress`. Reads the three skills from `main` by raw URL | read the latest manual, then replace the wrappers written around a job that outlives its client with `run --detach`, `logs ID --follow`, `wait ID`, `stop ID` and `base exec --detach`, and pass a device and a second file with `--device` and `--input`. Before `wsl-toolkit-v7.0.0`, read its breaks below: `gc --job` exits 2 for an id this instance does not hold, `base ensure` registers QEMU handlers, and printed commands name `--instance podbox` |
-| `Azathothas/podssh`, at `scripts/dev-wsl.sh` and `scripts/dev.sh` | bridges every call from Git Bash through PowerShell, keeps seven `--exclude` patterns in a shell string, holds its builds apart with a lock directory of its own, and its `clean` removes nothing, because `gc` took every project's jobs | read the latest manual, then call the tool from Git Bash with `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` exported, pass `--workspace "$PWD"`, `--script -` and `--gitignore`, hold builds with `--exclusive`, and clean with `gc --workspace .` |
-| `Azathothas/pg-toolkit`, at `cmd/pg-devenv` | calls an installed executable with `--instance pg-toolkit`: `config --json`, `config --write`, `base ensure`, `base exec --dir`, `base shell`, `base status`, `base remove --yes`, `resources`, `selfupdate --check` and `version` | read the breaks below before `wsl-toolkit-v7.0.0`: its `base ensure` registers QEMU handlers and can exit 2 over them, and a grant whose directory is gone makes `base status` exit 1 where `config` refused before |
-| `Azathothas/agent-box`, at `xtask/src/linux.rs` | runs `run --image IMAGE --workspace DIR -c COMMAND`, with `--device /dev/kvm` where asked, from `PATH` | nothing for `wsl-toolkit-v7.0.0`. `--gitignore` can shrink its workspace copy |
-| `Azathothas/dash.vpn.ajam.dev`, at `docs/operations/linux.md` | a recipe an operator follows from PowerShell: `run`, `base shell`, `base exec`, `distro new`, `stop` and `gc --apply` | nothing for `wsl-toolkit-v7.0.0`. Its rule against Git Bash can become the two variables the manual names |
-| `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | carries a vendored copy and fetches nothing from ToolKit | nothing here can update it; its owner decides whether to replace the copy |
+| `Azathothas/TEMPLATE` at `a970fe5`: `docs/containers.md:46-52` and `:85-92`, and `docs/agent-tooling.md:78-83` | names the tool and links the three skills on `main` by URL. It describes no flag, subcommand or version of the tool | nothing for `wsl-toolkit-v8.0.0`. A skill renamed or moved breaks its links |
+| `Azathothas/bootroot` at `3ea1187`, `Azathothas/errand-box` at `57231da`, `Azathothas/dht-research` at `a65b63a` and `Azathothas/b-ids` at `8689c1e`, each at `docs/containers.md` and `docs/agent-tooling.md` | carry a copy of TEMPLATE's two pages. errand-box's describe the tool as TEMPLATE's do (`agent-tooling.md:75`), and link the skills on `main` (`containers.md:88-90`). bootroot's link the skills on `main` too (`containers.md:70-71`). Its `experiments/10-reconciled-docs.sh:99-102` and `:147-148` check those links and run `wsl-toolkit --version`. bootroot's, dht-research's and b-ids' pages are older. Each describes a tool that makes a throwaway distribution and removes it, at `agent-tooling.md:73`, `:65` and `:123` in that order. bootroot's `containers.md:70` says the skill runs a job in a throwaway machine | nothing for `wsl-toolkit-v8.0.0`. A skill renamed or moved breaks bootroot's and errand-box's links, and bootroot's check. bootroot, dht-research and b-ids rewrite their two pages from the latest manual |
+| `Azathothas/bit-cli` at `cce8131`: `scripts/wsl-tool.ps1:83-141`, `scripts/toolkit-pin.json` and `docs/containers.md:46-50` | its wrapper runs the deleted launcher at the pinned `8efe6e0`, with SHA-256 pins for the launcher and the tool. Its guide moves the pin by resolving `main` and fetching `wsl-ephemeral.ps1` by raw URL there, which answers 404 | keep its current pin until it chooses to move, then choose an executable release, verify it, and translate its own invocation from the latest manual |
+| `Azathothas/podbox` at `452d792`, every call with `--instance podbox`: `scripts/windows/run-in-base.sh`, `scripts/dev-lane.sh`, `crates/podbox-gate/src/main.rs:3213-3216` and `dev.rs:622` and `:933-951`, `scripts/windows/kvm-watchdog.py` and `kvm-guest.py`, `experiments/384-windows-lane-v6.sh:26-90`, and `docs/containers.md:47-48`, `:95-97` and `:120-122` | `run --image --workspace . --container-lifecycle ephemeral`, eight `--exclude`, `--script`, `--timeout` and `--tick` (`run-in-base.sh:146-172`). It adds `--input job.sh=FILE` for a caller's job, and `--artifacts DIR` where asked. It exits with the tool's code (`:173-174`). The lane passes the same, with `--max-bytes`, `--user 0:0`, two `--input` and `--json` (`dev-lane.sh:262-285`). It exits with that code too (`:336`). `gc`, `gc --apply` and `gc --job ID --apply`, counting `host dir` lines and the id in `gc`'s text (`dev-lane.sh:92-103`, `:298-299`). `gc --json`, reading `wsl-toolkit-cleanup/1` and `dry_run` (`main.rs`). `base status --probe` (`dev-lane.sh:116`, `dev.rs:933-938`), and `podbox-dev session` runs `base ensure --probe` (`dev.rs:946-951`). `base exec -c`, `base exec --detach --json --script`, `wait ID --timeout`, `stop ID` and `logs ID --follow` (`kvm-watchdog.py:83-262`, `kvm-guest.py:88-121`). Without `--unattended`, `kvm-guest.py:97-100` runs `base exec --timeout 65m --script` and waits on it. Its Windows-lane proof runs three jobs through `run-in-base.sh`, then `gc --job ID --apply` for each, and fails on any exit but 0 (`384-windows-lane-v6.sh:77-85`). `resources` (`containers.md:120`) and `version` (`dev.rs:622`). The watchdog keeps a file of its own in the tool's state directory (`kvm-watchdog.py:65-70`). It no longer reads the skills by URL or calls `hostaddress` | before `wsl-toolkit-v8.0.0`, read the breaks below. `run`, `base exec`, `wait` and `logs ID --follow` answer 125 where the tool could not run the job. `run-in-base.sh` documents 2 for that (`:32`), and now exits 125. So does the lane, once the answer carries a job id (`dev-lane.sh:17`, `:336`). A refusal before an id still exits 2 there (`:296`). `--tool-exit 2` or `WSL_TOOLKIT_TOOL_EXIT=2` keeps 2. An ephemeral `run` now takes its host record with it, so a `gc --job ID --apply` after it exits 2. `dev-lane.sh:298` discards that exit. ❌ The Windows-lane proof does not, so it reports a mismatch and exits 1 (`384-windows-lane-v6.sh:78-84`). `run-in-base.sh:27` and `docs/containers.md:95-97` say the host record stays until `gc`, and `:122` collects it by id. Neither holds for an ephemeral job. From inside a packaged app, a `base ensure --probe` that would re-provision is refused, and it installs no adapter |
+| `Azathothas/podssh` at `3ad3203`: `scripts/dev-wsl.sh` and `scripts/dev.sh` | bridges every call from Git Bash through PowerShell, each argument as base64 (`dev-wsl.sh:200-211`). Its builds run `run --image`, with `--workspace` where the tree goes in. They add seven `--exclude`, `--script` or `--command-base64`, two `--env`, `--container-lifecycle ephemeral` and `--timeout 60m` (`dev-wsl.sh:63-97`). Its `images` runs `run --image --command-base64 --container-lifecycle ephemeral --timeout 10m`, with no workspace (`dev.sh:242-243`). It keeps the seven `--exclude` patterns in a shell string (`dev-wsl.sh:50`). It holds its builds apart with a lock directory of its own (`dev.sh:337`). Its `clean` is `gc --older-than 0s`, which removes nothing, because `gc` reaches every project's jobs (`dev.sh:273`) | read the latest manual. Then call the tool from Git Bash with `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` exported. Pass `--workspace "$PWD"`, `--script -` and `--gitignore`, hold builds with `--exclusive`, and clean with `gc --workspace .`. Before `wsl-toolkit-v8.0.0`, read the exit code break below. `run` answers 125 where the tool could not run the job |
+| `Azathothas/pg-toolkit`, a private repository, at `cmd/pg-devenv` | calls an installed executable with `--instance pg-toolkit`: `version`, `config --json`, `config --write`, `base ensure` or `base recreate`, `base exec` with `--root` for another account, `base shell`, `base remove --yes`, `base status`, `resources` and `selfupdate --check`. On a failed ensure it prints `base ensure --repair` as the fix. `pg-devenv` exits with the tool's code. Its guest scripts share the tool's run directory and match a distribution named `wsl-toolkit-*` | before `wsl-toolkit-v8.0.0`, read the breaks below. `base exec` and `base shell` answer 125 where the tool could not run the command, and `pg-devenv` passes that on where its contract reads 2. `--tool-exit 2` or `WSL_TOOLKIT_TOOL_EXIT=2` keeps 2. From inside a packaged app, `base remove --yes` and `base recreate` are refused. So is an `up` whose `base ensure` would re-provision, and the `base ensure --repair` it prints. A grant whose directory is gone makes `base status` exit 1 where `config` refused before |
+| `Azathothas/agent-box` at `369613d`: `xtask/src/linux.rs`, `xtask/src/linux/args.rs`, `xtask/src/doctor/host.rs` and `docs/development.md` | `cargo xtask linux` starts `wsl-toolkit` from `PATH` with no shell between (`linux.rs:102-103`). Its arguments are `run --image IMAGE --workspace DIR`, five `--exclude`, `--env CARGO_BUILD_JOBS=N`, `--container-lifecycle`, `--timeout 60m` and `--command-base64` (`args.rs:149-176`). It adds `--device /dev/kvm` where asked. It exits with the tool's code (`linux.rs:161-165`). `cargo xtask doctor` runs `version`, and with `--kvm` the same `run` with no workspace (`host.rs:44`, `:180-181`). Its guide cleans with `gc --older-than 24h`, then with `--apply` (`development.md:359-360`) | before `wsl-toolkit-v8.0.0`, read the exit code break below. A refusal it passed on as 2 now reaches its caller as 125. Its guide says 2 means it could not start the tool (`development.md:83`). `--tool-exit 2` or `WSL_TOOLKIT_TOOL_EXIT=2` keeps 2. `--gitignore` can shrink its workspace copy |
+| `Azathothas/dash.vpn.ajam.dev`, a private repository, at its operations guide | a recipe an operator follows from PowerShell. It names `run` with `-c`, `--workspace` and `--exclude`, `base shell`, `base exec -c`, `distro new --image --ephemeral -c`, `stop ID`, `gc --apply` and `base remove --yes`. Also `doctor`, `ready`, `ready --smoke`, `base status --probe`, `man --no-pager` and `examples`. Its table names the base distribution `wsl-toolkit` | before `wsl-toolkit-v8.0.0`, read the breaks below. `run`, `base exec`, `base shell` and `distro new -c` answer 125 where the tool could not run the command. A new host's default base is `wsl-toolkit-jobs`, and `base remove --yes` is refused from inside a packaged app. Its rule against Git Bash can become the two variables the manual names |
+| `Azathothas/tcp.ts.relay.ajam.dev`, a private repository, at its client build script | prints the version of each Linux binary it builds by running it with `wsl.exe -d` in the distribution `WSL_DISTRO` names, `wsl-toolkit` by default, through automount at `/mnt/`. It runs as the base's default account, `base.user`, not root (`DOC-15`). A failure is silent, and the script prints that the binary is not runnable | on a host whose default base `wsl-toolkit-v8.0.0` built, set `WSL_DISTRO` to the `name` that `base status --json` reads, `wsl-toolkit-jobs`. A base with automount off cannot reach the binaries |
+| `pkgforge-dev/cross-libc-dlopen` at `586e61b`: `scripts/wsl-ephemeral.ps1` | carries a vendored copy and fetches nothing from ToolKit | nothing here can update it; its owner decides whether to replace the copy |
 
 ⭐ **The published executable CARRIES the three fetched scripts**, so a machine with
 the binary needs no clone and no fetch. `wsl-toolkit shipped list` prints each
@@ -106,9 +109,18 @@ by name, and `base.name` chooses. A new instance named `base` or `jobs` is refus
 existing one stays reachable. `muse.exe`, `pi.exe` and `omp.exe` reach the default base,
 not the instance `base`, which ruling 33 removes.
 
-⚠ **The register's rows list no call that names `wsl-toolkit` as a distribution or
-the instance `base`.** Their own trees were not read again for this change, so each row
-is read before the release.
+⚠ **Two rows name `wsl-toolkit` as a distribution, and none names the instance
+`base`.** Each row was read again for `DOC-15`. tcp.ts.relay's build script runs its
+binaries with `wsl.exe -d wsl-toolkit`. Where no base has that name, it prints that
+they are not runnable and goes on. dash.vpn's guide names its base distribution
+`wsl-toolkit`.
+
+⚠ **From inside a packaged app, the third row above reaches three rows.**
+pg-toolkit's `base remove --yes` and `base recreate`, and dash.vpn's `base remove
+--yes`, are refused there. So is a `base ensure` that would re-provision, which
+pg-toolkit's `up` and podbox's `podbox-dev session` both run. So is the `base ensure
+--repair` that pg-toolkit prints as its fix. No adapter is installed from there.
+
 ### ⚠ What the instance prefix changes, and what a caller does
 
 `WSL-193`. Not released yet. An existing instance keeps its name, so no working call
@@ -127,6 +139,11 @@ now its host record goes too, once its answer is written.
 | --- | --- | --- |
 | an attached ephemeral job removes its host record when it ends. Its answer is kept for 10 minutes, so `wait ID` and `logs ID --follow` still answer its verdict | reads `logs ID`, `inspect ID` or `gc --job ID` for an ephemeral job long after it ended | reads the answer `run` printed, or runs the job without `--container-lifecycle ephemeral`, which keeps the record |
 
+⚠ **The row it reaches, read again for `DOC-15`.** podbox runs each `run` ephemeral,
+then `gc --job ID --apply`, which now exits 2. Its lane discards that exit, and its
+Windows-lane proof fails on it. agent-box and podssh run ephemeral jobs too, and read
+nothing of one after it ends.
+
 ### ⚠ What an empty `/out` changes, and what a caller does
 
 `WSL-124`. Not released yet.
@@ -134,6 +151,10 @@ now its host record goes too, once its answer is written.
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
 | `run --artifacts DIR` makes `DIR` with the first entry that arrives, so a job that leaves `/out` empty makes no directory, on the direct route and through the helper | tests that `DIR` exists to learn that the job ran | reads `artifacts` in the `--json` answer, which is 0, or makes `DIR` itself first |
+
+⚠ **No row is reached, each read again for `DOC-15`.** podbox passes `--artifacts`
+from two scripts, and each makes the directory first (`run-in-base.sh:158`,
+`dev-lane.sh:266`). No other row passes it.
 
 ### ⛔ What a project lending every `jobs` key breaks, and what a caller does
 
@@ -251,9 +272,13 @@ where this tool could not run the job. So a job's 2 is never read as a refusal.
 ⚠ **Every other command keeps 2 for a refusal**, `matrix`, `stop`, `config
 validate` and `gc --job` included. None of them answers a job's own code.
 
-⚠ **The rows it reaches:** agent-box and podbox call `run`, dash.vpn calls `run`,
-`base exec` and `base shell`, and pg-toolkit calls `base exec` and `base shell`. Their
-own trees were not read again for this change, so each is read before the release.
+⚠ **The rows it reaches, each read again for `DOC-15`.** agent-box, podbox and podssh
+call `run`, and podbox also `base exec`, `wait` and `logs ID --follow`. dash.vpn's
+guide calls `run`, `base exec`, `base shell` and `distro new`. pg-toolkit calls `base
+exec` and `base shell`. ⚠ agent-box, podbox, podssh and pg-toolkit exit with the tool's
+code, so their own callers read 125 too. Four of their contracts read 2 as could not
+run: agent-box's `development.md:83`, podbox's `run-in-base.sh:32` and
+`dev-lane.sh:17`, and pg-toolkit's.
 
 ### ⛔ What `text-tool eol` refusing a missing path breaks, and what a caller does
 

@@ -2,6 +2,24 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "check: two skills may share a sentence, and a skill and another page may not",
+      "module": "tools/check",
+      "file": "internal/checks/bytes.go",
+      "find": " || every(files, standaloneSkill) {\n",
+      "replace": " {\n",
+      "run": "TestTwoSkillsMayShareASentenceAndNoOtherPageMay",
+      "args": []
+    },
+    {
+      "label": "check: a page under skills that is not a skill shares no sentence with one",
+      "module": "tools/check",
+      "file": "internal/checks/bytes.go",
+      "find": "\treturn strings.HasPrefix(f, SkillsDir) && strings.HasSuffix(f, \"/SKILL.md\")\n",
+      "replace": "\treturn strings.HasPrefix(f, SkillsDir)\n",
+      "run": "TestTwoSkillsMayShareASentenceAndNoOtherPageMay",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the acceptance marker case reads every byte of its restore back, under pwsh",
       "module": "tools/windows/wsl-toolkit",
       "file": "acceptance.ps1",

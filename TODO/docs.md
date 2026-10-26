@@ -668,7 +668,7 @@ wc -l TODO/PROGRESS.md               110
 ## DOC-11. Lessons the old record held have no live page
 
 **Source** the classification of the old record, 2026-10-21
-**Category** docs, **Priority** P3, **Effort** S, **Status** open
+**Category** docs, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -703,13 +703,13 @@ Exit 0.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/docs`.** Five lessons already had their live page: findings 58 and 35 are rows of the forbidden patterns, "this session" is in the prose rules, finding 85's narrowing of 63 is in the shell rules, and the review lenses are in the review method. This merge adds the rest: the herdr guide says a wait can miss an agent already idle and to read `agent get` first, and the skill's rule on a pipe's status is narrowed to what pwsh 7.6 measured. The gate passes.
 
 
 ## DOC-12. The muse-code guide starts an agent named `muse` and then prompts `work`
 
 **Source** found while classifying the old record's finding 61
-**Category** docs, **Priority** P3, **Effort** S, **Status** open
+**Category** docs, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -741,7 +741,7 @@ Exit 0.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, already fixed on main by `ec99416` (F6a, `WSL-144`).** The muse-code guide starts the agent as `muse` and prompts and reads `muse`. The other guides that start an agent as `work` address it as `work`. `r8/docs` checked it and changed nothing.
 
 
 ## DOC-13. The router and the rules count the release and CI wrong
@@ -837,7 +837,7 @@ Open.
 ## DOC-15. The consumer register misses one consumer and describes another's call wrongly
 
 **Source** the triage of 2026-10-24
-**Category** docs, **Priority** P3, **Effort** S, **Status** open
+**Category** docs, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -873,4 +873,6 @@ Exit 0.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/docs`.** The register is read again, row by row. It adds tcp.ts.relay.ajam.dev, whose build script runs each binary with `wsl.exe -d`, and one row for the four projects that carry TEMPLATE's pages. It corrects agent-box's flags, names podbox's lane proof and pg-toolkit's exit contract under the 125 break, and says what a packaged app is refused. The Problem's "as root" is wrong: `wsl.exe -d wsl-toolkit -- id` answered uid 1000, the base's default account.
+
+⚠ The Approach asked for each row's file and line. For the three private repositories, pg-toolkit, dash.vpn.ajam.dev and tcp.ts.relay.ajam.dev, the public register keeps the name, the commands and what each must do, and leaves their file paths, lines and commits out. agent-box and cross-libc-dlopen were read through GitHub, with no local copy.

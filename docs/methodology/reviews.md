@@ -100,10 +100,11 @@ system confirms it.
 
 ## More than three, when the change earns it
 
-A fourth and fifth are welcome. Two that pay often:
+A fourth and fifth are welcome. Four that pay often:
 
 - **"What did I measure but never verify?"** A number taken and never checked
-  against a second source.
+  against a second source. It found a record saying seven call sites where
+  `grep -c` counted eight.
 - **"What did the driven pass show that the suite could not?"** Naturally
   distinct from the door sweep, because it starts from the user rather than
   from the code.

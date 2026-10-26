@@ -45,9 +45,9 @@ If its name and place are right, run `selfupdate`.
 `export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` stops it. Every example here is
 PowerShell, and one example pipes into `ConvertFrom-Json`, which is PowerShell only.
 
-⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** A pipeline reports
-its own status and not the tool's. Read `$LASTEXITCODE` on the line after the
-command.
+⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** Piped into another
+program, such as `findstr`, `$LASTEXITCODE` is that program's code, not the tool's.
+Read it on the line after the command, with nothing piped.
 
 ⚠ **Asking for help is not a failure.** `wsl-toolkit base --help` and every
 `wsl-toolkit base SUBCOMMAND --help` answer 0. `wsl-toolkit base` with no

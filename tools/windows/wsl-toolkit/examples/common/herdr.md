@@ -183,6 +183,10 @@ wsl-toolkit base herdr -- agent prompt work "summarise what you just changed"
 wsl-toolkit base herdr -- agent read work --source recent --lines 40
 ```
 
+⚠ **`agent wait work --until idle` can time out over an agent that is idle already.**
+Its turn can end before the wait begins, so that timeout proves no failure. Read the
+state with `agent get work` first, and wait only for a state it is not in. `DOC-11`
+
 ⭐ **`agent read` is how you check what an agent is really doing**, including which
 model and effort it started on. Each agent prints that in its own status line:
 

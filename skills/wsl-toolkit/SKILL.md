@@ -74,9 +74,9 @@ MSYS2_ARG_CONV_EXCL='*'` stops it, and the tool then reads a host path such as
 `"$PWD"` in MSYS's spelling, `--home`, `WSL_TOOLKIT_HOME` and `WSL_TOOLKIT_CACHE`
 included. Every example here is PowerShell.
 
-⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** `cmd | Select-Object`
-gives you the pipeline's status, not the tool's. Read `$LASTEXITCODE` on the line
-after the command.
+⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** Piped into another
+program, such as `findstr`, `$LASTEXITCODE` is that program's code, not the tool's.
+Read it on the line after the command, with nothing piped.
 
 ⭐ **A job's code and the tool's are apart.** A command that runs a job answers the
 job's own code. Where the tool could not run the job, or lost how it ended, it answers
