@@ -1799,6 +1799,10 @@ func liveMountPayloads(cfg Config) (fstab64, checks string, err error) {
 
 // renderBaseMounts writes the fstab block and the read-back lines for a set of
 // grants whose sources exist.
+//
+// ⚠ uid=1000 AND gid=1000 ARE THE IDS PROVISIONING ASKS FOR, not the account's
+// own. grants.sh puts the account's in their place where they differ, and the
+// verifier refuses a grant mounted for another uid. WSL-188.
 func renderBaseMounts(mounts []BaseMount) (fstab64, checks string, err error) {
 	var fstab strings.Builder
 	var verify strings.Builder
@@ -2000,6 +2004,7 @@ func verifyEnv(cfg Config, m1, m2 string) (map[string]string, error) {
 	owner, _ := grantOwner(cfg)
 	return map[string]string{
 		"TK_IMAGE":             VerifyImage,
+		"TK_IMAGE_REGISTRY":    registryName(VerifyImage),
 		"TK_M1":                m1,
 		"TK_M2":                m2,
 		"TK_AUTOMOUNT":         automount,
@@ -2142,6 +2147,17 @@ func imageRegistry(ref string) string {
 		return host
 	}
 	return "docker.io"
+}
+
+// registryName is the host name a reference's registry is resolved by, its port
+// left off. A sealed base's verifier resolves it, since its probe pulls from it.
+// WSL-188.
+func registryName(ref string) string {
+	host := imageRegistry(ref)
+	if i := strings.LastIndex(host, ":"); i > 0 {
+		host = host[:i]
+	}
+	return host
 }
 
 // notJudgedRefusal is what Ensure answers when the probe was not judged: the

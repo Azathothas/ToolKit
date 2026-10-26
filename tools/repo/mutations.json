@@ -2,6 +2,186 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: provisioning waits for the shared resolver",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  while [ ! -s /mnt/wsl/resolv.conf ] && [ \"$resolv_wait\" -lt 10 ]; do\n",
+      "replace": "  while false; do\n",
+      "run": "TestProvisioningWaitsForTheSharedResolver",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a sealed base's start waits for the shared resolver",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/boot.sh",
+      "find": "    while [ ! -s /mnt/wsl/resolv.conf ] && [ \"$w\" -lt 10 ]; do\n",
+      "replace": "    while false; do\n",
+      "run": "TestTheBootScriptWaitsForTheSharedResolver",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a sealed base that cannot resolve is not judged",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "      printf 'verify-pull: lookup %s: the resolver in /etc/resolv.conf did not answer\\n' \"$TK_IMAGE_REGISTRY\" >&2\n      exit 4\n",
+      "replace": "      exit 3\n",
+      "run": "TestASealedBaseThatCannotResolveIsNotJudged",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a sealed base resolves its probe's registry, not github.com",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "! getent hosts \"$TK_IMAGE_REGISTRY\" >/dev/null 2>&1; then\n",
+      "replace": "! getent hosts github.com >/dev/null 2>&1; then\n",
+      "run": "TestASealedBaseThatCannotResolveIsNotJudged",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the probe's registry is resolved without its port",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif i := strings.LastIndex(host, \":\"); i > 0 {\n\t\thost = host[:i]\n",
+      "replace": "\tif i := strings.LastIndex(host, \":\"); false && i > 0 {\n\t\thost = host[:i]\n",
+      "run": "TestTheVerifierIsHandedTheProbesRegistryName",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier is handed the probe's registry",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\"TK_IMAGE_REGISTRY\":    registryName(VerifyImage),\n",
+      "replace": "\t\t\"TK_IMAGE_REGISTRY\":    \"github.com\",\n",
+      "run": "TestTheVerifierIsHandedTheProbesRegistryName|TestASealedBaseThatCannotResolveIsNotJudged",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account's engine settings are a drop-in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "CONF_PATH=$CONF_DIR/10-wsl-toolkit.conf\n",
+      "replace": "CONF_PATH=$TK_HOME/.config/containers/containers.conf\n",
+      "run": "TestAReProvisioningKeepsTheOperatorsEngineSettings",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the registries settings are a drop-in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "REG_PATH=/etc/containers/registries.conf.d/99-wsl-toolkit.conf\n",
+      "replace": "REG_PATH=/etc/containers/registries.conf\n",
+      "run": "TestAReProvisioningKeepsTheOperatorsEngineSettings",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the containers.conf an earlier release wrote is removed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  rm -f \"$OLD_CONF\"\n",
+      "replace": "  :\n",
+      "run": "TestAnEarlierReleasesEngineSettingsMoveToTheDropIns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a v1 registries.conf is written whole",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  REG_PATH=/etc/containers/registries.conf\n",
+      "replace": "  :\n",
+      "run": "TestAnEarlierReleasesEngineSettingsMoveToTheDropIns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant is read back through su where there is no runuser",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  [ \"$aa_code\" = 127 ] || return \"$aa_code\"\n",
+      "replace": "  return \"$aa_code\"\n",
+      "run": "TestAGrantIsReadBackThroughSuWhereThereIsNoRunuser",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant that cannot be read back is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    *) fail_back \"$target could not be read back as $TK_USER: neither runuser nor su ran a shell as the account\" ;;\n",
+      "replace": "    *) ;;\n",
+      "run": "TestAGrantThatCannotBeReadBackIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a read-only grant the account can write is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    ro:writable) fail_back \"$target is writable by $TK_USER and granted read-only\" ;;\n",
+      "replace": "    ro:writable) ;;\n",
+      "run": "TestAReadOnlyGrantTheAccountCanWriteIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: useradd asks for uid 1000 only where it is free",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      useradd --create-home --shell \"$TK_LOGIN_SHELL\" \"$TK_USER\"\n",
+      "replace": "      useradd --create-home --uid \"$TK_UID\" --shell \"$TK_LOGIN_SHELL\" \"$TK_USER\"\n",
+      "run": "TestTheAccountTakesUid1000OnlyWhereItIsFree",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: adduser asks for uid 1000 only where it is free",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      adduser -D -s \"$TK_LOGIN_SHELL\" \"$TK_USER\"\n",
+      "replace": "      adduser -D -u \"$TK_UID\" -s \"$TK_LOGIN_SHELL\" \"$TK_USER\"\n",
+      "run": "TestTheAccountTakesUid1000OnlyWhereItIsFree",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning reads whether uid 1000 is held",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  uid_taken=$(getent passwd \"$TK_UID\" 2>/dev/null | cut -d: -f1) || uid_taken=\n",
+      "replace": "  uid_taken=\n",
+      "run": "TestTheAccountTakesUid1000OnlyWhereItIsFree",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account's id range starts past every other",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    range_start=$(awk -F: 'BEGIN { s = 100000 } $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $2 + $3 > s { s = $2 + $3 } END { print s }' \"$f\")\n",
+      "replace": "    range_start=100000\n",
+      "run": "TestTheAccountsIdRangeStartsPastEveryOther",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant names the account's own ids",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ -n \"$acct_uid\" ] && [ -n \"$acct_gid\" ] && [ \"$acct_uid:$acct_gid\" != 1000:1000 ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestAGrantNamesTheAccountsOwnIds",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier refuses a grant mounted for another uid",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "  if [ -n \"$ago_uid\" ] && [ \"$ago_uid\" != \"$ago_self\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestTheVerifierRefusesAGrantMountedForAnotherUid",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier asks who owns each explicit mount",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "  assert_grant_owner \"$target\"\n",
+      "replace": "",
+      "run": "TestTheVerifierRefusesAGrantMountedForAnotherUid",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: omp installs bun in one pacman sync and upgrade",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/omp/install.sh",

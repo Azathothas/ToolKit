@@ -162,6 +162,16 @@ fi
 if [ -n "$TK_FSTAB_B64" ]; then
   decode64 block "$TK_FSTAB_B64"
 fi
+# ⛔ THE ACCOUNT'S OWN IDS, NOT 1000. The executable renders 1000, the uid
+# provisioning asks for, and an account that took another because 1000 was held
+# owned none of its grants. Its ids are read here, and the block names them. An
+# account that is 1000 changes nothing. WSL-188.
+acct_uid=$(id -u "$TK_USER" 2>/dev/null) || acct_uid=
+acct_gid=$(id -g "$TK_USER" 2>/dev/null) || acct_gid=
+if [ -n "$acct_uid" ] && [ -n "$acct_gid" ] && [ "$acct_uid:$acct_gid" != 1000:1000 ]; then
+  sed "s/,uid=1000,gid=1000,/,uid=$acct_uid,gid=$acct_gid,/" "$WORK/block" > "$WORK/block.ids"
+  mv "$WORK/block.ids" "$WORK/block"
+fi
 
 # claimed: the targets this run takes from another file's lines. ⛔ A LINE FOLLOWS
 # ITS LEDGER ROW. Write mode takes every target its configuration names, as its
@@ -545,25 +555,40 @@ while read -r mode target; do
 done < "$WORK/targets"
 
 # -- read this call's grant back, as the account ---------------------------------------
+# as_account COMMAND...: COMMAND as the account, through runuser, or through su where
+# there is no runuser.
+#
+# ⛔ ALPINE HAS NO runuser, so every live grant there failed its read-back, and a
+# read-only one passed it. A runuser that is not there answers 127, and su is asked
+# instead. WSL-188.
+as_account() {
+  aa_code=0
+  runuser -u "$TK_USER" -- "$@" 2>/dev/null || aa_code=$?
+  [ "$aa_code" = 127 ] || return "$aa_code"
+  # The command reaches su's shell as its positional parameters, never as source.
+  # shellcheck disable=SC2016
+  su -s /bin/sh "$TK_USER" -c '"$0" "$@"' "$@" 2>/dev/null
+}
+
+# ⛔ THE ANSWER IS READ, NOT THE EXIT CODE. A read-only grant passed whenever the
+# account could not be become at all, because a write that never ran and a write
+# the mount refused both exit nonzero. The account says which it met, and anything
+# else is a read-back that did not happen. WSL-188.
+# The probe path reaches the account's shell as $1, so no Windows path is ever
+# shell source; the single quotes are what keep it an argument.
+# shellcheck disable=SC2016
+probe_write='if : > "$1" 2>/dev/null; then rm -f "$1"; echo writable; else echo refused; fi'
 while read -r mode target; do
   [ -n "$target" ] || continue
   [ "$target" = "$OWN" ] || continue
   [ "$(live_mode "$target")" = "$mode" ] || fail_back "$target is not a live $mode Windows mount after mounting it"
   probe="$target/.wsl-toolkit-write-probe.$$"
-  # The probe path reaches the account's shell as $1, so no Windows path is ever
-  # shell source; the single quotes are what keep it an argument.
-  # shellcheck disable=SC2016
-  case "$mode" in
-    rw)
-      runuser -u "$TK_USER" -- sh -c ': > "$1" && rm -f "$1"' sh "$probe" ||
-        fail_back "$TK_USER cannot write in $target"
-      ;;
-    ro)
-      if runuser -u "$TK_USER" -- sh -c ': > "$1"' sh "$probe" 2>/dev/null; then
-        rm -f "$probe"
-        fail_back "$target is writable by $TK_USER and granted read-only"
-      fi
-      ;;
+  wrote=$(as_account sh -c "$probe_write" sh "$probe") || wrote=
+  case "$mode:$wrote" in
+    rw:writable | ro:refused) ;;
+    rw:refused) fail_back "$TK_USER cannot write in $target" ;;
+    ro:writable) fail_back "$target is writable by $TK_USER and granted read-only" ;;
+    *) fail_back "$target could not be read back as $TK_USER: neither runuser nor su ran a shell as the account" ;;
   esac
   printf 'grant %s %s\n' "$mode" "$target"
 done < "$WORK/targets"

@@ -61,7 +61,7 @@ recorded_image() {
 # `cannot open sd-bus` and every `base ensure` exited 2. cgroupfs and the file
 # backend need neither D-Bus nor journald, and a global option outranks whatever
 # /etc/containers says. The account's engine reads the same two from the
-# containers.conf provision.sh writes for it. WSL-168.
+# containers.conf drop-in provision.sh writes for it. WSL-168.
 root_podman() {
   podman --cgroup-manager=cgroupfs --events-backend=file "$@"
 }

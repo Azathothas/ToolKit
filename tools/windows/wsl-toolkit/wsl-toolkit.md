@@ -1293,6 +1293,11 @@ the running base first, reads its grant back as the account, and then writes the
 configuration file in effect. So a later restart and `base ensure` mount the same
 directories. Nothing restarts, so nothing running in the base stops. `WSL-75`
 
+⭐ **The read-back runs as the account through `runuser`, or `su` where there is
+none, as on Alpine.** The account says whether its write landed. Where neither runs a
+shell as the account, the grant is refused in either mode, and its mount goes. The
+mount names the account's own uid and gid, which `base ensure` verifies. `WSL-188`
+
 ⛔ **Each changes its own target alone.** A mount under `/workspaces` that this
 configuration does not name stays mounted, because another configuration may hold
 it. A project's `wsl-toolkit.json` beside the home's own file is one. A
@@ -1432,6 +1437,17 @@ release left on `/bin/sh`. So an SSH session and `wsl.exe -d NAME -u USER` with 
 command start in bash. A herdr pane starts in bash by herdr's own `default_shell`,
 and `base exec` runs its script with `/bin/sh` whatever the login shell is. A shell
 somebody else gave the account is left. `WSL-143`
+
+⭐ **The account is uid 1000 where that is free, and the next free uid where the
+image holds it.** Its `/etc/subuid` and `/etc/subgid` ranges start past every range
+already there, and never below 100000. `WSL-188`
+
+⭐ **Provisioning's engine settings are drop-ins.** The account's are
+`~/.config/containers/containers.conf.d/10-wsl-toolkit.conf`, and the short-name rule is
+`/etc/containers/registries.conf.d/99-wsl-toolkit.conf`. A mirror or a proxy in either
+main file survives `base ensure`. ⚠ The account's `containers.conf` an earlier release
+wrote goes. A `registries.conf` in the v1 format takes no drop-in, so it is written
+whole. `WSL-188`
 
 ⚠ `passwordless_sudo: true` gives the configured account unrestricted guest root.
 Guest root can mount Windows paths by hand, so this setting serves a trusted agent
@@ -2199,6 +2215,9 @@ does nothing else cannot resolve a name. So, in this order and no other:
 3. The boot script refreshes that file at every start, before it unmounts. A
    refresh that reads short leaves the working file alone.
 
+⚠ **Each waits up to ten seconds for WSL to write the shared file.** Read once, a
+start that came first kept an empty or old resolver. `WSL-188`
+
 ⛔ **`shared_tmpfs: "off"` requires `automount: "off"`** and is refused otherwise.
 Closing the tmpfs while the Windows drives are mounted costs the resolver and seals
 nothing, because the drives are a wider channel than the tmpfs.
@@ -2208,6 +2227,11 @@ nothing, because the drives are a wider channel than the tmpfs.
 no nameserver, or which cannot resolve a name. ⚠ The last one matters because a
 `command=` value that wsl.conf's parser rejects does not run and says nothing. So
 the boot line is a bare path with no shell in it.
+
+⛔ **A name the base cannot resolve is not a verdict on it.** The verifier resolves
+the probe image's registry, `docker.io`, not `github.com`. A failure answers `not
+judged`, as a probe pull the registry refused does, so `base ensure` keeps the base
+as it is. A host with no network is not rebuilt. `WSL-188`
 
 | a base with no grants and `shared_tmpfs: "off"` | result |
 | --- | --- |

@@ -213,7 +213,8 @@ func TestALiveGrantChangeNamesItsOneTarget(t *testing.T) {
 // /proc/mounts in dir and mount, umount and runuser standing in. A stand-in mount
 // adds the target to the mounts file from the source and in the mode the fstab
 // gives it, and fails once when dir holds mount.fail. umount fails once when dir
-// holds umount.fail, and runuser fails while it holds runuser.fail. The grant
+// holds umount.fail, and the account's write is refused while it holds runuser.fail,
+// as grantsStandIns says. The grant
 // ledger is dir's owners file, and the caller's configuration file is grantsMine.
 func grantsDrive(t *testing.T, dir string, mounts []BaseMount, target string) (string, error) {
 	t.Helper()
@@ -278,10 +279,43 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 //
 // ⚠ IN THE SHELL, WITH NO PIPE AND NO SUBSHELL. Git for Windows' sh pays a tenth of
 // a second a fork, and the stand-ins ran on every mount. WSL-190.
+//
+// ⭐ runuser AND su ARE THE ACCOUNT, and answer its write as the target's live mode
+// allows it. The account's write is refused while dir holds runuser.fail, allowed
+// while it holds account.writes, and the account cannot be become at all, answering
+// nothing, while it holds account.silent. runuser answers 127, as one that is not
+// there, while dir holds runuser.gone, and su then logs each call to su.log. The
+// account's ids are account.ids's two, and it has none while that file is absent.
+// WSL-188.
 const grantsStandIns = `
 mkdir() { :; }
 chmod() { :; }
-runuser() { [ ! -e "$TK_TEST_DIR/runuser.fail" ]; }
+runuser() {
+  [ ! -e "$TK_TEST_DIR/runuser.gone" ] || return 127
+  shift 3
+  account_shell "$@"
+}
+su() {
+  printf 'su %s\n' "$3" >> "$TK_TEST_DIR/su.log"
+  shift 5
+  account_shell "$@"
+}
+account_shell() {
+  [ ! -e "$TK_TEST_DIR/account.silent" ] || return 1
+  if [ -e "$TK_TEST_DIR/runuser.fail" ]; then echo refused; return 0; fi
+  if [ -e "$TK_TEST_DIR/account.writes" ]; then echo writable; return 0; fi
+  as_dir=${5%/*}
+  as_mode=
+  while read -r as_source as_target as_type as_options as_rest; do
+    if [ "$as_target" = "$as_dir" ]; then as_mode=${as_options%%,*}; fi
+  done < "$TK_TEST_DIR/mounts"
+  case "$as_mode" in rw) echo writable ;; *) echo refused ;; esac
+}
+id() {
+  [ -e "$TK_TEST_DIR/account.ids" ] || return 1
+  read -r id_uid id_gid < "$TK_TEST_DIR/account.ids"
+  case "$1" in -u) echo "$id_uid" ;; -g) echo "$id_gid" ;; *) return 1 ;; esac
+}
 mount() {
   printf 'mount %s\n' "$1" >> "$TK_TEST_DIR/log"
   if [ -e "$TK_TEST_DIR/mount.fail" ]; then

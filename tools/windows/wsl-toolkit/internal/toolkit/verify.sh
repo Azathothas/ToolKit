@@ -11,6 +11,7 @@
 set -eu
 
 : "${TK_IMAGE:?TK_IMAGE is required}"
+: "${TK_IMAGE_REGISTRY:?TK_IMAGE_REGISTRY is required}"
 : "${TK_M1:?TK_M1 is required}"
 : "${TK_M2:?TK_M2 is required}"
 : "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
@@ -197,9 +198,16 @@ case "$TK_SHARED_TMPFS" in
     # ⚠ RESOLUTION ITSELF, not just the file. A resolver naming an address that
     # answers nothing is exactly what this setting breaks, and the container run
     # further down would fail with a pull error that names none of this.
-    if command -v getent >/dev/null 2>&1 && ! getent hosts github.com >/dev/null 2>&1; then
-      printf 'verify: base.shared_tmpfs is off and this base cannot resolve a name, so the resolver it was left with does not work\n' >&2
-      exit 3
+    #
+    # ⛔ AND ITS FAILURE IS NOT A VERDICT ON THE BASE. A host whose own network is
+    # down answers nothing too, and a re-provisioning or a rebuild changes nothing
+    # there. It exits 4 with a `verify-pull:` line, as a probe the registry refused
+    # does, and the base is kept. The name asked is the probe's own registry, which
+    # the pull needs, not github.com. WSL-188.
+    if command -v getent >/dev/null 2>&1 && ! getent hosts "$TK_IMAGE_REGISTRY" >/dev/null 2>&1; then
+      printf 'verify: base.shared_tmpfs is off and this base cannot resolve a name, %s, so the resolver it was left with does not answer\n' "$TK_IMAGE_REGISTRY" >&2
+      printf 'verify-pull: lookup %s: the resolver in /etc/resolv.conf did not answer\n' "$TK_IMAGE_REGISTRY" >&2
+      exit 4
     fi
     ;;
   on)
@@ -279,6 +287,23 @@ case "$TK_TOOLSET" in
 esac
 printf 'toolset %s\n' "$TK_TOOLSET"
 
+# >>> the grant owner: begin
+# assert_grant_owner TARGET: refuse a live mount made for another uid.
+#
+# ⛔ THE ACCOUNT OWNS ITS GRANT. The fstab line names the account's ids, and a
+# mount made for another uid reads and writes as that one. A base whose account
+# is not 1000, granted by an earlier release, is refused here and re-provisioned,
+# which writes its own ids. Options that name no uid are not judged. WSL-188.
+assert_grant_owner() {
+  ago_uid=$(awk -v expected="$1" '$2 == expected { n = split($4, o, /[,;]/); for (i = 1; i <= n; i++) if (o[i] ~ /^uid=[0-9]+$/) u = substr(o[i], 5) } END { print u }' /proc/mounts)
+  ago_self=$(id -u)
+  if [ -n "$ago_uid" ] && [ "$ago_uid" != "$ago_self" ]; then
+    printf 'verify: explicit mount %s is mounted for uid %s, and this account is uid %s\n' "$1" "$ago_uid" "$ago_self" >&2
+    exit 3
+  fi
+}
+# <<< the grant owner: end
+
 mount_count=0
 mount_decode="${TMPDIR:-/tmp}/wsl-toolkit-mount-check.$$"
 mount_allowlist="${TMPDIR:-/tmp}/wsl-toolkit-mount-allowlist.$$"
@@ -323,6 +348,7 @@ while [ "$#" -gt 0 ]; do
     exit 3
   fi
   ls "$target" >/dev/null 2>&1 || { printf 'verify: explicit mount %s is unreadable\n' "$target" >&2; exit 3; }
+  assert_grant_owner "$target"
   write_probe="$target/.wsl-toolkit-write-probe.$$"
   case "$mode" in
     rw)

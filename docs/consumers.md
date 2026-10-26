@@ -198,6 +198,29 @@ variable.
 | under Git Bash, `WSL_TOOLKIT_CACHE=/d/x` names `D:\x`. It named `x` under the current drive's root, such as `C:\d\x`. `/tmp/x` and any other `/...` move as `WSL-187` says for the home | keeps a fetched image, such as the BSD guest, in that second directory | moves it to `D:\x`, or passes the old directory's Windows spelling |
 | `WSL_TOOLKIT_CACHE` is handed on absolute, so the helper and a detached child read the directory their parent read | | nothing |
 
+### ⚠ What reading the host it runs on changes, and what a caller does
+
+`WSL-188`. Not released yet.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| the native platform is the machine's. The amd64 build on an ARM64 Windows runs a job that names no platform as `linux/arm64`, and `selfupdate` installs the arm64 build | runs the amd64 build on ARM64 and reads amd64 results | passes `--platform linux/amd64` |
+| a host engine that answers for another architecture, through a remote connection or context, is passed over with its host named. So is docker in Windows-containers mode. Where no other engine answers, the build exits 2 | built through such an engine, whose rootfs ran nothing | points the engine at this machine, or switches docker to Linux containers |
+| podman's `info` has 20 seconds, not 90, while docker or `wslc` is installed | starts a podman machine and builds at once | starts the machine first, or builds again |
+| a build's export container carries `wsl-toolkit.export=1`. `resources --host-engine --json` adds `export_containers`, and the command list adds a `container prune` | treats every field or command as one it knows | ignores what it does not know |
+| the podman hint tells a stopped machine to start, and says nothing of a restart where `podman machine list` did not answer | matches the old hint's words | matches podman's own words |
+| `doctor --json` adds `host.wsl_state`. An empty machine reads `wsl_access` true with no distribution, and only a refusal adds the approval-flow note | reads `wsl_access` false as an empty machine | reads `wsl_state` |
+| an empty machine in another language lists nothing, where the listing failed | | nothing |
+| `base doors` reads `[automount] root` for the drive, `cmd.exe` and PATH doors | reads a hand-set root's drives as closed | nothing |
+| each preset's figure in `base preset list` names the `.wslconfig` it was measured under | matches the figures' words | reads the id and the reference |
+| an adapter installs a missing package with `pacman -Syu --needed`, which upgrades the whole base | relies on an adapter leaving the base's other packages at their versions | pins what it needs in the image |
+| the account takes the next free uid where the image holds 1000, and its `/etc/subuid` and `/etc/subgid` ranges start past every other. A build that refused now succeeds | | nothing |
+| a grant's fstab line names the account's own ids, and the verifier refuses a grant mounted for another uid. An adopted base whose account is not 1000 is re-provisioned at its next ensure, and restarted | holds such a base with live grants | runs `base ensure --repair` when a restart is acceptable |
+| a live grant is read back through `su` where there is no `runuser`, as on Alpine. A read-back that runs no shell as the account refuses the grant in either mode | relies on a read-only grant passing where nothing could read it back | nothing |
+| provisioning's engine settings are drop-ins, and the main files are left. The account's `containers.conf` an earlier release wrote goes | edited that tool-written file by hand | moves its settings to the main file or a drop-in of its own |
+| a sealed base waits up to ten seconds at each start for WSL's shared resolver | | nothing |
+| a sealed base that cannot resolve `docker.io` is not judged. `base ensure` exits 2 and keeps it, where it re-provisioned it | relies on that re-provisioning | restarts the base once the host's network answers |
+
 ### ⛔ What the tool's own exit code breaks, and what a caller does
 
 `WSL-127`, ruling 35. Not released yet. A break by the table above, so it goes into

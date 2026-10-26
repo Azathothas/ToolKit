@@ -18,6 +18,14 @@ log=/run/wsl-toolkit-boot.log
   # on 2026-09-17 - so a refresh that comes back short leaves the working file
   # alone. A resolver that works beats a fresher one that does not. WSL-68.
   if [ "$seal" = off ]; then
+    # ⛔ AND THE SHARED FILE IS WAITED FOR, ten seconds at most. Read once, a start
+    # that came before WSL wrote it kept an empty or old resolver for the whole
+    # boot. WSL-188.
+    w=0
+    while [ ! -s /mnt/wsl/resolv.conf ] && [ "$w" -lt 10 ]; do
+      sleep 1
+      w=$((w + 1))
+    done
     if [ -s /mnt/wsl/resolv.conf ]; then
       t=$(mktemp /etc/.resolv.XXXXXX 2>/dev/null) || t=
       if [ -n "$t" ]; then
