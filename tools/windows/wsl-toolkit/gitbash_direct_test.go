@@ -149,6 +149,50 @@ func TestALauncherReadsAnMsysHomeTheWayMsysMapsIt(t *testing.T) {
 	}
 }
 
+// ⛔ WSL-195: WSL_TOOLKIT_CACHE WENT THROUGH filepath.Abs ALONE, so Git Bash's
+// `/d/cache` named `C:\d\cache`, a second cache that fetched the BSD image again.
+// It is read the way MSYS maps it, by a command and by a launcher, and handed on
+// absolute.
+func TestAnMsysCacheNamesTheDirectoryMsysMapsAndIsHandedOnAbsolute(t *testing.T) {
+	prefixMainCase(t)
+	wasQuiet := quiet
+	t.Cleanup(func() { quiet = wasQuiet })
+	t.Setenv("MSYSTEM", "MINGW64")
+	t.Setenv("EXEPATH", `C:\Program Files\Git\bin`)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⛔ READ ON EVERY HOST, for the reason the home's case gives: elsewhere a
+	// drive path resolves under the working directory, and only the translated
+	// spelling proves the translation.
+	want := `D:\cache`
+	if runtime.GOOS != "windows" {
+		want = filepath.Join(cwd, "D:/cache")
+	}
+	t.Setenv("WSL_TOOLKIT_CACHE", "/d/cache")
+	captureStdout(t, func() {
+		if code := run(context.Background(), []string{"--quiet", "version"}); code != exitOK {
+			t.Errorf("a command answered %d", code)
+		}
+	})
+	if got := os.Getenv("WSL_TOOLKIT_CACHE"); got != want {
+		t.Errorf("the cache handed on is %q, want %q", got, want)
+	}
+	if got, err := toolkit.CacheDir(); err != nil || got != want {
+		t.Errorf("the cache read is %q, %v; want %q", got, err, want)
+	}
+	t.Setenv("WSL_TOOLKIT_CACHE", "/d/cache")
+	stderrOf(t, func() {
+		if code := runLauncher(context.Background(), "muse", "Not An Instance", nil); code == exitOK {
+			t.Error("a launcher for an instance that is no name answered 0")
+		}
+	})
+	if got := os.Getenv("WSL_TOOLKIT_CACHE"); got != want {
+		t.Errorf("a launcher handed the cache on as %q, want %q", got, want)
+	}
+}
+
 // withStdin runs fn with this process's stdin reading body.
 func withStdin(t *testing.T, body string, fn func()) {
 	t.Helper()

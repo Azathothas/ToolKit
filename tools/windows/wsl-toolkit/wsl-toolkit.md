@@ -78,6 +78,9 @@ under the Git install. An agent's launcher, such as `muse.exe`, reads it the sam
 way. The directory is handed to the helper and to each detached child as one
 absolute path. `WSL-187`
 
+⭐ **`WSL_TOOLKIT_CACHE` is read the same way.** `WSL_TOOLKIT_CACHE=/d/cache` names
+`D:\cache`, not `C:\d\cache`, and it is handed on as one absolute path. `WSL-195`
+
 - `--script -` reads the command from stdin, so a generated script needs no file.
   An empty stdin is refused. `run`, `matrix`, `base exec`, `distro` and `bsd run`
   take it, and `run --detach` hands it to its owner as a file in the job's

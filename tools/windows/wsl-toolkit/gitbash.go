@@ -133,6 +133,12 @@ func msysOrigin(v string) string {
 // variable, and a child resolving `/d/x` or a relative path on its own could
 // land somewhere else. A path read once and handed on is one state root. WSL-187.
 func settleHome() error {
+	// ⛔ THE CACHE IS SETTLED WITH IT, at the one place both callers already
+	// reach. WSL_TOOLKIT_CACHE went through filepath.Abs alone, so from Git Bash
+	// `/d/cache` named `C:\d\cache`. WSL-195.
+	if err := settleCache(); err != nil {
+		return err
+	}
 	v := strings.TrimSpace(os.Getenv("WSL_TOOLKIT_HOME"))
 	if v == "" {
 		return nil
@@ -142,6 +148,23 @@ func settleHome() error {
 		return fmt.Errorf("the state directory %q cannot be resolved: %w", v, err)
 	}
 	return os.Setenv("WSL_TOOLKIT_HOME", abs)
+}
+
+// settleCache rewrites WSL_TOOLKIT_CACHE as one absolute host path, read the way
+// MSYS maps it, and exports it again, as settleHome does the state directory.
+//
+// ⭐ ONE CACHE PER HOST IS WHAT IT IS FOR. A cache named twice is fetched twice,
+// and the BSD guest image it holds is 635 MB. WSL-195.
+func settleCache() error {
+	v := strings.TrimSpace(os.Getenv("WSL_TOOLKIT_CACHE"))
+	if v == "" {
+		return nil
+	}
+	cache, err := filepath.Abs(msysHostPath(v))
+	if err != nil {
+		return fmt.Errorf("the cache directory %q cannot be resolved: %w", v, err)
+	}
+	return os.Setenv("WSL_TOOLKIT_CACHE", cache)
 }
 
 // msysRoot is the directory MSYS maps `/` to, in the forward-slash form its

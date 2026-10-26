@@ -2,6 +2,33 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: WSL_TOOLKIT_CACHE is read the way MSYS maps it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "gitbash.go",
+      "find": "\tcache, err := filepath.Abs(msysHostPath(v))\n",
+      "replace": "\tcache, err := filepath.Abs(v)\n",
+      "run": "TestAnMsysCacheNamesTheDirectoryMsysMapsAndIsHandedOnAbsolute",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the cache directory is settled with the state directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "gitbash.go",
+      "find": "\tif err := settleCache(); err != nil {\n",
+      "replace": "\tif err := error(nil); err != nil {\n",
+      "run": "TestAnMsysCacheNamesTheDirectoryMsysMapsAndIsHandedOnAbsolute",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the settled cache directory is handed on absolute",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "gitbash.go",
+      "find": "\treturn os.Setenv(\"WSL_TOOLKIT_CACHE\", cache)\n",
+      "replace": "\t_ = cache\n\treturn nil\n",
+      "run": "TestAnMsysCacheNamesTheDirectoryMsysMapsAndIsHandedOnAbsolute",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base herdr and base bootstrap answer the tool's code for their own refusal",
       "module": "tools/windows/wsl-toolkit",
       "file": "exit_tool.go",

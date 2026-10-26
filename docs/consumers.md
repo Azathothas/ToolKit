@@ -189,6 +189,15 @@ variable.
 | an agent's launcher, such as `muse.exe`, reads `WSL_TOOLKIT_HOME` the same way, and hands it on absolute | started a launcher from Git Bash and kept its state in the second root | moves what it needs, or passes the Windows spelling |
 | `WSL_TOOLKIT_HOME` is handed on absolute, so the helper and a detached child read the directory their parent read | | nothing |
 
+### ⚠ What reading `WSL_TOOLKIT_CACHE` the MSYS way changes, and what a caller does
+
+`WSL-195`. Not released yet.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| under Git Bash, `WSL_TOOLKIT_CACHE=/d/x` names `D:\x`. It named `x` under the current drive's root, such as `C:\d\x`. `/tmp/x` and any other `/...` move as `WSL-187` says for the home | keeps a fetched image, such as the BSD guest, in that second directory | moves it to `D:\x`, or passes the old directory's Windows spelling |
+| `WSL_TOOLKIT_CACHE` is handed on absolute, so the helper and a detached child read the directory their parent read | | nothing |
+
 ### ⛔ What the tool's own exit code breaks, and what a caller does
 
 `WSL-127`, ruling 35. Not released yet. A break by the table above, so it goes into
