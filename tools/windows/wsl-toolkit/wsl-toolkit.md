@@ -1764,7 +1764,7 @@ whose name starts the same way. ⛔ **Muse's own screen needs a terminal**, so `
 alone and `muse resume` answer exit 125 with the herdr route.
 
 ```powershell
-wsl-toolkit --instance base base agent --env HTTPS_PROXY=http://proxy:3128 muse -- exec --json PROMPT
+wsl-toolkit base agent --env HTTPS_PROXY=http://proxy:3128 muse -- exec --json PROMPT
 ```
 
 ⭐ **`base agent --env NAME=VALUE` exports a variable to the agent it starts.** It is
@@ -2186,7 +2186,7 @@ namespace it is put in, so the confinement would be a claim rather than a fact.
 | bytes the wrapper adds to stderr | | ⭐ **none** |
 
 ```powershell
-wsl-toolkit --instance base base shell --private-net
+wsl-toolkit base shell --private-net
 ```
 
 ⭐ **`base shell --private-net` is the interactive form.** It runs the shell `base

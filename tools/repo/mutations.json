@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a stop of an id nothing ran keeps its refusal",
+      "file": "cmd_jobs.go",
+      "find": "\t\trep, err = runner.StopJob(ctx, id, *grace)\n",
+      "replace": "\t\trep, _ = runner.StopJob(ctx, id, *grace)\n",
+      "run": "TestAStopOfAnIDNothingRanIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "check: two skills may share a sentence, and a skill and another page may not",
       "module": "tools/check",
       "file": "internal/checks/bytes.go",

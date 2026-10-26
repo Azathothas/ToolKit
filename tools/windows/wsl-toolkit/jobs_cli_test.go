@@ -50,6 +50,17 @@ func TestJobControlRefusesWhatItCannotAnswer(t *testing.T) {
 	}
 }
 
+// ⛔ A STOP OF AN ID NOTHING RAN IS REFUSED WITH 2, as the manual and the skill
+// say. Its error was lost in the helper's if, and the stop exited 0.
+func TestAStopOfAnIDNothingRanIsRefused(t *testing.T) {
+	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+	selectInstance(t, toolkit.DefaultInstance)
+	code, err := cmdStop(context.Background(), []string{cliJobID})
+	if code != exitCannot || !errors.Is(err, toolkit.ErrUnknownJob) {
+		t.Fatalf("a stop of an id nothing ran answered %d, %v; want %d and the unknown-job refusal", code, err, exitCannot)
+	}
+}
+
 func TestAnUnknownIDIsItsOwnRefusal(t *testing.T) {
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	_, err := jobEnd(context.Background(), cliJobID, 0, nil, nil)

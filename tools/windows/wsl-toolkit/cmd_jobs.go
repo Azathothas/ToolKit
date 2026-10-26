@@ -139,10 +139,14 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	if c, err := useHelper(ctx, *viaHelper); notHere != nil && (err != nil || c == nil) {
+	// ⛔ THE STOP'S OWN ERROR IS THE ONE READ BELOW. useHelper's error was declared
+	// in this if, so each StopJob assigned to that one, the check after the block
+	// read loadConfig's nil, and a stop of an id nothing ran exited 0.
+	c, herr := useHelper(ctx, *viaHelper)
+	if notHere != nil && (herr != nil || c == nil) {
 		return exitCannot, notHere
-	} else if err != nil {
-		return exitCannot, err
+	} else if herr != nil {
+		return exitCannot, herr
 	} else if c != nil {
 		rep, err = c.StopJob(ctx, id, *grace)
 		if toolkit.ValidJobID(rep.ID) {
