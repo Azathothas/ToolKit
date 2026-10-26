@@ -6,8 +6,8 @@
 # defect this tool has carried was found by running it. This is part (b) of
 # docs/methodology/gate.md, written down so it is a command rather than a memory.
 #
-# WHAT IT REQUIRES: a Windows host with WSL2, a container engine for the base
-# build, and a network for the image pulls. It CREATES the base distribution if
+# WHAT IT REQUIRES: a Windows host with WSL2, PowerShell 7.2 or later, a
+# container engine for the base build, and a network for the image pulls. It CREATES the base distribution if
 # there is none, and it leaves it registered.
 #
 # HARD RULE: IT NEVER TOUCHES podman-machine-default OR ANY OTHER DISTRIBUTION.
@@ -65,6 +65,27 @@ function Exit-Cannot {
     if ($Json) { Write-Output (@{ schema = 'wsl-toolkit-acceptance/1'; ok = $false; reason = $Reason; cases = @() } | ConvertTo-Json -Depth 5 -Compress) }
     else { [Console]::Error.WriteLine("acceptance: $Reason") }
     exit 2
+}
+
+# Get-RunnerRefusal is why this PowerShell cannot run the suite, or empty.
+#
+# ProcessStartInfo.ArgumentList is .NET Core only, and passing a joined string
+# instead is the defect this file already met. Refusing is the honest answer.
+# WSL-132: Edit-ConfigKey reads JSON with System.Text.Json.Nodes, which .NET 6
+# first shipped, so 7.0 and 7.1 threw inside the marker case. They are refused
+# here, before any case runs.
+function Get-RunnerRefusal {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Edition,
+        [Parameter(Mandatory = $true)]$Version
+    )
+    if ($Edition -ne 'Core') {
+        return 'this runner needs PowerShell 7.2 or later, because it passes arguments as a list rather than as a joined string'
+    }
+    if ($Version.Major -lt 7 -or ($Version.Major -eq 7 -and $Version.Minor -lt 2)) {
+        return "this runner needs PowerShell 7.2 or later, because it edits JSON with System.Text.Json.Nodes, which .NET 6 first shipped. This is $Version"
+    }
+    return ''
 }
 
 # Every case is a name, an expectation and a scriptblock returning what actually
@@ -289,19 +310,62 @@ function Edit-ConfigKey {
     return $doc.ToJsonString([Text.Json.JsonSerializerOptions]@{ WriteIndented = $true })
 }
 
+# Restore-ConfigBytes puts a configuration back as the marker case read it: the
+# same bytes, or no file where there was none. WSL-132.
+#
+# NOTE: bytes, NOT text. ReadAllText and WriteAllText decode and encode, so a
+# byte order mark or a byte that is not UTF-8 did not come back.
+function Restore-ConfigBytes {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [AllowNull()][byte[]]$Saved
+    )
+    if ($null -ne $Saved) { [IO.File]::WriteAllBytes($Path, $Saved) }
+    elseif (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
+}
+
+# Test-ConfigBytes is whether the file at Path holds exactly Saved, or is absent
+# where Saved is null. WSL-132: the marker case reads its restore back through
+# this, so a restore that changed one byte fails the case.
+function Test-ConfigBytes {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [AllowNull()][byte[]]$Saved
+    )
+    $now = $null
+    if (Test-Path -LiteralPath $Path) { $now = [IO.File]::ReadAllBytes($Path) }
+    if ($null -eq $Saved) { return ($null -eq $now) }
+    return (($null -ne $now) -and ([Convert]::ToBase64String($now) -eq [Convert]::ToBase64String($Saved)))
+}
+
 # Get-SuiteBase is the base section of the configuration every case runs under,
 # for a scratch home to write as its own. WSL-132: a scratch home with no file
 # read an instance that asked for systemd as asking for none. Its helper found
 # the base unlike that, and a caller that does not own a base is refused the
 # re-provision that follows. The name is left out, so a scratch home still names
 # its base the way it did with no file.
+#
+# WSL-132. A RELATIVE GRANT SOURCE IS WRITTEN RESOLVED. The tool anchors one at
+# the directory of the file that names it, so a source copied as written named a
+# directory beside the scratch home, and its helper was sent grants the base does
+# not hold. Each is anchored here at the suite's own file, as the tool anchors it.
 function Get-SuiteBase {
     $r = Invoke-Tool @('config', '--json')
     if ($r.Code -ne 0) { throw "config --json exited $($r.Code): $($r.Err)" }
-    $base = (Read-ToolJson -Stdout $r.Out -What 'config --json').base
+    $report = Read-ToolJson -Stdout $r.Out -What 'config --json'
     $kept = [ordered]@{}
-    foreach ($p in $base.PSObject.Properties) {
+    foreach ($p in $report.base.PSObject.Properties) {
         if ($p.Name -ne 'name') { $kept[$p.Name] = $p.Value }
+    }
+    if ($kept.Contains('mounts') -and $null -ne $kept['mounts']) {
+        $anchor = Split-Path -Parent ([string]$report.path)
+        $kept['mounts'] = @(foreach ($m in $kept['mounts']) {
+                $source = [string]$m.source
+                if (-not [IO.Path]::IsPathFullyQualified($source)) {
+                    $m.source = [IO.Path]::GetFullPath($anchor + [IO.Path]::DirectorySeparatorChar + $source)
+                }
+                $m
+            })
     }
     return $kept
 }
@@ -323,11 +387,8 @@ if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
     Exit-Cannot "no executable at $Binary. Build one: cd tools/windows/wsl-toolkit; go build -o ../../../.tmp/wsl-toolkit.exe ."
 }
 $script:Binary = (Resolve-Path -LiteralPath $Binary).Path
-# ProcessStartInfo.ArgumentList is .NET Core only, and passing a joined string
-# instead is the defect this file already met. Refusing is the honest answer.
-if ($PSVersionTable.PSEdition -ne 'Core') {
-    Exit-Cannot 'this runner needs PowerShell 7 or later, because it passes arguments as a list rather than as a joined string'
-}
+$refusal = Get-RunnerRefusal -Edition $PSVersionTable.PSEdition -Version $PSVersionTable.PSVersion
+if ($refusal) { Exit-Cannot $refusal }
 $script:Scratch = Join-Path $repoRoot ('.tmp\acceptance.' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 $null = New-Item -ItemType Directory -Path $script:Scratch -Force
 if (-not $script:BaseName) {
@@ -565,6 +626,7 @@ try {
             $r = Invoke-Tool @('base', 'doors', '--via-helper', '--json')
             if ($r.Code -ne 2) { return "base doors --via-helper exited $($r.Code), want 2: $($r.Err)" }
             if ($r.Err -notmatch 'restricted helper protocol does not accept') { return "the refusal does not say why: $($r.Err)" }
+            if ($r.Out.Trim() -ne '') { return "a refused probe wrote a report: $(Show-Bytes $r.Out)" }
             'refused'
         }
         finally { $null = Invoke-Tool @('helper', 'stop') }
@@ -732,23 +794,28 @@ try {
         (($d.before.exit_code -eq 3) -and ($d.before.stdout_lines -eq 1) -and ($d.before.stderr_lines -eq 1)).ToString()
     }
 
-    # NOTE: TEN SECONDS OF SILENCE, NOT SIX. A tick lands a poll interval plus
-    # WSL's answer after the last, so six seconds reached the 3s threshold in only
-    # 6 of 10 runs of this command on 2026-09-14, and ten reached it in 10 of 10.
     # The case asserts that a silence is reported, not how the ticks fall. WSL-80.
+    #
+    # WSL-132. THESE TWO SILENCES OUTLAST THE SLOWEST TICK, AND A SPAN IS READ AS
+    # ANY NUMBER. A distribution's tick waits on WSL's answer about it, which may
+    # spend its whole budget on a loaded machine, so one tick may land late and
+    # name a long silence. Ten and three silent seconds, and spans of one digit,
+    # held only while that answer was quick. observe_test.go holds each silence
+    # to the flush, the escalation, the interval, the poll and the budget.
     Test-Case 'an unterminated line is shown early and a silence is reported with the distribution state' 'True' {
         $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--log-profile', 'ci', '--tick', '1s', '--tick-escalate', '3s',
-            '--command-base64', (ConvertTo-B64 "printf 'Password: '`nsleep 10`necho`necho done`n"))
+            '--command-base64', (ConvertTo-B64 "printf 'Password: '`nsleep 25`necho`necho done`n"))
         if ($r.Code -ne 0) { return "exited $($r.Code): $($r.Err)" }
-        (($r.Out -match 'out~ Password: ') -and ($r.Err -match 'tick \ds silent .*\| distro running \| disk') -and
-         ($r.Err -match 'after 3s of silence: ') -and ($r.Err -match 'output resumed after')).ToString()
+        # The escalation names the silence its tick measured, not its 3s step.
+        (($r.Out -match 'out~ Password: ') -and ($r.Err -match 'tick \d+s silent .*\| distro running \| disk') -and
+         ($r.Err -match 'after \d+s of silence: ') -and ($r.Err -match 'output resumed after')).ToString()
     }
 
     Test-Case 'a consumed progress line is carried on the heartbeat and not relayed' 'True' {
         $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--log-profile', 'human', '--progress-prefix', 'WTK', '--tick', '1s',
-            '--command-base64', (ConvertTo-B64 "echo WTK 40 unpacking`nsleep 3`necho WTK 100`necho done`n"))
+            '--command-base64', (ConvertTo-B64 "echo WTK 40 unpacking`nsleep 20`necho WTK 100`necho done`n"))
         (($r.Code -eq 0) -and ($r.Out -notmatch 'WTK') -and ($r.Out -match 'out  done') -and
-         ($r.Err -match 'progress 40% unpacking \(\ds ago\)')).ToString()
+         ($r.Err -match 'progress 40% unpacking \(\d+s ago\)')).ToString()
     }
 
     Test-Case 'a deadline answers 124 inside its bound and leaves the distribution stopped' 'True' -MaxSeconds 25 {
@@ -1372,16 +1439,9 @@ try {
                 # v1.3.0 rewrote the record to $lie here and reported no drift.
                 (($after.identity.image -eq $real) -and ($after.built_from -eq $real) -and $said -and $rebuild).ToString()
             }
-            finally {
-                if ($null -ne $saved) { [IO.File]::WriteAllBytes($cfgPath, $saved) }
-                elseif (Test-Path -LiteralPath $cfgPath) { Remove-Item -LiteralPath $cfgPath -Force }
-            }
+            finally { Restore-ConfigBytes -Path $cfgPath -Saved $saved }
         }
-        $now = $null
-        if (Test-Path -LiteralPath $cfgPath) { $now = [IO.File]::ReadAllBytes($cfgPath) }
-        $restored = if ($null -eq $saved) { $null -eq $now } else {
-            ($null -ne $now) -and ([Convert]::ToBase64String($now) -eq [Convert]::ToBase64String($saved))
-        }
+        $restored = Test-ConfigBytes -Path $cfgPath -Saved $saved
         if (-not $restored) { return "the configuration at $cfgPath was not restored byte for byte" }
         $verdict
     }

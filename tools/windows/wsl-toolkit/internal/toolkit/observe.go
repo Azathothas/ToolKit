@@ -164,8 +164,8 @@ const ContainerLogDriver = "k8s-file"
 // rendering profile and off by default, so a quiet job costs the engine two
 // questions a minute and a talkative one costs it none.
 //
-// ⚠ A TICK CAN WAIT THIS LONG, so the acceptance suite's tick case is silent for
-// longer than it, and a case holds the two together. WSL-132.
+// ⚠ A TICK CAN WAIT THIS LONG, and processWaitDelay more, so the acceptance
+// suite's tick case is silent for longer, and a case holds them together. WSL-132.
 const containerProbeBudget = 20 * time.Second
 
 // ContainerObserver watches one podman container inside the base.

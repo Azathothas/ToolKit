@@ -106,6 +106,11 @@ whose removal could make the suite pass falsely. `repo mutate` proves those
 rows by deleting one guard at a time in a copy; a row whose test skips on this
 host is reported as skipped, and CI's ubuntu job proves it.
 
+⚠ **A case that runs the acceptance suite's own PowerShell needs `pwsh`.** On
+Windows a missing one fails the case. Elsewhere it skips, as in the Linux proof's
+image, and its row's label ends `under pwsh`. CI's ubuntu runner carries `pwsh`.
+`WSL-132`
+
 ## What needs a real host
 
 Unit tests cannot prove calls to `wsl.exe`, a real distribution, or the
@@ -115,6 +120,10 @@ container engine. Build a temporary executable and run:
 $env:WSL_TOOLKIT_HOME = (Resolve-Path .tmp).Path + '\acc-home'
 pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe -Quick -Instance acc
 ```
+
+⚠ **The runner needs PowerShell 7.2 or later.** It edits JSON with
+`System.Text.Json.Nodes`, which an older one lacks, so it refuses one with exit 2
+before any case runs. `WSL-132`
 
 ⭐ **Run it against a scratch instance.** `-Instance NAME` runs every case against
 `wsl-toolkit-NAME` and that instance's state, and builds the base when there is
@@ -136,15 +145,21 @@ changes `base.image` alone in the file `config` resolves, then runs `base ensure
 against that drift. The file's own bytes are written back whatever the case
 answers, and a file not restored byte for byte fails the case. `WSL-132`
 
-⭐ **An instance with a configuration of its own runs every case.** The cases
-that ask which working-directory file wins ask from an empty home. A helper's
-scratch home asks for the base the suite runs on. On a scratch instance whose file
-asks for systemd and passwordless sudo, `-Quick` passed every case. The file kept
-its bytes, and the base kept both. `WSL-132`
+⭐ **An instance whose file asks for systemd and passwordless sudo passes every
+`-Quick` case.** The cases that ask which working-directory file wins ask from an
+empty home. A helper's scratch home takes the `base` section of the suite's file,
+with no name, and with each relative grant source resolved at that file. The file
+keeps its bytes, and the base keeps both settings. `WSL-132`
+
+⚠ **A scratch home takes nothing else from the suite's file.** Its `jobs` keys are
+its own, so a case that gives a helper a home does not run under the instance's job
+defaults. `WSL-132`
 
 ⭐ **One case meets `base doors --via-helper` from a helper that is serving.** It
-reads the refusal's exit 2 and its reason. With no helper, the same call is refused
-for another reason, so the case cannot pass without one. `WSL-142`
+reads the refusal's exit 2, its reason and an empty stdout. With no helper, the same
+call is refused for another reason, so the case cannot pass without one. A Go case
+meets the refusal from a fake helper on any host, which is asked only its status.
+`WSL-142`
 
 ⭐ **A herdr `--remote` client is proved by its own probe**, because nothing in the
 Go suite can see it: a release and a development build of it answer the same

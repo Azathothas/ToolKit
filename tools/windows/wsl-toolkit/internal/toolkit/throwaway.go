@@ -1231,6 +1231,13 @@ func (t *Throwaways) classifyRun(ctx context.Context, name string, spec Throwawa
 	}
 }
 
+// distroFactsBudget bounds one heartbeat's questions to WSL about a distribution.
+//
+// ⚠ A TICK CAN WAIT THIS LONG, and processWaitDelay more, so the acceptance
+// suite's distribution heartbeat cases are silent for longer, and a case holds
+// them together. WSL-132.
+const distroFactsBudget = 15 * time.Second
+
 // tickFacts reads what a heartbeat reports about one distribution.
 //
 // ⭐ --list --quiet and --running --quiet, never --verbose, whose state word is
@@ -1239,7 +1246,7 @@ func (t *Throwaways) classifyRun(ctx context.Context, name string, spec Throwawa
 func (t *Throwaways) tickFacts(name string) func() TickFacts {
 	return func() TickFacts {
 		f := TickFacts{Kind: "distro", State: "unknown"}
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), distroFactsBudget)
 		defer cancel()
 		if names, err := t.wsl.listNames(ctx); err == nil {
 			f.State = "not registered"

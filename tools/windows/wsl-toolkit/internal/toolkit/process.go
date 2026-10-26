@@ -82,10 +82,18 @@ func (b *boundedBuffer) Truncated() bool {
 	return b.truncated
 }
 
+// processWaitDelay is how long a command may outlive its context's deadline
+// while its pipes drain, once it has been killed.
+//
+// ⚠ A DEADLINE IS THEREFORE NOT THE LONGEST A CALL WAITS. A heartbeat's question
+// may answer this much after its budget, so a case that waits out a tick counts
+// it too. WSL-132.
+const processWaitDelay = time.Second
+
 func newCommand(ctx context.Context, file string, args ...string) *exec.Cmd {
 	c := exec.CommandContext(ctx, file, args...)
 	c.Env = append(os.Environ(), "WSL_UTF8=1")
-	c.WaitDelay = time.Second
+	c.WaitDelay = processWaitDelay
 	configureProcess(c)
 	return c
 }
