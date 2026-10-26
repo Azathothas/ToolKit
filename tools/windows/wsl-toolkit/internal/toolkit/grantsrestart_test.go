@@ -577,7 +577,8 @@ func TestTheHelpersEnsureReadsItsCallersGrantsAsUnchanged(t *testing.T) {
 	}
 	cfg := grantBase(t)
 	cfg.path = filepath.Join(dir, "config.json")
-	cfg.Base.Mounts = []BaseMount{{Source: filepath.Join(dir, "src"), Target: "/workspaces/src", Mode: "rw"}}
+	grant := BaseMount{Source: filepath.Join(dir, "src"), Target: "/workspaces/src", Mode: "rw"}
+	cfg.Base.Mounts = []BaseMount{grant}
 	if err := cfg.WriteTo(cfg.path); err != nil {
 		t.Fatal(err)
 	}

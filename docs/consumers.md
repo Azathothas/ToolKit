@@ -191,10 +191,9 @@ in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 | the helper protocol is `wsl-toolkit-helper/7`, and a 7.x helper and an 8.x client refuse each other. An ensure or a probe through the helper sends the caller's configuration file, and acts for it as the CLI does | leaves a 7.x helper running after the update | stops it and starts it again: `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach`, each with the `--instance` it serves |
 
 ⚠ **A grant a 7.0.2 build left without its fstab line is not written back.** The
-ledger row carries no line. On a base a 7.0.2 build left with two files' live
-grants, the next restart can drop one file's grant, as 7.0.2 did. That file's next
-`base grant` or `base revoke` of another target writes its lines back. After the
-restart, its `base ensure --repair` does, and restarts over the other file's work.
+ledger row carries no line, so on such a base the next restart can drop one file's
+grant, as 7.0.2 did. The manual's grant section names the two commands of that
+file which write the line back.
 
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
