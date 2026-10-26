@@ -145,7 +145,8 @@ func cmdShipped(_ context.Context, args []string) (int, error) {
 const baseBootstrapUsage = `wsl-toolkit base bootstrap [--] ARGS...
 
   Run the bootstrap this executable carries inside the base, as its account, with
-  every argument the bootstrap's own.
+  every argument the bootstrap's own. Its exit code is the answer, and the
+  --tool-exit code, 125, where this tool could not run it.
 
   ⛔ Nothing is copied into a checkout and nothing is fetched: the script travels
   on stdin, as every other payload this tool sends does.

@@ -143,7 +143,6 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 	rep := Report{Schema: Schema, Mode: o.mode, Op: o.operation(), DryRun: o.dryRun || o.count}
 	staged := make([][]byte, len(o.paths))
 	var unmatched, missing []string
-	skip := make([]bool, len(o.paths))
 
 	for i, p := range o.paths {
 		before, err := readFile(p)
@@ -153,10 +152,9 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 		// ⛔ `eol` CONVERTS A FILE; IT NEVER MAKES ONE. readFile answers a missing
 		// path with no bytes, which is right for `write` and `append`, and `eol`
 		// then wrote those no bytes: a mistyped path left a new empty file behind
-		// and the run read "left unchanged" with exit 0. The exit code stays 0
-		// until a major release, which WSL-166 carries. WSL-165.
+		// and the run read "left unchanged" with exit 0. WSL-165, and the
+		// refusal below is WSL-166.
 		if o.mode == "eol" && before == nil && !exists(p) {
-			skip[i] = true
 			missing = append(missing, p)
 			rep.Files = append(rep.Files, FileReport{Path: p, EOL: o.eol, Missing: true})
 			continue
@@ -178,6 +176,22 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 		if matches == 0 && (o.haveFind || o.haveInsertFind || o.haveBetween) {
 			unmatched = append(unmatched, p)
 		}
+	}
+
+	// ⛔ A PATH THAT DOES NOT EXIST REFUSES THE WHOLE CALL, exit 1, as a file
+	// `edit` found nothing in does, and nothing is written to any file named
+	// beside it. WSL-165 stopped `eol` making the file and still answered 0, so a
+	// mistyped path read as success and the others were converted without it.
+	// ⚠ WITH --dry-run AND --count TOO: a plan that names a file that is not
+	// there is not the plan the caller meant. WSL-166.
+	if len(missing) > 0 {
+		rep.Changed = false
+		for i := range rep.Files {
+			rep.Files[i].Changed = false
+		}
+		emit(out, o.asJSON, "refused", rep)
+		return 1, fmt.Errorf("%d of %d path(s) do not exist: %s. eol converts a file and never makes one, so nothing was written",
+			len(missing), len(o.paths), strings.Join(missing, ", "))
 	}
 
 	// ⛔ THE COUNT IS CHECKED BEFORE ANYTHING IS WRITTEN. A substitution that
@@ -215,13 +229,9 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 			rep.Files[i].Changed = false
 		}
 		emit(out, o.asJSON, "would change", rep)
-		noteMissing(errOut, missing)
 		return 0, nil
 	}
 	for i, p := range o.paths {
-		if skip[i] {
-			continue
-		}
 		if err := writeAtomic(p, staged[i]); err != nil {
 			return 2, err
 		}
@@ -231,7 +241,6 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 		verb = "left unchanged"
 	}
 	emit(out, o.asJSON, verb, rep)
-	noteMissing(errOut, missing)
 	return 0, nil
 }
 
@@ -239,14 +248,6 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 func exists(p string) bool {
 	_, err := os.Lstat(p)
 	return err == nil
-}
-
-// noteMissing says which paths `eol` was given that do not exist. WSL-165.
-func noteMissing(errOut io.Writer, missing []string) {
-	if len(missing) > 0 {
-		fmt.Fprintf(errOut, "text-tool: %d path(s) do not exist, and eol created nothing there: %s\n",
-			len(missing), strings.Join(missing, ", "))
-	}
 }
 
 // emit reports what happened. ⛔ THE VERB IS PASSED IN RATHER THAN INFERRED.

@@ -433,9 +433,10 @@ try {
         (($r.Code -ne 0) -and (($r.Err + $r.Out) -match 'workspace refused')).ToString()
     }
 
+    # WSL-127: a refusal of a command that answers a job's own code is 125.
     Test-Case 'an unqualified image reference is refused by name' 'True' {
         $r = Invoke-Tool @('run', '--image', 'alpine:latest', '-c', 'true')
-        (($r.Code -eq 2) -and (($r.Err + $r.Out) -match 'not fully qualified')).ToString()
+        (($r.Code -eq 125) -and (($r.Err + $r.Out) -match 'not fully qualified')).ToString()
     }
 
     Test-Case 'this tool refuses to act on a distribution it does not own' 'True' {
@@ -802,7 +803,9 @@ try {
         foreach ($p in @(@('run', '--name', $script:TwName, '-c', 'true'), @('remove', '--name', $script:TwName, '--yes'),
                          @('snapshot', '--name', $script:TwName, '--tag', 'stolen'), @('remove', '--name', $script:TwName, '--dry-run'))) {
             $r = Invoke-Tool (@('--home', $script:TwOther, 'distro') + $p)
-            if ($r.Code -ne 2 -or $r.Err -notmatch 'another run or another tool made it') { $bad += "$($p[0]): $($r.Code) $($r.Err)" }
+            # WSL-127: distro run answers its command's code, so its refusal is 125.
+            $want = if ($p[0] -eq 'run') { 125 } else { 2 }
+            if ($r.Code -ne $want -or $r.Err -notmatch 'another run or another tool made it') { $bad += "$($p[0]): $($r.Code) $($r.Err)" }
         }
         if ($bad.Count -gt 0) { return ($bad -join ' | ') }
         'True'
@@ -812,7 +815,8 @@ try {
         $r = Invoke-Throwaway @('enter', '--name', $script:TwName, '--dry-run', '--json')
         $d = Read-ToolJson -Stdout $r.Out -What 'distro enter --dry-run --json'
         $refused = Invoke-Throwaway @('enter', '--name', $script:TwName, '--json')
-        (($r.Code -eq 0) -and ($d.action -eq 'enter') -and ($refused.Code -eq 2)).ToString()
+        # WSL-127: distro enter answers its shell's code, so its refusal is 125.
+        (($r.Code -eq 0) -and ($d.action -eq 'enter') -and ($refused.Code -eq 125)).ToString()
     }
 
     Test-Case 'doctor reports what a throwaway distribution would meet' 'True' {
@@ -883,15 +887,26 @@ try {
             'docker.io/library/alpine:wsl-toolkit-no-such-tag-20260909', '-c', 'echo must-not-run')
         $d = $r.Out | ConvertFrom-Json
         $ranAnyway = ($r.Out -match 'must-not-run')
-        # v1.1.0 answered exit 125 with unreached false.
-        (($r.Code -eq 2) -and ($d.unreached -eq $true) -and (-not $ranAnyway)).ToString()
+        # v1.1.0 answered exit 125 with unreached false. WSL-127: 125 is now this
+        # tool's own, and job_started says nothing started.
+        (($r.Code -eq 125) -and ($d.unreached -eq $true) -and ($d.job_started -eq $false) -and (-not $ranAnyway)).ToString()
     }
 
-    # issue 14: and a payload that itself exits 125 is NOT unreached.
+    # issue 14: and a payload that itself exits 125 is NOT unreached. WSL-127:
+    # the code is the same, so job_started is what tells the two apart.
     Test-Case 'a payload that exits 125 is a job that ran' 'True' {
         $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'exit 125')
         $d = $r.Out | ConvertFrom-Json
-        (($r.Code -eq 125) -and ($d.unreached -eq $false)).ToString()
+        (($r.Code -eq 125) -and ($d.unreached -eq $false) -and ($d.job_started -eq $true)).ToString()
+    }
+
+    # WSL-127: a payload's own 2 is forwarded, and --tool-exit moves only the
+    # tool's own code.
+    Test-Case 'a payload that exits 2 answers 2, and --tool-exit moves only a refusal' 'True' {
+        $two = Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'exit 2')
+        $d = $two.Out | ConvertFrom-Json
+        $moved = Invoke-Tool @('--tool-exit', '7', 'run', '--image', 'alpine:latest', '-c', 'true')
+        (($two.Code -eq 2) -and ($d.job_started -eq $true) -and ($moved.Code -eq 7)).ToString()
     }
 
     # issue 10: output is complete, and the answer says when its copy is not.
@@ -959,19 +974,19 @@ try {
         $r = Invoke-Tool @('run', '--image', 'alpine', '-c', 'echo SHOULD-NOT-RUN', 'stray', '--no-such-option')
         $ran = ($r.Out -match 'SHOULD-NOT-RUN')
         $said = (($r.Err + $r.Out) -match 'positional')
-        # v1.1.0 printed SHOULD-NOT-RUN and exited 0.
-        (($r.Code -eq 2) -and (-not $ran) -and $said).ToString()
+        # v1.1.0 printed SHOULD-NOT-RUN and exited 0. WSL-127: a refusal of run is 125.
+        (($r.Code -eq 125) -and (-not $ran) -and $said).ToString()
     }
 
     Test-Case 'an unusable environment name is refused where it was typed' 'True' {
         $r = Invoke-Tool @('run', '--image', 'alpine', '--env', 'BAD-NAME=must-not-drop', '-c', 'env')
-        (($r.Code -eq 2) -and (($r.Err + $r.Out) -match 'BAD-NAME')).ToString()
+        (($r.Code -eq 125) -and (($r.Err + $r.Out) -match 'BAD-NAME')).ToString()
     }
 
     Test-Case 'a negative timeout is refused rather than meaning unlimited' 'True' {
         $r = Invoke-Tool @('run', '--image', 'alpine', '--timeout', '-1s', '-c', 'echo ran-unbounded')
         $ran = ($r.Out -match 'ran-unbounded')
-        (($r.Code -eq 2) -and (-not $ran) -and (($r.Err + $r.Out) -match 'negative')).ToString()
+        (($r.Code -eq 125) -and (-not $ran) -and (($r.Err + $r.Out) -match 'negative')).ToString()
     }
 
     # issue 11: cleanup does not kill work that is running.
@@ -2000,7 +2015,8 @@ try {
         $gd = Read-ToolJson -Stdout $g.Out -What 'gc --json'
         $named = @($gd.removed | Where-Object { "$_" -match "session $id" })
         $left = Invoke-Tool @('wait', $id)
-        (($w.Code -eq 130) -and ($g.Code -eq 0) -and ($named.Count -eq 1) -and ($left.Code -eq 2)).ToString()
+        # WSL-127: wait answers a job's code, so its refusal of an id gc took is 125.
+        (($w.Code -eq 130) -and ($g.Code -eq 0) -and ($named.Count -eq 1) -and ($left.Code -eq 125)).ToString()
     }
 
     Test-Case 'run --device passes a node the base has and refuses one it does not' 'True' {
@@ -2008,7 +2024,7 @@ try {
         if ($ok.Code -ne 0 -or $ok.Out -notmatch 'DEV-OK') { return "a present node: exit $($ok.Code): $($ok.Err)" }
         $no = Invoke-Tool @('run', '--json', '--image', 'alpine', '--device', '/dev/wsl-toolkit-absent', '-c', 'echo MUST-NOT-RUN')
         $nd = Read-ToolJson -Stdout $no.Out -What 'run --json'
-        if ($no.Code -ne 2 -or -not $nd.unreached -or $nd.error -notmatch '/dev/wsl-toolkit-absent' -or $no.Out -match 'MUST-NOT-RUN') {
+        if ($no.Code -ne 125 -or -not $nd.unreached -or $nd.error -notmatch '/dev/wsl-toolkit-absent' -or $no.Out -match 'MUST-NOT-RUN') {
             return "an absent node: exit $($no.Code): $($nd.error)"
         }
         # /dev/kvm is the node issue 34 names. Where the base has it, it passes.
@@ -2030,7 +2046,7 @@ try {
         $twice = Invoke-Tool @('run', '--image', 'alpine', '--input', ('a=' + (Join-Path $dir 'payload.txt')),
             '--input', ('a=' + (Join-Path $dir 'second.txt')), '-c', 'echo MUST-NOT-RUN')
         (($r.Code -eq 0) -and ($r.Out -match 'PAYLOAD-ONE') -and ($r.Out -match 'PAYLOAD-TWO') -and ($r.Out -match 'READ-ONLY') -and
-         ($twice.Code -eq 2) -and ($twice.Out -notmatch 'MUST-NOT-RUN')).ToString()
+         ($twice.Code -eq 125) -and ($twice.Out -notmatch 'MUST-NOT-RUN')).ToString()
     }
 
     Test-Case 'a redaction reaches the answer, the transcript and logs' 'True' {
@@ -2149,7 +2165,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 103 } else { 110 }
+$expected = if ($Quick) { 104 } else { 111 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

@@ -68,6 +68,9 @@ import (
 // ignores it: its ensure drops every other file's grant at the restart, and its
 // probe refuses each one an 8.x build kept. So a client refuses it until it is
 // restarted. WSL-190.
+// ⛔ VERSION 7 ALSO ADDS job_started AND tool_failed TO A JOB'S RESULT. A
+// version 6 helper sends neither, so a job it ran would read as one that never
+// started, and an end it lost as the payload's own 2. WSL-127.
 const HelperSchema = "wsl-toolkit-helper/7"
 
 // HelperEndpoint is what a client reads to find a listening helper.

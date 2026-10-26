@@ -156,7 +156,7 @@ func TestVerdictCarriesWhatTheProcessReturns(t *testing.T) {
 		{"a clean run", JobResult{Exit: 0}, ExitOK},
 		{"the container's own code wins", JobResult{Exit: 37}, 37},
 		{"a deadline", JobResult{Exit: 124, TimedOut: true}, ExitTimeout},
-		{"nothing ran", JobResult{Exit: 2, Unreached: true}, ExitCannot},
+		{"nothing ran", JobResult{Exit: 2, Unreached: true}, ExitTool},
 		{"the command passed and its output did not arrive",
 			JobResult{Exit: 0, ArtifactError: "refused"}, ExitFailed},
 		{"a container that failed AND lost its artifacts reports the container",

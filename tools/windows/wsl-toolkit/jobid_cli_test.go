@@ -247,8 +247,17 @@ func TestAWaitOnAnEphemeralJobAnswersItsOwnVerdict(t *testing.T) {
 		t.Fatalf("the record was kept: %s", res.RecordKept)
 	}
 	got := <-done
-	if got.err != nil || got.out.Orphaned || got.out.verdict != 3 || got.out.Result == nil || !got.out.Result.RecordRemoved {
+	// ⚠ EITHER ORDER IS THE OWNER'S. The follower wakes when Finish lets the lock
+	// go, before the record is removed or after it, so only its verdict is asked
+	// of it. Asking that it saw the removal failed one run in five.
+	if got.err != nil || got.out.Orphaned || got.out.verdict != 3 || got.out.Result == nil {
 		t.Errorf("the follower answered %+v, %v; want the job's own 3", got.out, got.err)
+	}
+	// ⛔ A FOLLOWER THAT COMES AFTER THE RECORD WENT reads the answer kept for it,
+	// every time.
+	late, err := jobEnd(ctx, cliJobID, 0, nil, nil)
+	if err != nil || late.Orphaned || late.verdict != 3 || late.Result == nil || !late.Result.RecordRemoved {
+		t.Errorf("a follower that came after the record went answered %+v, %v; want the job's own 3 from the kept answer", late, err)
 	}
 	if st := waitForResult(ctx, home, cliJobID, time.Second); st.Result == nil || st.Result.Verdict() != 3 {
 		t.Errorf("a stop's read of the ended job found %+v", st.Result)

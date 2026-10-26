@@ -838,8 +838,8 @@ func TestTheReportNamesTheOperationThatRan(t *testing.T) {
 }
 
 // TestEolCreatesNothingAtAMissingPath is WSL-165: a mistyped path was written as
-// a new empty file, and the run read "left unchanged" with exit 0. The exit code
-// stays 0 until a major release, which WSL-166 carries; the file must not appear.
+// a new empty file, and the run read "left unchanged" with exit 0. The file
+// must not appear, and the answer names it.
 func TestEolCreatesNothingAtAMissingPath(t *testing.T) {
 	dir := t.TempDir()
 	real := write(t, dir, "real.txt", []byte("a\r\nb\r\n"))
@@ -849,10 +849,7 @@ func TestEolCreatesNothingAtAMissingPath(t *testing.T) {
 		{"eol", real, missing, "--lf", "--dry-run"},
 		{"eol", missing, "--lf", "--json"},
 	} {
-		code, out, err := run(t, args...)
-		if code != 0 || err != nil {
-			t.Fatalf("%v exited %d: %v", args, code, err)
-		}
+		_, out, _ := run(t, args...)
 		if _, statErr := os.Lstat(missing); !errors.Is(statErr, os.ErrNotExist) {
 			t.Fatalf("%v created %s", args, missing)
 		}
@@ -860,7 +857,42 @@ func TestEolCreatesNothingAtAMissingPath(t *testing.T) {
 			t.Fatalf("%v did not say the path is missing:\n%s", args, out)
 		}
 	}
+}
+
+// TestEolRefusesAPathThatDoesNotExist is WSL-166: after WSL-165, `eol` made no
+// file and still answered 0, and converted the files named beside the missing
+// one. A missing path now refuses the whole call with exit 1, as a file `edit`
+// matched nothing in does, and nothing is written.
+func TestEolRefusesAPathThatDoesNotExist(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("a\r\nb\r\n")
+	real := write(t, dir, "real.txt", body)
+	missing := filepath.Join(dir, "nope.txt")
+	for _, args := range [][]string{
+		{"eol", real, missing, "--lf"},
+		{"eol", missing, real, "--lf", "--bom", "strip"},
+		{"eol", real, missing, "--lf", "--dry-run"},
+		{"eol", missing, "--crlf", "--json"},
+	} {
+		code, out, err := run(t, args...)
+		if code != 1 || err == nil {
+			t.Fatalf("%v answered %d, %v; want 1 and the refusal", args, code, err)
+		}
+		if !strings.Contains(err.Error(), "do not exist: "+missing) || !strings.Contains(err.Error(), "nothing was written") {
+			t.Errorf("%v refused without naming the path and what it did: %v", args, err)
+		}
+		if strings.Contains(out, "wrote ") || strings.Contains(out, `"changed": true`) {
+			t.Errorf("%v reported a change it did not make:\n%s", args, out)
+		}
+		if got := read(t, real); !bytes.Equal(got, body) {
+			t.Fatalf("%v converted the file beside the missing one: %q", args, got)
+		}
+	}
+	// ⭐ A CALL THAT NAMES ONLY FILES THAT EXIST IS UNCHANGED.
+	if code, _, err := run(t, "eol", real, "--lf"); code != 0 || err != nil {
+		t.Fatalf("a call naming one real file answered %d, %v", code, err)
+	}
 	if got := string(read(t, real)); got != "a\nb\n" {
-		t.Fatalf("the real file was not converted beside the missing one: %q", got)
+		t.Fatalf("the real file was not converted: %q", got)
 	}
 }

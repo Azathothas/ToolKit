@@ -293,9 +293,10 @@ func (e jobEnd) passed() bool { return e.ran && e.err == nil && e.code == 0 }
 // decides the exit code, which is the code a run one after another answers.
 //
 // Exit codes: 0 proved, 1 a job ran and failed, 2 nothing could be run or
-// recorded. ⚠ A job that exits 2 could not run either. wsl-toolkit answers 2
-// for a base it cannot use or an image it cannot pull. check-go.sh, ShellCheck
-// and `repo mutate` answer 2 for a check they could not run. TOOL-33.
+// recorded. ⚠ A job that exits 2 could not run either. wsl-toolkit 8 answers
+// ToolCannot for a base it cannot use or an image it cannot pull, and 7.x
+// answered 2. check-go.sh, ShellCheck and `repo mutate` answer 2 for a check
+// they could not run. TOOL-33, WSL-127.
 func Prove(req Request, out, errOut io.Writer) int {
 	run := req.Runner
 	native := run.Native
@@ -364,6 +365,12 @@ func Prove(req Request, out, errOut io.Writer) int {
 			cmd.Dir = req.Repo.Root
 		}
 		cmd.Env = JobEnv(os.Environ())
+		if !native {
+			// ⭐ THE TOOL'S OWN CODE IS PINNED, so a value in the caller's
+			// shell cannot turn a job that could not run into a red one.
+			// WSL-127.
+			cmd.Env = append(cmd.Env, ToolExitPin)
+		}
 		prefix := fmt.Sprintf("%-*s | ", width, j.Name)
 		stdout := &lineWriter{mu: &mu, w: out, prefix: prefix}
 		stderr := &lineWriter{mu: &mu, w: errOut, prefix: prefix}
@@ -430,6 +437,18 @@ func Prove(req Request, out, errOut io.Writer) int {
 	return 0
 }
 
+// ToolCannot is what wsl-toolkit 8 answers where it could not run a job of
+// this proof, and ToolExitPin is the variable that makes it so. WSL-127.
+//
+// ⛔ A CODE NO JOB ANSWERS ITSELF, AND NOT THE DEFAULT 125. A payload's own 125,
+// a nested engine that could not run a container, read as "could not run" and
+// not as a red job, which is the conflation WSL-127 removes. The jobs' scripts
+// answer 0 to 4, and an engine answers 125 to 127.
+const ToolCannot = 99
+
+// ToolExitPin is ToolCannot as the job's environment carries it.
+var ToolExitPin = "WSL_TOOLKIT_TOOL_EXIT=" + strconv.Itoa(ToolCannot)
+
 // exitOf is the exit code of a proof whose jobs ended so: 0 when every one
 // passed, and otherwise the code of the first in order that did not.
 //
@@ -440,6 +459,12 @@ func exitOf(ends []jobEnd) int {
 	for _, e := range ends {
 		if e.passed() {
 			continue
+		}
+		// ⭐ wsl-toolkit 8 ANSWERS ToolCannot FOR A JOB IT COULD NOT RUN, and 2
+		// stays for an older one, which answered 2 for that and for a job's own
+		// 2. WSL-127.
+		if e.code == ToolCannot {
+			return 2
 		}
 		if e.err != nil || e.code == 2 {
 			return 2

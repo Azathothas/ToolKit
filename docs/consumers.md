@@ -189,6 +189,45 @@ variable.
 | an agent's launcher, such as `muse.exe`, reads `WSL_TOOLKIT_HOME` the same way, and hands it on absolute | started a launcher from Git Bash and kept its state in the second root | moves what it needs, or passes the Windows spelling |
 | `WSL_TOOLKIT_HOME` is handed on absolute, so the helper and a detached child read the directory their parent read | | nothing |
 
+### ⛔ What the tool's own exit code breaks, and what a caller does
+
+`WSL-127`, ruling 35. Not released yet. A break by the table above, so it goes into
+`wsl-toolkit-v8.0.0`. A command that answers with a job's own code now answers 125
+where this tool could not run the job. So a job's 2 is never read as a refusal.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a command that answers with a job's code answers 125 where this tool could not run the job, a refusal of a flag included. A job's own 2 is still 2. Those commands are `run`, `wait`, `logs ID --follow` and `bsd run`. They are `base exec`, `base shell`, `base agent` and its launchers, `base herdr` and `base bootstrap`. They are `distro new` given a command, `distro run` and `distro enter` | reads exit 2 from one of them as "could not run", or as a refused flag | reads 125, or passes `--tool-exit 2`, or sets `WSL_TOOLKIT_TOOL_EXIT=2`, which answers what 7.x answered |
+| an unreached job's `effective_exit` is 125, and its `exit` stays 2 | reads `effective_exit` 2 as an image that never ran | reads `job_started` or `unreached` |
+| a job whose payload started and whose end this tool lost answers 125 with `tool_failed`, where 7.x answered 2 as the job's own | reads that 2 as the job's | reads `tool_failed` |
+| a job no process owned when it ended, with no exit its engine holds, ends `wait` and `logs ID --follow` with 125. Its result carries `tool_failed`, `job_started` true and `exit` 2. 7.x answered 1, with `exit` 1 | reads that 1 as a job that ran and disagreed | reads 125, or `tool_failed` |
+| `run --via-helper` whose stream broke after the helper took the job on answers the job's result, with `tool_failed` and `job_started` true, and exit 125. 7.x answered 2 and wrote nothing under `--json`. A call cancelled on that route answers 130, where 7.x answered 2 | reads a broken helper stream as a job that never started, or its cancellation as a refusal | reads `tool_failed`, and 130 as a stop |
+| a refusal under `--json` writes `wsl-toolkit-refusal/1` on stdout, where it wrote nothing. It does so for `run`, `base exec`, `distro run`, `distro new` given a command, and `bsd run`. Its `command` names the subcommand, such as `base exec`. A job refused after it was claimed writes its own result | treats any stdout under `--json` as a job's answer | reads `schema` |
+| `bsd run` past its `--timeout` answers 124, as every deadline this tool holds does, and its `--json` carries `timed_out`. After a guest kernel panic it answers 125. 7.x answered 2 for both | reads 2 there | reads 124 for the deadline and 125 for the panic |
+| a job that never ran, or whose end was lost, prints 125 where 7.x printed 2. That is the `exit` of `logs --json` and of `stop --json`, and the exit line of `inspect`. Each is what `wait` answers | reads that 2 as an image that never ran | reads 125, or the job's `job_started` and `tool_failed` |
+| a result a 7.x owner recorded carries no `job_started`, so 8.0 `wait --json` reads it as false, for a job that ran too. Its `effective_exit` is resealed to what this `wait` answers | reads `job_started` false as "never ran" on a result 7.x wrote | reads `unreached` as well, on a job 7.x recorded |
+| a job's result, each `matrix` row, `wait --json`, `distro run --json`, the `command` of `distro new --json` and `bsd run --json` carry `job_started`. The last three also carry `tool_failed`, and `bsd run` carries `timed_out` | | reads it, or ignores it |
+| where 7.x printed `LABEL exited 2 in D`, `run` without `--json` prints `LABEL did not start in D`. A lost end prints `LABEL started, and this tool lost how it ended in D`. The reason `ready --smoke` gives says the same | parses that stderr line | reads the exit code, or `--json` |
+| `--tool-exit` given no code, `--tool-exit=` included, is refused. An empty `WSL_TOOLKIT_TOOL_EXIT` still reads as unset | passes an empty `--tool-exit` and relies on 125 | passes a code, or leaves the flag out |
+| the helper protocol is `wsl-toolkit-helper/7`, and a 7.x helper and an 8.x client refuse each other | leaves a 7.x helper running after the update | stops it and starts it again: `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach`, each with the `--instance` it serves |
+
+⚠ **Every other command keeps 2 for a refusal**, `matrix`, `stop`, `config
+validate` and `gc --job` included. None of them answers a job's own code.
+
+⚠ **The rows it reaches:** agent-box and podbox call `run`, dash.vpn calls `run`,
+`base exec` and `base shell`, and pg-toolkit calls `base exec` and `base shell`. Their
+own trees were not read again for this change, so each is read before the release.
+
+### ⛔ What `text-tool eol` refusing a missing path breaks, and what a caller does
+
+`WSL-166`, ruling 35. Not released yet. `text-tool` ships with `wsl-toolkit`, so it
+goes into `wsl-toolkit-v8.0.0`.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `eol` given a path that does not exist exits 1 and writes nothing, to that path or to any file named beside it, with or without `--dry-run`. 7.x converted the others, said `missing`, and exited 0 | names a path that may not exist and reads exit 0, or relies on the files beside it converting | names only paths that exist, or runs one `eol` per path and reads each exit |
+| the stderr line `text-tool: N path(s) do not exist, and eol created nothing there` is gone. The refusal says `N of M path(s) do not exist` | parses that line | reads the exit code, or `missing` in `--json` |
+
 ### ⭐ What the base runtime adds, and what a caller reads
 
 `WSL-126`, `WSL-130` and the limits in `WSL-136`. Not released yet. No exit

@@ -397,7 +397,8 @@ func TestGcCachesIsTheCachesAlone(t *testing.T) {
 
 // TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration is WSL-129: a
 // configuration whose requires names a newer build refuses each command that
-// reads it with exit 2, whatever that command answers otherwise.
+// reads it with exit 2, whatever that command answers otherwise. ⚠ `run`
+// answers a job's own code, so its refusal is toolkit.ExitTool. WSL-127.
 func TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration(t *testing.T) {
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	t.Setenv(toolkit.InstanceEnv, "")
@@ -418,8 +419,12 @@ func TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration(t *testing.T) 
 		{"config"}, {"config", "validate"}, {"run", "--image", "alpine", "-c", "true"},
 		{"matrix", "-c", "true"}, {"gc"}, {"resources"}, {"base", "status"}, {"images"},
 	} {
-		if code := run(context.Background(), args); code != exitCannot {
-			t.Errorf("%v answered %d under a floor of 999.0.0, want 2", args, code)
+		want := exitCannot
+		if args[0] == "run" {
+			want = toolkit.ExitTool
+		}
+		if code := run(context.Background(), args); code != want {
+			t.Errorf("%v answered %d under a floor of 999.0.0, want %d", args, code, want)
 		}
 	}
 	r := ReadyReport{}

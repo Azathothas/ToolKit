@@ -16,7 +16,8 @@ import (
 const baseHerdrUsage = `wsl-toolkit base herdr [--] ARGS...
 
   Run one herdr command inside the base and return its answer. Every argument is
-  herdr's and reaches it unchanged; its exit code is the answer.
+  herdr's and reaches it unchanged; its exit code is the answer. Where this tool
+  could not run herdr, the answer is the --tool-exit code, 125.
 
   This is the route for an agent on Windows to the herdr in the base, including a
   sandboxed one and one that would otherwise have to quote a herdr command inside

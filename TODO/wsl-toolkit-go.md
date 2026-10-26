@@ -13650,7 +13650,7 @@ scratch Arch systemd base: systemd-run --user reached the user bus from the acco
 ## WSL-127. The tool's own exit 2 cannot be told from a job's exit 2
 
 **Source** the consumer survey of 2026-10-21, P14, and the old record's finding 111
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -13691,7 +13691,13 @@ Exit 0 with a case for each code.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/exits`, for 8.0.0, by ruling 35.** A command that answers with a job's code answers 125 where this tool could not run the job, so a job's own 2 is never read as a refusal. 125 is what `timeout` and `podman run` answer for their own failure. `--tool-exit` and `WSL_TOOLKIT_TOOL_EXIT` choose another code, and the detached owner inherits it. Twelve commands forward a job's code, and the manual, the usage and the skill list the same twelve.
+
+A job's result carries `job_started` and `tool_failed`. A payload that started and whose end this tool lost answers 125 with `tool_failed`, where 7.x answered the payload's own 2. A refusal under `--json` writes `wsl-toolkit-refusal/1`. `bsd run` past its deadline answers 124. The helper protocol is `wsl-toolkit-helper/7`, which `WSL-190` moved to as well. Every break has its row in `docs/consumers.md`.
+
+Built, reviewed with fourteen findings, and repaired. Cases drive `Runner.Run` through the exec fake for a run, a payload's 2, an unreached job and a lost end.
+
+⚠ A cancel during `base ensure` or the workspace upload still answers 125, where 130 would say it was cancelled. A result a 7.x owner recorded reads `job_started` false. The live acceptance suite was not run against this build; its expectations moved to 125.
 
 
 ## WSL-128. An input file keeps CRLF and no executable bit
@@ -15413,7 +15419,7 @@ repo mutate --only 'text-tool: '                               24 of 24 guards p
 ## WSL-166. `text-tool eol` answers 0 for a path that does not exist
 
 **Source** the review of the three skills, 2026-10-21, the residual of `WSL-165`
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -15452,7 +15458,9 @@ Exit 0 with the case.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/exits`, for 8.0.0, by ruling 35.** `text-tool eol` given a path that does not exist refuses the whole call with exit 1, as `edit` does, and writes nothing, with or without `--dry-run`. The report still names the path as missing. The skill, the README and the register say so.
+
+Run by hand: `eol real.txt gone.txt --lf` exited 1, created no `gone.txt`, and left `real.txt` unchanged. `eol real.txt --lf` exited 0. Case `TestEolRefusesAPathThatDoesNotExist`. The row on the skip it removes went with it.
 
 ## WSL-167. Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other
 

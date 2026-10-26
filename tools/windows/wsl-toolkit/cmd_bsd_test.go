@@ -28,3 +28,17 @@ func TestACancelledBsdRunExitsOneThreeZero(t *testing.T) {
 		t.Fatalf("a run that could not start exited %d, %v; want %d and the error", code, err, exitCannot)
 	}
 }
+
+// ⛔ A bsd run PAST ITS --timeout ANSWERS 124, as every other deadline this tool
+// holds does, and the dispatcher keeps it. It answered 125, "could not run".
+// WSL-127.
+func TestABsdRunPastItsTimeoutExitsOneTwoFour(t *testing.T) {
+	budget := errors.New("the guest did not finish the command within the budget")
+	code, err := bsdRunExit(toolkit.BsdResult{TimedOut: true, JobStarted: true}, budget)
+	if code != exitTimeout || err != budget {
+		t.Fatalf("a run past its budget exited %d, %v; want 124 and the error", code, err)
+	}
+	if got := ownExit(forwardsExit("bsd", []string{"run"}), code, err); got != exitTimeout {
+		t.Fatalf("the dispatcher moved a deadline's 124 to %d", got)
+	}
+}

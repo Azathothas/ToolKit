@@ -18,10 +18,23 @@ type ProcessError struct {
 	Code int
 	Op   string
 	Err  error
+	// Started says the child was started, so an error with no exit status is
+	// an end that was lost rather than a program that never ran. WSL-127.
+	Started bool
 }
 
 func (e *ProcessError) Error() string { return fmt.Sprintf("%s: %v", e.Op, e.Err) }
 func (e *ProcessError) Unwrap() error { return e.Err }
+
+// ProcessStarted says whether the child an error came from was started.
+// WSL-127.
+//
+// ⚠ AN ERROR THE PROCESS LAYER DID NOT MAKE NEVER STARTED ONE: a request this
+// tool refused before it reached a child.
+func ProcessStarted(err error) bool {
+	var pe *ProcessError
+	return errors.As(err, &pe) && pe.Started
+}
 
 func ExitCode(err error) int {
 	if err == nil {
@@ -94,7 +107,7 @@ func runCommand(ctx context.Context, c *exec.Cmd, in io.Reader, out, stderr io.W
 			code = ee.ExitCode()
 		}
 	}
-	return &ProcessError{Code: code, Op: "process", Err: err}
+	return &ProcessError{Code: code, Op: "process", Err: err, Started: c.Process != nil}
 }
 
 // Output drains both streams before waiting and bounds stored diagnostics.

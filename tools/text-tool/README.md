@@ -62,6 +62,7 @@ pwsh -NoProfile -File scripts/common/text-tool.ps1 --help
 | atomic | a whole file is put in place, so an interrupted run cannot leave half a file |
 | all or nothing | with several files named, every one is read and checked before any is written |
 | nothing on a refusal | a refused call writes no byte to any named file |
+| `eol` makes no file | a path that does not exist is refused with exit 1, and no file named beside it is converted |
 
 ## The count guard
 

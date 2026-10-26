@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -260,7 +261,24 @@ type JobResult struct {
 	Retained     string `json:"retained,omitempty"`
 	TimedOut     bool   `json:"timed_out"`
 	Unreached    bool   `json:"unreached"`
-	Transcript   string `json:"transcript,omitempty"`
+	// JobStarted says the payload was entered: the marker its wrapper writes
+	// from inside the container arrived. WSL-127.
+	//
+	// ⛔ NEVER OMITTED, so a caller reads one field on every answer. A job
+	// refused, unreached, stopped while it waited for its name or its turn, or
+	// past its deadline before its container started is false here, and
+	// `unreached` alone never said the last three.
+	JobStarted bool `json:"job_started"`
+	// ToolFailed is a job whose payload started, or may have, and whose end this
+	// tool could not read: wsl.exe answered with no exit status of the
+	// payload's own, the helper's answer broke off, or no owner recorded it.
+	// JobStarted is true beside it. WSL-127.
+	//
+	// ⛔ IT ANSWERED 2 AS THE JOB'S OWN CODE. The 2 was the process layer's
+	// default for an error that carries no status, so a payload that exited 0
+	// read as one that exited 2.
+	ToolFailed bool   `json:"tool_failed,omitempty"`
+	Transcript string `json:"transcript,omitempty"`
 	// RecordRemoved is true where an ephemeral job's host record was removed
 	// once its answer was ready, and RecordKept says why an ephemeral job kept
 	// its record. WSL-121.
@@ -327,12 +345,14 @@ func (j JobResult) Failed() bool {
 	return j.Exit != 0 || j.TimedOut || j.ArtifactError != ""
 }
 
-// The exit codes this tool answers with, and they mean four different things.
+// The exit codes this tool answers with, and they mean five different things.
 //
 //	0    it ran and it agreed
 //	1    it ran and it disagreed
 //	2    it could not run: bad usage, a missing base, a refusal
 //	124  a deadline was reached, as coreutils' timeout reports it
+//	125  a command that forwards a job's own code could not run it. ExitTool,
+//	     and --tool-exit moves it. WSL-127
 //
 // ⛔ ONE HOME. They were named constants in main and bare literals in here,
 // which is a value in two places with nothing checking that they agree.
@@ -348,10 +368,14 @@ const (
 // ⛔ ONE DEFINITION, for the same reason Failed has one: the rule lived in the
 // command layer, so nothing inside a result could state its own verdict and the
 // structured answer could not carry it.
+//
+// ⛔ A JOB THIS TOOL COULD NOT RUN, OR WHOSE END IT LOST, ANSWERS ToolExit AND
+// NOT 2. A payload exits 2 for reasons of its own, and the two were one number.
+// WSL-127.
 func (j JobResult) Verdict() int {
 	switch {
-	case j.Unreached:
-		return ExitCannot
+	case j.Unreached || j.ToolFailed:
+		return ToolExit()
 	case j.TimedOut:
 		return ExitTimeout
 	case j.Exit != 0:
@@ -913,6 +937,9 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	trace.Mark("streams")
 	streams.Apply(&res)
 	res.Exit = code
+	// ⭐ THE MARKER IS WHAT SAYS THE JOB STARTED, written from inside the
+	// container as the payload is entered. WSL-127.
+	res.JobStarted = marker.Seen()
 	if marker.Seen() && spec.ContainerLifecycle == ContainerPersistent {
 		keepContainer = true
 		res.Container = container
@@ -958,8 +985,12 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		// real payload could also return.
 		res.Unreached, res.Exit = true, 2
 		res.Error = "the container never started: " + engineFailure(res.Stderr, execErr)
-	case execErr != nil && code == 0:
-		res.Exit, res.Error = 2, execErr.Error()
+	case lostEnd(execErr):
+		// ⛔ THE PAYLOAD STARTED AND ITS END WAS LOST. wsl.exe answered with
+		// no exit status, so the 2 the process layer put in its place is this
+		// tool's and not the job's. WSL-127.
+		res.ToolFailed, res.Exit = true, 2
+		res.Error = "the job started and this tool could not read how it ended: " + execErr.Error()
 	}
 
 	if spec.ArtifactDir != "" && !res.Unreached {
@@ -1011,6 +1042,16 @@ func relaySinks(log *RunLog, streams *jobStreams) (out, errw io.Writer) {
 		log.CopyLinesTo(streams.Out.Feed(), streams.Err.Feed())
 	}
 	return io.MultiWriter(streams.Out, log.Stdout()), io.MultiWriter(streams.Err, log.Stderr())
+}
+
+// lostEnd says a job's wsl.exe ended with an error that carries no exit status:
+// it could not be waited on, or its streams outlived it. WSL-127.
+//
+// ⚠ AN EXIT STATUS IS THE PAYLOAD'S ANSWER, whatever its number, and is never
+// read here.
+func lostEnd(execErr error) bool {
+	var exited *exec.ExitError
+	return execErr != nil && !errors.As(execErr, &exited)
 }
 
 // stoppedBySignal is an exit the engine's stop produces: 143 for its TERM, 137

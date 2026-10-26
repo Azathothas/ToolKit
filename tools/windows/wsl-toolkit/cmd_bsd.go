@@ -345,12 +345,19 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 // bsdRunExit maps a finished run to this process's exit code.
 //
 // ⛔ A CANCELLED RUN IS 130, as `distro run` answers one; any other
-// could-not-run is exit 2, and otherwise the guest's own exit stands. The
-// cancellation is read from the result rather than from runErr, because both
-// carry the same error and only the result knows which it was. WSL-151.
+// could-not-run is exit 2, which the dispatcher answers as the tool's code,
+// and otherwise the guest's own exit stands. The cancellation is read from the
+// result rather than from runErr, because both carry the same error and only
+// the result knows which it was. WSL-151.
+//
+// ⛔ A RUN PAST ITS --timeout IS 124, as every other deadline this tool holds
+// answers. It answered the tool's code, which says it could not run. WSL-127.
 func bsdRunExit(res toolkit.BsdResult, runErr error) (int, error) {
 	if res.Cancelled {
 		return 130, nil
+	}
+	if res.TimedOut {
+		return exitTimeout, runErr
 	}
 	if runErr != nil {
 		return exitCannot, runErr

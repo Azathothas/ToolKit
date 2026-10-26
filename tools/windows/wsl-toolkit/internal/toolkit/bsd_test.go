@@ -210,7 +210,10 @@ func TestAGuestWhoseKernelPanicsAndExitsEndsWhenQEMUDoes(t *testing.T) {
 // happened, rather than that the command did not finish in time.
 func TestABudgetThatEndsAfterAPanicNamesThePanic(t *testing.T) {
 	g := startBsdGuestChild(t, "panic")
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// ⚠ TEN SECONDS, INSIDE THE 60-SECOND BOUND. The budget has to outlast the
+	// child's start, or it ends before the panic is on the console and names the
+	// budget. Three seconds did that once on a loaded host.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, _, err := g.run(ctx, "true")
 	if err == nil || !strings.Contains(err.Error(), "kernel panicked: panic: page fault") || strings.Contains(err.Error(), "within the budget") {
@@ -346,6 +349,62 @@ func init() {
 // WSL-151 build left at exit 2: a Ctrl+C while qemu-img makes the overlay. Every
 // step before the boot answered the caller's cancellation with its own error.
 func TestABsdRunCancelledBeforeTheBootAnswersOneThreeZero(t *testing.T) {
+	fakeHangingQemuImg(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(500*time.Millisecond, cancel)
+	started := time.Now()
+	res, err := BsdRun(ctx, BsdRunSpec{Script: []byte("true\n"), Timeout: time.Minute})
+	if !res.Cancelled || res.Exit != 130 || res.TimedOut {
+		t.Fatalf("a run cancelled while its overlay was made is cancelled=%v exit=%d timed_out=%v, %v; want true, 130 and false", res.Cancelled, res.Exit, res.TimedOut, err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("a run cancelled while its overlay was made said %v", err)
+	}
+	if waited := time.Since(started); waited > 30*time.Second {
+		t.Fatalf("the cancellation was noticed after %s", waited)
+	}
+}
+
+// ⛔ A RUN PAST ITS --timeout SAYS SO, and `bsd run` answers 124 from it, as every
+// other deadline this tool holds does. It answered the tool's code. WSL-127.
+func TestABsdRunPastItsBudgetIsTimedOut(t *testing.T) {
+	fakeHangingQemuImg(t)
+	res, err := BsdRun(context.Background(), BsdRunSpec{Script: []byte("true\n"), Timeout: 500 * time.Millisecond})
+	if err == nil || !res.TimedOut || res.Cancelled || res.JobStarted || res.ToolFailed {
+		t.Fatalf("a run past its budget answered timed_out=%v cancelled=%v started=%v tool_failed=%v, %v",
+			res.TimedOut, res.Cancelled, res.JobStarted, res.ToolFailed, err)
+	}
+}
+
+// ⛔ A PAYLOAD THE GUEST'S PANIC CUT OFF STARTED, AND ITS END WAS LOST. A step
+// before the payload is neither. A budget that ran out is a deadline, whatever
+// was running. WSL-127.
+func TestABsdPayloadCutOffStartedAndLostItsEnd(t *testing.T) {
+	g := startBsdGuestChild(t, "panic-exit")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var res BsdResult
+	_, _, err := g.runPayload(ctx, &res, "true")
+	bsdEnded(&res, err, false)
+	if err == nil || !res.JobStarted || !res.ToolFailed || res.TimedOut {
+		t.Fatalf("a payload a panic cut off answered started=%v tool_failed=%v timed_out=%v, %v", res.JobStarted, res.ToolFailed, res.TimedOut, err)
+	}
+	step := BsdResult{}
+	bsdEnded(&step, errors.New("the root filesystem did not grow"), false)
+	if step.JobStarted || step.ToolFailed || step.TimedOut {
+		t.Fatalf("a step before the payload answered %+v", step)
+	}
+	late := BsdResult{JobStarted: true}
+	bsdEnded(&late, errors.New("the guest did not finish the command within the budget"), true)
+	if !late.TimedOut || late.ToolFailed {
+		t.Fatalf("a payload past the budget answered %+v", late)
+	}
+}
+
+// fakeHangingQemuImg puts this test binary on PATH as QEMU and as a qemu-img that
+// never finishes, beside an image, so a run waits in its first step.
+func fakeHangingQemuImg(t *testing.T) {
+	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -377,19 +436,6 @@ func TestABsdRunCancelledBeforeTheBootAnswersOneThreeZero(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(cache, "bsd", BsdImageName), []byte("an image"), 0o600); err != nil {
 		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(500*time.Millisecond, cancel)
-	started := time.Now()
-	res, err := BsdRun(ctx, BsdRunSpec{Script: []byte("true\n"), Timeout: time.Minute})
-	if !res.Cancelled || res.Exit != 130 {
-		t.Fatalf("a run cancelled while its overlay was made is cancelled=%v exit=%d, %v; want true and 130", res.Cancelled, res.Exit, err)
-	}
-	if err == nil || !strings.Contains(err.Error(), "cancelled") {
-		t.Fatalf("a run cancelled while its overlay was made said %v", err)
-	}
-	if waited := time.Since(started); waited > 30*time.Second {
-		t.Fatalf("the cancellation was noticed after %s", waited)
 	}
 }
 

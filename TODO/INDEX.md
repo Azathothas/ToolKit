@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 253  open 18  blocked 5  done 230
+total 253  open 16  blocked 5  done 232
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 11 | 2 | 104 | 117 |
-| P3 | 7 | 3 | 22 | 32 |
-| **all** | **18** | **5** | **230** | **253** |
+| P2 | 10 | 2 | 105 | 117 |
+| P3 | 6 | 3 | 23 | 32 |
+| **all** | **16** | **5** | **232** | **253** |
 
 ---
 
@@ -221,7 +221,7 @@ total 253  open 18  blocked 5  done 230
 | WSL-124 | P2 | M | done | `base exec` lacks the inputs, artifacts, account and stdin `run` has, and its `--dir` takes guest paths only | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-125 | P2 | M | done | A 9P grant is slow, and nothing copies a checkout into the base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-126 | P2 | M | done | `stop` does not reach a session's child that left the process group | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-127 | P2 | M | open | The tool's own exit 2 cannot be told from a job's exit 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-127 | P2 | M | done | The tool's own exit 2 cannot be told from a job's exit 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-128 | P2 | S | open | An input file keeps CRLF and no executable bit | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-129 | P2 | S | done | A project cannot say which version of the tool it needs | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-130 | P2 | L | done | An engine inside a base is set up by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -260,7 +260,7 @@ total 253  open 18  blocked 5  done 230
 | WSL-163 | P3 | S | done | `resources --host-engine` calls the engine outside the deadline door | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-164 | P2 | S | done | `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-165 | P2 | S | done | `text-tool eol` creates an empty file at a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-166 | P3 | S | open | `text-tool eol` answers 0 for a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-166 | P3 | S | done | `text-tool eol` answers 0 for a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-167 | P1 | M | done | Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-168 | P0 | S | done | `base ensure` fails registering the QEMU handlers on a base whose root podman has no D-Bus | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-169 | P1 | S | done | `base ensure --force` unregisters a working base before it knows it can build one | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

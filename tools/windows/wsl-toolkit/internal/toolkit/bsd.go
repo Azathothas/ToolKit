@@ -280,13 +280,24 @@ type BsdResult struct {
 	// overlay, so the line means the image itself is in that state and every run
 	// boots on it until `bsd fetch --force`. WSL-83.
 	RootNotDismounted string `json:"root_not_dismounted,omitempty"`
+	// JobStarted says the line that runs the payload was typed at the guest's
+	// root shell. ⚠ It is set as the line is typed, so a run cut off while
+	// typing may read started, which is the side a retry is safe to err on.
+	// ⛔ Never omitted, as a job's is. WSL-127.
+	JobStarted bool `json:"job_started"`
+	// TimedOut is a run whose --timeout ran out, which answers 124 as every
+	// other deadline this tool holds does. ToolFailed is a payload that started
+	// and whose end the run lost: the guest panicked or went away before it
+	// answered. It answers 125. WSL-127.
+	TimedOut   bool `json:"timed_out,omitempty"`
+	ToolFailed bool `json:"tool_failed,omitempty"`
 }
 
 // errBsdCancelled is a run its caller ended (Ctrl+C), carried up from the wait
 // that saw the cancelled context so a step does not dress it as a budget that
 // ran out. ⛔ A deadline is context.DeadlineExceeded and answers the budget
-// message at exit 2; a cancellation is context.Canceled and answers 130, as
-// `distro run` does. WSL-151, finding 9.
+// message at exit 124; a cancellation is context.Canceled and answers 130, as
+// `distro run` does. WSL-151, finding 9, and WSL-127.
 var errBsdCancelled = errors.New("the run was cancelled before the guest finished")
 
 // bsdCancelled fills res for a cancelled run and answers 130.
@@ -295,6 +306,30 @@ func bsdCancelled(res BsdResult, started time.Time) (BsdResult, error) {
 	res.Error = "the run was cancelled, so the guest was stopped. The answer is 130"
 	res.Duration = time.Since(started)
 	return res, errors.New(res.Error)
+}
+
+// bsdEnded reads how a run that returned an error ended, beside a cancellation,
+// which bsdCancelled answers: its budget ran out, or its payload started and the
+// run lost how it ended. WSL-127.
+//
+// ⛔ A DEADLINE ANSWERED 125, "could not run", where every other deadline this
+// tool holds answers 124. outOfBudget is read as the run ended, before its guest
+// is stopped, because a graceful stop can outlast what was left of the budget.
+func bsdEnded(res *BsdResult, err error, outOfBudget bool) {
+	if err == nil || res.Cancelled {
+		return
+	}
+	switch {
+	case outOfBudget:
+		res.TimedOut = true
+	case res.JobStarted:
+		res.ToolFailed = true
+	}
+}
+
+// bsdOutOfBudget says the run's own --timeout ran out, and not the caller's.
+func bsdOutOfBudget(caller, budget context.Context) bool {
+	return budget != nil && errors.Is(budget.Err(), context.DeadlineExceeded) && caller.Err() == nil
 }
 
 // ⭐ A RUN WRITES TO AN OVERLAY, AND NEVER TO THE IMAGE.
@@ -517,10 +552,20 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	// rather than the run's, because the run's deadline is a budget and not a
 	// cancellation. This runs last, after the guest is stopped. WSL-151.
 	caller := ctx
+	// ⭐ WHETHER THE BUDGET RAN OUT IS READ AS THE RUN ENDS. A run with a guest
+	// reads it before the guest is stopped, into outOfBudget; one that ended
+	// before its guest existed reads it here. WSL-127.
+	var budget context.Context
+	var outOfBudget *bool
 	defer func() {
 		if err != nil && !res.Cancelled && errors.Is(caller.Err(), context.Canceled) {
 			res, err = bsdCancelled(res, started)
 		}
+		spent := bsdOutOfBudget(caller, budget)
+		if outOfBudget != nil {
+			spent = *outOfBudget
+		}
+		bsdEnded(&res, err, spent)
 	}()
 	img, err := BsdImagePath()
 	if err != nil {
@@ -556,6 +601,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	res.DiskBytes = disk
 	ctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
+	budget = ctx
 
 	archive, err := bsdPayloadArchive(spec.Script)
 	if err != nil {
@@ -595,6 +641,11 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	// synced`, and one in pmap_remove_pages before `Syncing disks`, whose next boot
 	// found the root filesystem not properly dismounted. WSL-81, WSL-83.
 	defer func() { res.ShutdownPanic = g.stopAndReadPanic() }()
+	// ⚠ DEFERRED AFTER THE STOP, SO IT RUNS BEFORE IT.
+	defer func() {
+		spent := bsdOutOfBudget(caller, budget)
+		outOfBudget = &spent
+	}()
 
 	if failure, ok := g.waitBoot(ctx); !ok {
 		// ⛔ A CANCELLED BOOT IS 130, NOT THE BUDGET. waitBoot ends on the
@@ -668,7 +719,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 		g.graceful = err == nil
 		return res, errors.New(res.Error)
 	}
-	exit, out, err := g.run(ctx, runScript)
+	exit, out, err := g.runPayload(ctx, &res, runScript)
 	res.Exit, res.Output, res.Duration = exit, out, time.Since(started)
 	if err != nil {
 		if errors.Is(err, errBsdCancelled) {
@@ -975,6 +1026,13 @@ func (g *guest) send(ctx context.Context, line string) error {
 		}
 	}
 	return nil
+}
+
+// runPayload runs the caller's payload, the one step whose start a run's answer
+// carries as job_started. WSL-127.
+func (g *guest) runPayload(ctx context.Context, res *BsdResult, line string) (int, string, error) {
+	res.JobStarted = true
+	return g.run(ctx, line)
 }
 
 // run executes one payload at a root shell and reads back its exit code.

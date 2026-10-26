@@ -160,22 +160,23 @@ func ReadHelperEvents(body io.Reader, fn func(HelperEvent) error) error {
 	return nil
 }
 
-// stream opens a streaming request and reads its events.
-func (c *HelperClient) stream(ctx context.Context, path string, body any, fn func(HelperEvent) error) error {
+// stream opens a streaming request and reads its events. accepted says the
+// helper answered 200, which it sends once it has taken the work on.
+func (c *HelperClient) stream(ctx context.Context, path string, body any, fn func(HelperEvent) error) (accepted bool, err error) {
 	data, err := json.Marshal(body)
 	if err != nil {
-		return err
+		return false, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+c.endpoint.Address+path, bytesReader(data))
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.endpoint.Token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/x-ndjson")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -184,11 +185,35 @@ func (c *HelperClient) stream(ctx context.Context, path string, body any, fn fun
 		}
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		if json.Unmarshal(raw, &problem) == nil && problem.Error != "" {
-			return fmt.Errorf("the helper refused: %s", problem.Error)
+			return false, fmt.Errorf("the helper refused: %s", problem.Error)
 		}
-		return fmt.Errorf("the helper answered %s", resp.Status)
+		return false, fmt.Errorf("the helper answered %s", resp.Status)
 	}
-	return ReadHelperEvents(resp.Body, fn)
+	return true, ReadHelperEvents(resp.Body, fn)
+}
+
+// lostHelperRun is the answer to a job the helper took on and whose result
+// never arrived: the helper died, the connection dropped, or this call was
+// cancelled. WSL-127.
+//
+// ⛔ IT WAS A REFUSAL. `run --via-helper --json` answered wsl-toolkit-refusal/1
+// with job_started false, for a job that may have run and may still be running
+// on the helper, so a caller read a retry as safe.
+//
+// ⚠ job_started IS TRUE BECAUSE IT MAY HAVE. The helper runs the job once it
+// has answered 200, and nothing here can say how far it got. A cancelled call
+// answers 130, as the direct route does; the helper's own request ends with the
+// call, so it cancels the job too.
+func lostHelperRun(ctx context.Context, err error) JobResult {
+	res := JobResult{JobStarted: true}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		res.Cancelled, res.Exit = true, ExitStopped
+		res.Error = "this call was cancelled while the helper ran the job, and the helper cancels it with the call: " + err.Error()
+		return res
+	}
+	res.ToolFailed, res.Exit = true, ExitCannot
+	res.Error = "the helper took the job on and its answer was lost, so the job may have run and may still be running there: " + err.Error()
+	return res
 }
 
 // HelperSinks are where a streaming client puts what arrives.
@@ -249,13 +274,18 @@ func (c *HelperClient) RunStream(ctx context.Context, req HelperRunRequest, sink
 	// through this function or MatrixStream, so this is the one door where the
 	// effective configuration joins the request. WSL-44.
 	req.Config, req.NameFrom = &c.cfg, c.cfg.nameFrom
-	err := c.stream(ctx, "/v1/run", req, func(ev HelperEvent) error {
+	accepted, err := c.stream(ctx, "/v1/run", req, func(ev HelperEvent) error {
 		if ev.Kind == "result" && ev.Result != nil {
 			res, artifacts = *ev.Result, ev.ArtifactsID
 			return nil
 		}
 		return sinks.apply(ev)
 	})
+	// ⛔ A STREAM THAT BROKE AFTER THE HELPER TOOK THE JOB ON IS A JOB'S END,
+	// not a refusal. WSL-127.
+	if err != nil && accepted {
+		return lostHelperRun(ctx, err), "", nil
+	}
 	return res, artifacts, err
 }
 
@@ -265,7 +295,7 @@ func (c *HelperClient) MatrixStream(ctx context.Context, req HelperMatrixRequest
 	var report MatrixReport
 	var artifacts string
 	req.Config, req.NameFrom = &c.cfg, c.cfg.nameFrom
-	err := c.stream(ctx, "/v1/matrix", req, func(ev HelperEvent) error {
+	_, err := c.stream(ctx, "/v1/matrix", req, func(ev HelperEvent) error {
 		if ev.Kind == "report" && ev.Report != nil {
 			report, artifacts = *ev.Report, ev.ArtifactsID
 			return nil

@@ -57,7 +57,8 @@ const stopUsage = `wsl-toolkit stop JOB-ID
 const jobIDForms = `
   JOB-ID is the id a job printed, its container's name wtk-ID, or the
   first four or more characters of either when one job alone starts with
-  them. A prefix that names none, or several, is refused with exit 2.
+  them. A prefix that names none, or several, is refused with exit 2, and
+  125 from wait and logs --follow.
 `
 
 func cmdStop(ctx context.Context, args []string) (int, error) {
@@ -327,6 +328,10 @@ type jobEndOutcome struct {
 	Kind    string                `json:"kind"`
 	Result  *toolkit.JobResult    `json:"result,omitempty"`
 	Session *toolkit.SessionState `json:"session,omitempty"`
+	// JobStarted says the job's payload, or the session's command, started.
+	// ⭐ The job's own field, lifted, so a reader of a job and of a session reads
+	// one place. WSL-127.
+	JobStarted bool `json:"job_started"`
 	// Orphaned is true where no owner recorded the end, and the exit is the
 	// engine's own, where it has one.
 	Orphaned bool   `json:"orphaned,omitempty"`
@@ -421,28 +426,15 @@ func jobEnd(ctx context.Context, id string, tail int, stdout, stderr io.Writer) 
 	if err != nil {
 		return out, err
 	}
-	res := toolkit.JobResult{ID: id}
-	switch {
-	case exit != nil && runner.EndedByStop(id, *exit):
-		res.Cancelled, res.Stopped, res.Exit = true, true, 130
-		out.Note = "no process owned this job when " + runner.StoppedBy(id) + " ended its container"
-		out.verdict = 130
-	case exit != nil:
-		res.Exit = *exit
-		out.Note = "no process owned this job when it ended, so the exit is the container's own"
-		out.verdict = *exit
-	case present:
-		res.Exit, out.verdict = 1, exitFailed
-		out.Note = "no process owned this job, and the engine holds no exit for its container"
-	default:
-		res.Exit, out.verdict = 1, exitFailed
-		out.Note = "no process owned this job and its container is gone, so how it ended was not recorded"
-		if stdout != nil {
-			_ = writeBothTranscripts(dir, tail, stdout, stderr)
-		}
+	stoppedBy := ""
+	if exit != nil && runner.EndedByStop(id, *exit) {
+		stoppedBy = runner.StoppedBy(id)
 	}
-	res.Error = out.Note
-	res.Seal()
+	res, verdict := orphanEnd(id, exit, present, stoppedBy)
+	out.Note, out.verdict = res.Error, verdict
+	if exit == nil && !present && stdout != nil {
+		_ = writeBothTranscripts(dir, tail, stdout, stderr)
+	}
 	out.Result = &res
 	// ⭐ AN END THE ENGINE REPORTED IS RECORDED where no owner recorded one, so a
 	// second reader gets the same answer after the container is gone. The claim
@@ -455,6 +447,37 @@ func jobEnd(ctx context.Context, id string, tail int, stdout, stderr io.Writer) 
 		}
 	}
 	return out, nil
+}
+
+// orphanEnd is how a job with no owner and no result ended, from what the
+// engine holds: its container's exit, whether the container is still there, and
+// the stop that ended it, where one did.
+//
+// ⚠ AN EXIT THE ENGINE HOLDS IS A CONTAINER THAT RAN, so the job started. Its
+// wrapper writes the marker before anything else. WSL-127.
+//
+// ⛔ AN END THAT WAS NOT RECORDED IS THIS TOOL'S FAILURE, not the job's. It
+// answered 1, "ran and disagreed", with job_started false, where the direct
+// route answers a lost end 125 with tool_failed. job_started is true there
+// because the job may have run, and false would read a retry as safe. WSL-127.
+func orphanEnd(id string, exit *int, present bool, stoppedBy string) (toolkit.JobResult, int) {
+	res := toolkit.JobResult{ID: id, JobStarted: true}
+	switch {
+	case exit != nil && stoppedBy != "":
+		res.Cancelled, res.Stopped, res.Exit = true, true, 130
+		res.Error = "no process owned this job when " + stoppedBy + " ended its container"
+	case exit != nil:
+		res.Exit = *exit
+		res.Error = "no process owned this job when it ended, so the exit is the container's own"
+	case present:
+		res.ToolFailed, res.Exit = true, exitCannot
+		res.Error = "no process owned this job, and the engine holds no exit for its container"
+	default:
+		res.ToolFailed, res.Exit = true, exitCannot
+		res.Error = "no process owned this job and its container is gone, so how it ended was not recorded"
+	}
+	res.Seal()
+	return res, res.EffectiveExit
 }
 
 // waitOwnerGone waits for a job's owner to let its lock go.
@@ -570,6 +593,16 @@ func jobEndCode(err error) int {
 
 func renderEnd(end jobEndOutcome, asJSON bool) (int, error) {
 	if asJSON {
+		// ⛔ RESEALED HERE, as reportJob seals at the point of rendering. The
+		// owner sealed the record under its own --tool-exit, or a 7.x owner
+		// sealed an unreached job at 2, so effective_exit disagreed with the
+		// code this wait answers. A copy, so the record stays as written. WSL-127.
+		if end.Result != nil {
+			sealed := *end.Result
+			sealed.Seal()
+			end.Result = &sealed
+		}
+		end.JobStarted = endStarted(end)
 		return end.verdict, writeJSON(end)
 	}
 	switch {
@@ -587,6 +620,22 @@ func renderEnd(end jobEndOutcome, asJSON bool) (int, error) {
 		logf("  %s", line)
 	}
 	return end.verdict, nil
+}
+
+// endStarted says whether the job or the session a wait read had started.
+// WSL-127.
+//
+// ⚠ A SESSION THAT HAS A RECORD STARTED. Its record is written once its
+// supervisor is running, and a command that could not enter its directory is
+// still a command that ran and answered.
+func endStarted(end jobEndOutcome) bool {
+	switch {
+	case end.Result != nil:
+		return end.Result.JobStarted
+	case end.Session != nil:
+		return true
+	}
+	return false
 }
 
 // writeBothTranscripts writes a job's two recorded streams, each to its own.

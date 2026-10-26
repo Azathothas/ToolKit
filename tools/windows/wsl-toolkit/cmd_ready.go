@@ -416,6 +416,17 @@ printf 'ready\n' > /out/ready.txt
 if [ -d /mnt/c ]; then printf 'hostmnt=yes\n'; else printf 'hostmnt=no\n'; fi
 `
 
+// smokeFailure is why the smoke job did not pass, or "" where it did.
+//
+// ⛔ A CONTAINER THAT NEVER STARTED IS NOT A JOB THAT EXITED 125. The reason said
+// "exited" over the tool's own code, which reads as the payload's. WSL-127.
+func smokeFailure(res toolkit.JobResult) string {
+	if res.Verdict() == 0 {
+		return ""
+	}
+	return fmt.Sprintf("the smoke job %s: %s", endedAs(res, res.Verdict()), strings.TrimSpace(res.Error+" "+res.ArtifactError))
+}
+
 func runReadySmoke(ctx context.Context, cfg toolkit.Config, cfgErr error, healthy bool) *readySmoke {
 	s := &readySmoke{}
 	if cfgErr != nil {
@@ -454,8 +465,8 @@ func runReadySmoke(ctx context.Context, cfg toolkit.Config, cfgErr error, health
 		ArtifactDir: art, Timeout: 5 * time.Minute, Label: "ready --smoke",
 	})
 	s.JobID = res.ID
-	if res.Verdict() != 0 {
-		s.Reason = fmt.Sprintf("the smoke job exited %d: %s", res.Verdict(), strings.TrimSpace(res.Error+" "+res.ArtifactError))
+	if reason := smokeFailure(res); reason != "" {
+		s.Reason = reason
 		return s
 	}
 	for _, line := range strings.Split(res.Stdout, "\n") {

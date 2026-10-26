@@ -28,7 +28,8 @@ import (
 
 // Exit codes, and they mean four different things. A command that runs somebody
 // else's code, `run`, `base exec`, `distro new -c` and `distro run`, forwards
-// that code instead.
+// that code instead, and answers toolkit.ToolExit where it could not run it,
+// 125 unless --tool-exit says otherwise. forwardsExit names them. WSL-127.
 //
 // ⛔ ONE HOME, and it is toolkit, where the meanings are written down. They
 // were literals in the package that produces a result and named constants here,
@@ -111,9 +112,20 @@ func usage() string {
 		"        --quiet       progress off. Answers still go to stdout",
 		"        --json-compact  each --json answer on one line. Also",
 		"                      WSL_TOOLKIT_JSON=compact",
+		"        --tool-exit N the code a command that answers with a job's own",
+		"                      code answers where this tool could not run it:",
+		"                      2 to 255, other than 124 and 130. 125 by default,",
+		"                      and 2 is what 7.x answered. Also",
+		"                      WSL_TOOLKIT_TOOL_EXIT",
 		"",
 		"Every command takes --json where an answer has structure.",
 		"Progress goes to stderr; stdout carries the answer alone.",
+		"",
+		"Exit: 0 it ran and agreed, 1 it ran and disagreed, 2 it could not run,",
+		"124 a deadline, 130 a stop. run, wait, logs --follow, base exec, base",
+		"shell, base agent, base herdr, base bootstrap, distro new -c, distro",
+		"run, distro enter and bsd run answer the job's own code, and the",
+		"--tool-exit code, 125, where this tool could not run it.",
 	)
 	return strings.Join(lines, "\n")
 }
@@ -170,12 +182,28 @@ func run(ctx context.Context, args []string) int {
 	// state directory every subcommand resolves at startup.
 	var rest []string
 	instance := ""
+	answered = false
+	toolExitAsked := false
 	for i := 0; i < len(args); i++ {
 		switch {
 		case args[i] == "--quiet" || args[i] == "-q":
 			quiet = true
 		case args[i] == "--json-compact":
 			jsonCompact = true
+		case args[i] == toolExitFlag:
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "wsl-toolkit: "+toolExitFlag+" needs a code from 2 to 255")
+				return exitCannot
+			}
+			i++
+			// ⭐ SET AS THE ENVIRONMENT, as --home is, so the detached owner and
+			// every other copy of this program the call starts answer the same
+			// code. WSL-127.
+			os.Setenv(toolkit.ToolExitEnv, args[i])
+			toolExitAsked = true
+		case strings.HasPrefix(args[i], toolExitFlag+"="):
+			os.Setenv(toolkit.ToolExitEnv, strings.TrimPrefix(args[i], toolExitFlag+"="))
+			toolExitAsked = true
 		case args[i] == "--home":
 			if i+1 >= len(args) {
 				fmt.Fprintln(os.Stderr, "wsl-toolkit: --home needs a directory")
@@ -218,14 +246,6 @@ func run(ctx context.Context, args []string) int {
 			}
 		}
 	}
-	// ⛔ ONE SPELLING OF THE STATE DIRECTORY, SETTLED BEFORE ANYTHING READS IT.
-	// --home and WSL_TOOLKIT_HOME skipped msysHostPath, so `/d/wsl-toolkit` from
-	// Git Bash named `C:\d\wsl-toolkit`: a second state root, with its own jobs,
-	// ledger, locks and grants. WSL-187.
-	if err := settleHome(); err != nil {
-		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
-		return exitCannot
-	}
 	if err := readJSONEnv(); err != nil {
 		fmt.Fprintln(os.Stderr, "wsl-toolkit: ! "+err.Error())
 	}
@@ -234,20 +254,46 @@ func run(ctx context.Context, args []string) int {
 		fmt.Fprintln(os.Stderr, usage())
 		return exitOK
 	}
+	// ⭐ WHETHER THIS CALL ANSWERS WITH SOMEBODY ELSE'S CODE IS KNOWN FROM HERE
+	// ON, so a refusal before the command runs answers the same code as one
+	// inside it. WSL-127.
+	cmd, cmdArgs := "", []string(nil)
+	if len(rest) > 0 {
+		cmd, cmdArgs = rest[0], rest[1:]
+	}
+	refuse := func(code int, err error) int {
+		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
+		code = ownExit(forwardsExit(cmd, cmdArgs), code, err)
+		if name, ok := refusalDocument(cmd, cmdArgs); ok {
+			writeRefusal(name, code, err)
+		}
+		return code
+	}
+	if err := readToolExit(toolExitAsked); err != nil {
+		return refuse(exitCannot, err)
+	}
+	// ⛔ ONE SPELLING OF THE STATE DIRECTORY, SETTLED BEFORE ANYTHING READS IT.
+	// --home and WSL_TOOLKIT_HOME skipped msysHostPath, so `/d/wsl-toolkit` from
+	// Git Bash named `C:\d\wsl-toolkit`: a second state root, with its own jobs,
+	// ledger, locks and grants. WSL-187.
+	// ⚠ AFTER THE TOOL'S OWN CODE IS KNOWN, so a command that forwards a job's
+	// code refuses an unsettled home with it, as every other failure of its own.
+	// WSL-127.
+	if err := settleHome(); err != nil {
+		return refuse(exitCannot, err)
+	}
 	// ⛔ THE INSTANCE IS RESOLVED BEFORE THE SUBCOMMAND RUNS, because it decides
 	// the state directory every subcommand reads at startup and the distribution
 	// name the configuration defaults to. Resolving it inside a command would be
 	// resolving it after something had already read the wrong home. WSL-43.
 	if code, err := applyInstance(ctx, instance); err != nil {
-		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
-		return code
+		return refuse(code, err)
 	}
 	// ⭐ THE WATCHER OF --cancel-on-exit IS THIS PROGRAM, started by the owner
 	// of a job with the same selection and no command of its own. WSL-121.
 	if watchdog {
 		return runWatchdog(ctx, watchIDs)
 	}
-	cmd, cmdArgs := rest[0], rest[1:]
 	if cmd == "--version" {
 		cmd = "version"
 	}
@@ -265,12 +311,12 @@ func run(ctx context.Context, args []string) int {
 		return exitOK
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
-		if errors.Is(err, toolkit.ErrWslDenied) {
-			fmt.Fprintln(os.Stderr, deniedAdvice())
-		}
 		if code == exitOK {
 			code = exitCannot
+		}
+		code = refuse(code, err)
+		if errors.Is(err, toolkit.ErrWslDenied) {
+			fmt.Fprintln(os.Stderr, deniedAdvice())
 		}
 	}
 	return code
@@ -476,6 +522,7 @@ func parseOneName(fs *flag.FlagSet, args []string) (string, error) {
 // ⭐ ONE LINE UNDER --json-compact, so a caller reading lines reads one
 // document per line. The bytes inside the document do not change. WSL-120.
 func writeJSON(v any) error {
+	answered = true
 	enc := json.NewEncoder(os.Stdout)
 	if !jsonCompact {
 		enc.SetIndent("", "  ")
