@@ -1600,6 +1600,7 @@ state the ensure answers, over the helper too. `WSL-157`
 | a settings file with no `schema_version` | Muse exits 1, `malformed settings file ... missing field schema_version` |
 | a turn submitted with `herdr agent prompt` | the pane reads `idle`, `working`, `idle`, and `herdr agent wait --until working` returns when the hook reports |
 | `/exit`, then `muse resume` and a prompt | the pane reads `idle` and is released. A resumed session sends no `SessionStart`, and the hook adopts the pane again |
+| ⛔ a tool approval cancelled in the pane | no hook fires, so the pane stays `blocked` and `herdr agent prompt` answers `agent_blocked`. A turn sent through the pane recovers it, as [the herdr guide](examples/common/herdr.md#-after-a-cancelled-approval-herdr-refuses-every-prompt) says. `WSL-148` |
 
 ⭐ **`pi` and `omp` install the other two agents from npm, and take herdr's own
 integration.** Both are npm packages, so there is no installer to approve and no

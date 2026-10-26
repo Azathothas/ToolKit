@@ -144,6 +144,8 @@ exits 2.
 ⚠ **Submit a prompt with `herdr agent prompt`, not with `pane send-text` and
 `pane send-keys enter`.** Muse Code 1.3.0 keeps text that arrives through the two
 pane commands in its input, a new line after it, unsent. `agent prompt` sends it.
+The one exception is an agent a cancelled approval left `blocked`, as
+[the section below](#-after-a-cancelled-approval-herdr-refuses-every-prompt) says.
 
 ---
 
@@ -202,6 +204,31 @@ wsl-toolkit base herdr -- agent explain work
 
 It answers `screen_detection_skip_reason: full_lifecycle_hook_authority` for those two.
 Muse reports through the hook this tool's `muse` adapter installs.
+
+---
+
+## ⛔ After a cancelled approval, herdr refuses every prompt
+
+⛔ **Muse Code 1.3.0 fires no hook when a tool approval is cancelled.** The pane
+prints `tool approval cancelled`, and the hook's last report stays `blocked`. herdr
+then keeps the agent `blocked` and refuses every `agent prompt` with
+`agent_blocked`. `WSL-148`
+
+⭐ **The way out is the pane.** This is the one place for the two pane commands:
+
+```powershell
+wsl-toolkit base herdr -- pane send-text $pane 'continue with the task'
+wsl-toolkit base herdr -- pane send-keys $pane enter
+wsl-toolkit base herdr -- agent get work
+```
+
+herdr's own screen detection sees the turn start and moves the agent off `blocked`.
+`agent prompt` is then accepted again. ⚠ Read the agent's state before the next
+prompt, because the hook reports nothing for this recovery.
+
+⚠ **Registering more hooks does not help.** `Interrupt` and `PostToolUse` were both
+registered and driven through the same cancel, and neither fired. The missing hook
+is Muse's, measured with herdr 0.9.0 in `WSL-76`.
 
 ---
 
