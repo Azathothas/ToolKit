@@ -7,7 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -52,12 +56,45 @@ func TestJobControlRefusesWhatItCannotAnswer(t *testing.T) {
 
 // ⛔ A STOP OF AN ID NOTHING RAN IS REFUSED WITH 2, as the manual and the skill
 // say. Its error was lost in the helper's if, and the stop exited 0.
+// ⚠ THE DIRECT ROUTE NEEDS wsl.exe to build its runner, so it skips where there
+// is none. The helper's route below holds the same error on any host.
 func TestAStopOfAnIDNothingRanIsRefused(t *testing.T) {
+	if _, err := toolkit.FindWsl(); err != nil {
+		t.Skipf("the direct route builds a runner, and %v", err)
+	}
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	selectInstance(t, toolkit.DefaultInstance)
 	code, err := cmdStop(context.Background(), []string{cliJobID})
 	if code != exitCannot || !errors.Is(err, toolkit.ErrUnknownJob) {
 		t.Fatalf("a stop of an id nothing ran answered %d, %v; want %d and the unknown-job refusal", code, err, exitCannot)
+	}
+}
+
+// ⛔ THROUGH THE HELPER TOO: a helper that names the job unknown is a refusal
+// with 2, never a stop that exited 0.
+func TestAStopTheHelperFindsNoJobForIsRefused(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	selectInstance(t, toolkit.DefaultInstance)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/status" {
+			_, _ = fmt.Fprintf(w, `{"schema":%q,"version":%q,"pid":%d}`, toolkit.HelperSchema, toolkit.Version, os.Getpid())
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"error":"no such job: %s","unknown":true}`, cliJobID)
+	}))
+	defer srv.Close()
+	ep, err := json.Marshal(toolkit.HelperEndpoint{Schema: toolkit.HelperSchema, Address: strings.TrimPrefix(srv.URL, "http://"), Token: "t", PID: os.Getpid()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, err := cmdStop(context.Background(), []string{cliJobID, "--via-helper"})
+	if code != exitCannot || !errors.Is(err, toolkit.ErrUnknownJob) {
+		t.Fatalf("a stop the helper found no job for answered %d, %v; want %d and the unknown-job refusal", code, err, exitCannot)
 	}
 }
 
