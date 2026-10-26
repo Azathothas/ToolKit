@@ -40,8 +40,9 @@ wsl-toolkit selfupdate
 the wrong place gives the same message. Compare the field with `config --effective`.
 If its name and place are right, run `selfupdate`.
 
-⛔ **FROM GIT BASH, EXPORT TWO VARIABLES FIRST.** MSYS rewrites a guest path, so
-`--cwd /workspaces/proj` reaches herdr as `C:/Program Files/Git/workspaces/proj`.
+⛔ **FROM GIT BASH, EXPORT TWO VARIABLES FIRST.** MSYS rewrites a guest path such as
+`--cwd /workspaces/proj` into `C:/Program Files/Git/workspaces/proj` before the tool
+starts, and the tool refuses the rewrite.
 `export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` stops it. Every example here is
 PowerShell, and one example pipes into `ConvertFrom-Json`, which is PowerShell only.
 
@@ -77,16 +78,22 @@ test "${HERDR_ENV:-}" = 1
 wsl-toolkit base herdr -- agent list
 ```
 
-⭐ **Everything after `--` is herdr's, argument for argument.** No shell in the base
-reads it. Your own PowerShell still does, so single-quote a prompt in PowerShell.
-Most answers are JSON.
+⭐ **Everything after `--` is herdr's, argument for argument.** Each one is quoted
+once, so no shell in the base reads it as syntax. Your own PowerShell still does, so
+single-quote a prompt in PowerShell. Most answers are JSON.
+
+⛔ **herdr's own 2 is herdr's.** `wsl-toolkit base herdr` answers herdr's exit code: 1
+for a server error, and 2 for a command line herdr refuses. It answers 125 where the
+tool could not run herdr, such as a base with no `herdr` adapter.
 
 ⭐ **The agents run in the default base, so no example here passes `--instance`.** Its
 canonical name is `wsl-toolkit-jobs`. ⚠ An older default base may still be named
 `wsl-toolkit`, and it keeps working. `wsl-toolkit base status` says which name it has.
-For another base, `wsl-toolkit-NAME` is `--instance NAME`. ⛔ `base` and `jobs` are
-reserved instance names. ⚠ A new instance named `wsl-NAME` is made as `NAME`, with a
-warning. `--literal-instance` keeps the name as given.
+For another base, `wsl-toolkit-NAME` is `--instance NAME`.
+
+⛔ **`base` and `jobs` are reserved instance names.** A new instance under either is
+refused, and an existing one stays reachable. ⚠ A new instance named `wsl-NAME` is
+made as `NAME`, with a warning. `--literal-instance` keeps the name as given.
 
 ---
 
@@ -182,10 +189,13 @@ herdr **service's** environment. A value exported in `~/.profile` never reaches 
 
 ⭐ **Set it in the base's configuration and let the tool write each agent's own file.**
 The fields go under `base`, beside the file's `schema` and its other fields.
-`wsl-toolkit config --write` puts the whole file on disk to edit:
+`wsl-toolkit config --write` puts the whole file on disk to edit. ⚠ Where
+`wsl-toolkit config` names a `wsl-toolkit.json` instead, that file is in effect, so
+edit that one:
 
 ```json
 {
+  "schema": "wsl-toolkit-config/1",
   "base": {
     "systemd": true,
     "adapters": [
@@ -207,10 +217,18 @@ Then:
 wsl-toolkit base ensure
 ```
 
-⛔ **`base ensure` can restart and rebuild the base.** Ask the user before you run it
-on a base that holds work. ⛔ **A Muse installer whose digest nobody approved stops it
-with exit 2.** The ensure keeps the installer and prints how to read it. Approving it
-is the user's decision, after reading it. Never add `installer_sha256` yourself.
+⛔ **`base ensure` can restart the base, which ends every pane and agent in it.** Ask
+the user before you run it on a base that holds work. ⚠ Each adapter installs with
+`pacman -Syu --needed`, which upgrades every package in the base.
+
+⛔ **A Muse installer whose digest nobody approved stops it with exit 2.** The ensure
+keeps the installer and prints how to read it. Approving it is the user's decision,
+after reading it. Never add `installer_sha256` yourself.
+
+⚠ **Only the state directory that owns the base installs an adapter.** From another
+one, or from a shell whose `%LOCALAPPDATA%` Windows redirects into an app's copy,
+`base ensure` says so in one line and exits 0. Run it from PowerShell or a terminal
+outside the app. `wsl-toolkit base status` names the owner.
 
 | field | what it does |
 | --- | --- |
@@ -253,8 +271,9 @@ From inside the base, `wsl-toolkit base shell`, then `herdr`.
 ⛔ **An agent must be on the PATH a pane has, and that PATH does not include
 `~/.local/bin`.** The adapters write a wrapper on the system path for this, and check
 it on a login shell. If `agent start` times out with `command not found` in the pane,
-run `base ensure`. ⚠ This holds for PATH only: an exported variable still never
-reaches the agent, as section 7 says.
+`base status --probe` names the agent. `base ensure` writes its wrapper again, after
+the question to the user that section 7 asks. ⚠ This holds for PATH only: an
+exported variable still never reaches the agent, as section 7 says.
 
 ⛔ **A prefix ahead of that wrapper starts an agent without its defaults.** A login
 shell then finds the agent's vendor launcher first. `base bootstrap` puts the
@@ -273,8 +292,8 @@ pane's foreground process.
 credential, a code or a sign-in URL.
 
 ⚠ **`agent prompt --wait` answers `agent_prompt_stalled`** when no `working` or
-`blocked` state appears within 5 seconds. herdr says that does not prove nothing was
-sent. Read the agent before you send the prompt again.
+`blocked` state appears within 5 seconds. herdr says neither that nor a timeout proves
+nothing was sent. Read the agent before you send the prompt again.
 
 ⚠ **`agent wait --until idle` can time out on an agent that is already idle**, because
 the turn ended before the wait began. Read the agent's state first, with `agent get`.

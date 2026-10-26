@@ -39,8 +39,8 @@ you will miss.
 
 | code | what it means |
 | --- | --- |
-| 0 | it did what you asked. ⚠ `eol` on a path that does not exist also answers 0, and creates the file empty |
-| 1 | it REFUSED a count or a match, and nothing was written. `edit` on a missing file is a count of 0, so it answers 1 |
+| 0 | it did what you asked |
+| 1 | it REFUSED, and nothing was written. That is a count or a match, a line number the file lacks, or an `eol` path that does not exist. `edit` on a missing file answers 1, except `--insert-after 0` and `--insert-before 1`, which make the file |
 | 2 | a usage refusal, such as a flag it does not take or a missing `--expect`. A `--from` or `--files-from` file it cannot open answers 2 too. Nothing was written |
 
 ## 2. The four modes
@@ -188,9 +188,9 @@ separator.
 the payload. Reach for them whenever the text you are searching for holds
 anything your shell would touch.
 
-⚠ `--regex` reads the search as a regular expression and lets `$1` in the
-payload refer to a group. It applies to `--replace`, `--between`, `--after` and
-`--before`.
+⚠ `--regex` reads the search as a regular expression. It applies to
+`--replace`, `--between`, `--after` and `--before`. Only with `--replace` does
+`$1` in the payload name a group. Elsewhere it is written as typed.
 
 ## 6. Many files at once
 
@@ -220,8 +220,8 @@ text-tool edit --files-from paths.txt --replace 'old' --text 'new' --expect 12
 
 ⚠ `--line`, `--insert-after`, `--insert-before` and `--delete` name a place in
 ONE file and are refused when several are given. A line number means a different
-place in each file. `--replace`, `--after`, `--before` and `eol` name the same
-thing in each, so they take as many files as you like.
+place in each file. `--replace`, `--after`, `--before`, `--between` and `eol` name
+the same thing in each, so they take as many files as you like.
 
 ## 7. Line endings and the byte order mark
 
@@ -237,8 +237,8 @@ text-tool eol a.txt b.txt c.txt --lf --bom strip
 the long spellings. `--bom` takes `keep` (the default), `strip` or `add`.
 
 ⚠ **The count is endings CONVERTED, not lines in the file.** A file already in
-the wanted ending answers 0, so you can tell "nothing to do" from "everything
-moved" without comparing byte totals.
+the wanted ending reports `0 match(es)`, so you can tell "nothing to do" from
+"everything moved" without comparing byte totals.
 
 ⛔ **A PATH THAT DOES NOT EXIST IS REFUSED**, with exit 1, and nothing is written
 to it or to any file named beside it. `eol` converts a file and never makes one.
