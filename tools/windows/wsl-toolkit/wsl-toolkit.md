@@ -2366,14 +2366,15 @@ disk, or one a virus scanner or a backup holds, can stop WSL starting the guest.
 can also stop `cat` reading the marker. `base remove --yes` then removes the base on
 WSL's registration of its disk in this instance's `base` folder. `base recreate`
 rebuilds it the same way. ⛔ Only `cat` saying the marker is missing reads as no
-marker, so nothing stamps a guest it could not read. The marker is read in the C
-locale, so `cat` says it in English in any guest. `base ensure` refuses such a
-base, and it and `base status --probe` name the reason and both commands. Each
-carries the remediation `identity-unread`, which names `base recreate` and what it
-deletes. `ready` names that rebuild, with `--ensure` or without it. ⚠ While another
-process holds the base's lock, the probe names that process and advises nothing.
-⚠ A marker that names another distribution, or does not parse, still refuses.
-`WSL-183`
+marker, so nothing stamps a guest it could not read. `base ensure` refuses such a
+base, and it and `base status --probe` name the reason and both commands. ⚠ A
+marker that names another distribution, or does not parse, still refuses. `WSL-183`
+
+⭐ **`ready` names the rebuild of such a base.** The refusal and the probe carry the
+remediation `identity-unread`, which names `base recreate` and what it deletes.
+`ready` reads it, with `--ensure` or without it. The marker is read in the C locale,
+so `cat` says a marker is missing in English in any guest. ⚠ While another process
+holds the base's lock, the probe names that process and advises nothing. `WSL-183`
 
 ⛔ **A build that is still running is never removed as a stopped one.** A build
 holds the base's lock from before its import until after its marker, and every
@@ -2492,10 +2493,12 @@ fully qualified is refused the same way. `WSL-169`
 host engine for the copy of the image it already holds. A copy for this machine's
 platform is exported, and the build says so and names its digest. ⚠ It may be older
 than the registry's. A copy for another platform is refused, as is no copy, and the
-base stays registered. A pull its caller stopped is not stood in for. The state the
-build answers carries the advisory `built-from-local-copy`, naming the copy and its
-digest. So `--json`, the helper's answer and `ready`'s notes say it. Through the
-helper, `run --ensure-base` prints it too. `WSL-192`
+base stays registered. A pull its caller stopped is not stood in for. `WSL-192`
+
+⭐ **A base built from that copy says so in its state.** The advisory
+`built-from-local-copy` names the copy and its digest. So `--json`, the helper's
+answer and `ready`'s notes say it. Through the helper, `run --ensure-base` prints it
+too. `WSL-192`
 
 ⭐ **A pull may be silent for as long as its largest layer takes at 256 KiB/s.**
 podman on Windows prints a line as a layer starts and one as it ends, and nothing
@@ -2544,16 +2547,18 @@ so a plain ensure still reaches a helper built before the field. `WSL-191`
 
 ⭐ **A base records the digest of the image it was built from.** A tag such as the
 default's is rebuilt daily, so the tag alone does not say which image a base came
-from. The build asks the host engine for the digest it pulled. It keeps the
-repository's digest, which the registry names for the tag. podman also names its
-platform manifest's digest, and that one is kept only where the repository names no
-other. So every engine records the same digest. The guest's marker and `base.json`
-keep it. `base status` prints it in its `digest` row, as the image at that
-digest, and `--json` carries `digest`. Set `base.image` to that row's value to build
-the same base after the tag moved. ⚠ A base an older release built has none, and so
-does one whose engine named none. A digest that cannot be read is said, and the build
-goes on. Its state carries the advisory `digest-unrecorded` with the reason, so the
-helper's answer and `--json` say it too. `WSL-186`
+from. The build asks the host engine for the digest it pulled. The guest's marker
+and `base.json` keep it. `base status` prints it in its `digest` row, as the image at
+that digest, and `--json` carries `digest`. Set `base.image` to that row's value to
+build the same base after the tag moved. `WSL-186`
+
+⭐ **The digest is the repository's**, which the registry names for the tag. podman
+also names its platform manifest's digest, which is kept only where the repository
+names no other. So every engine records the same digest. ⚠ A base an
+older release built has none, and so does one whose engine named none. A digest that
+cannot be read is said, and the build goes on. Its state carries the advisory
+`digest-unrecorded` with the reason, so the helper's answer and `--json` say it too.
+`WSL-186`
 
 ⛔ **A failed re-provision keeps the base.** `base ensure`, `ready --ensure` and
 `run --ensure-base` re-provision a registered base that does not verify. When that
