@@ -131,6 +131,11 @@ build `wsl-toolkit-accp` the same way, grant it a checkout under the runner's
 `.tmp` scratch directory, and remove it. ⛔ Never point it at a base in use,
 `podman-machine-default`, or another distribution it did not create.
 
+⚠ **One case edits the selected instance's configuration, and restores it.** It
+changes `base.image` alone in the file `config` resolves, then runs `base ensure`
+against that drift. The file's own bytes are written back whatever the case
+answers, and a file not restored byte for byte fails the case. `WSL-132`
+
 ⭐ **A herdr `--remote` client is proved by its own probe**, because nothing in the
 Go suite can see it: a release and a development build of it answer the same
 `--version`, so the version tells them apart from nothing. `WSL-141`

@@ -2,6 +2,60 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the acceptance marker case changes one key and keeps every other",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "else { $doc = [Text.Json.Nodes.JsonNode]::Parse($Text) }",
+      "replace": "else { $doc = [Text.Json.Nodes.JsonObject]::new() }",
+      "run": "TestEditConfigKeyChangesOnlyItsKey",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance marker case writes the configuration's own bytes back",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "if ($null -ne $saved) { [IO.File]::WriteAllBytes($cfgPath, $saved) }",
+      "replace": "if ($null -ne $saved) { [IO.File]::WriteAllText($cfgPath, [Text.Encoding]::UTF8.GetString($saved)) }",
+      "run": "TestTheMarkerCaseGivesTheConfigurationBackByteForByte",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance marker case fails over a configuration it did not restore",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "if (-not $restored) { return \"the configuration at $cfgPath was not restored byte for byte\" }",
+      "replace": "",
+      "run": "TestTheMarkerCaseGivesTheConfigurationBackByteForByte",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance tick case is silent for longer than a tick can wait",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "'-c', 'echo first; sleep 30; echo second')",
+      "replace": "'-c', 'echo first; sleep 7; echo second')",
+      "run": "TestTheAcceptanceTickCaseWaitsOutTheProbeBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance tick case needs the one tick a loaded machine guarantees",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "        if ($ticks.Count -lt 1) {",
+      "replace": "        if ($ticks.Count -lt 2) {",
+      "run": "TestTheAcceptanceTickCaseWaitsOutTheProbeBudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a longer container probe budget is held against the acceptance tick case",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/observe.go",
+      "find": "const containerProbeBudget = 20 * time.Second\n",
+      "replace": "const containerProbeBudget = 30 * time.Second\n",
+      "run": "TestTheAcceptanceTickCaseWaitsOutTheProbeBudget",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base herdr and base bootstrap answer the tool's code for their own refusal",
       "module": "tools/windows/wsl-toolkit",
       "file": "exit_tool.go",

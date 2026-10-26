@@ -261,6 +261,34 @@ function Get-StateDir {
     return $StateHome
 }
 
+# Edit-ConfigKey changes ONE KEY of a configuration's text and keeps every other
+# key, its value and its place. WSL-132: the marker case wrote an instance's own
+# file whole with three keys, and the ensure it then ran read an instance that
+# asked for systemd as asking for none. Empty text is a file that does not exist,
+# so the answer carries the schema and the one key.
+#
+# NOTE: JsonNode, NOT ConvertFrom-Json. ConvertFrom-Json turns a string shaped
+# like a date into a date and writes it back in another shape.
+# NOTE: each branch assigns $doc itself. A JsonObject is enumerable, and an if
+# statement's output assigned whole would arrive as its key-value pairs.
+function Edit-ConfigKey {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory = $true)][string]$Section,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+    $Text = $Text.TrimStart([char]0xFEFF)
+    if ($Text.Trim() -eq '') {
+        $doc = [Text.Json.Nodes.JsonObject]::new()
+        $doc['schema'] = [Text.Json.Nodes.JsonValue]::Create('wsl-toolkit-config/1')
+    }
+    else { $doc = [Text.Json.Nodes.JsonNode]::Parse($Text) }
+    if ($null -eq $doc[$Section]) { $doc[$Section] = [Text.Json.Nodes.JsonObject]::new() }
+    $doc[$Section][$Key] = [Text.Json.Nodes.JsonValue]::Create($Value)
+    return $doc.ToJsonString([Text.Json.JsonSerializerOptions]@{ WriteIndented = $true })
+}
+
 # A THROW BEFORE THE FIRST CASE IS "COULD NOT RUN", AND THAT IS EXIT 2. Under
 # $ErrorActionPreference = 'Stop' an unhandled throw ends the script with 1, which
 # reads as a case that failed. The trap turns a throw during setup into a refusal,
@@ -1284,38 +1312,55 @@ try {
 
     # issue 18: a health probe identifies the ENGINE and not the rootfs, so
     # `ensure` relabelled an Arch base as Alpine because an Alpine CONTAINER ran.
+    #
+    # WSL-132. ONE KEY CHANGES, AND THE FILE COMES BACK BYTE FOR BYTE. This wrote
+    # the configuration whole with three keys, so the ensure below read an instance
+    # that asked for systemd as asking for none, and took it away. Every other key
+    # keeps its value now. The bytes are restored whether the case passes, fails or
+    # throws, and the restore is read back as part of the verdict.
     Test-Case 'the guest own marker decides what the base was built from' 'True' {
         $probe = Invoke-Tool @('base', 'status', '--probe', '--json')
         $before = Read-ToolJson -Stdout $probe.Out -What 'base status --probe --json'
         if (-not $before.identity) { return 'the base carries no identity marker' }
         $real = [string]$before.identity.image
         $cfgPath = (Invoke-Tool @('config')).Out.Trim()
-        $saved = if (Test-Path -LiteralPath $cfgPath) { [IO.File]::ReadAllText($cfgPath) } else { $null }
-        try {
-            # Change the CONFIGURED image without rebuilding anything.
-            $lie = if ($real -match 'alpine') { 'ghcr.io/pkgforge-dev/archlinux:latest' } else { 'docker.io/library/alpine:latest' }
-            $null = New-Item -ItemType Directory -Path (Split-Path -Parent $cfgPath) -Force
-            [IO.File]::WriteAllText($cfgPath, (@{
-                schema = 'wsl-toolkit-config/1'
-                base   = @{ name = $script:BaseName; image = $lie; user = 'toolkit' }
-            } | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
-            $e = Invoke-Tool @('base', 'ensure')
-            # EXIT 1, AND THAT IS THE POINT. `ensure` was asked to bring the
-            # machine to the state the configuration describes and it could not,
-            # short of a rebuild it must not perform on its own. 1 means "it ran
-            # and it disagreed". v1.3.0 exited 0 here, because relabelling the
-            # record was what made the disagreement disappear.
-            if ($e.Code -ne 1) { return "base ensure exited $($e.Code) rather than 1 over a drifted base" }
-            $after = Read-ToolJson -Stdout (Invoke-Tool @('base', 'status', '--probe', '--json')).Out -What 'base status --probe --json'
-            $said = (($e.Err + $e.Out) -match 'was built from')
-            $rebuild = (($e.Err + $e.Out) -match 'base recreate')
-            # v1.3.0 rewrote the record to $lie here and reported no drift.
-            (($after.identity.image -eq $real) -and ($after.built_from -eq $real) -and $said -and $rebuild).ToString()
+        # NOTE: assigned, not taken from an if statement, which would unroll the
+        # bytes and read an empty file as no file.
+        $saved = $null
+        if (Test-Path -LiteralPath $cfgPath) { $saved = [IO.File]::ReadAllBytes($cfgPath) }
+        $verdict = & {
+            try {
+                # Change the CONFIGURED image without rebuilding anything.
+                $lie = if ($real -match 'alpine') { 'ghcr.io/pkgforge-dev/archlinux:latest' } else { 'docker.io/library/alpine:latest' }
+                $text = if ($null -ne $saved) { [Text.UTF8Encoding]::new($false).GetString($saved) } else { '' }
+                $null = New-Item -ItemType Directory -Path (Split-Path -Parent $cfgPath) -Force
+                [IO.File]::WriteAllText($cfgPath, (Edit-ConfigKey -Text $text -Section 'base' -Key 'image' -Value $lie),
+                    [Text.UTF8Encoding]::new($false))
+                $e = Invoke-Tool @('base', 'ensure')
+                # EXIT 1, AND THAT IS THE POINT. `ensure` was asked to bring the
+                # machine to the state the configuration describes and it could not,
+                # short of a rebuild it must not perform on its own. 1 means "it ran
+                # and it disagreed". v1.3.0 exited 0 here, because relabelling the
+                # record was what made the disagreement disappear.
+                if ($e.Code -ne 1) { return "base ensure exited $($e.Code) rather than 1 over a drifted base" }
+                $after = Read-ToolJson -Stdout (Invoke-Tool @('base', 'status', '--probe', '--json')).Out -What 'base status --probe --json'
+                $said = (($e.Err + $e.Out) -match 'was built from')
+                $rebuild = (($e.Err + $e.Out) -match 'base recreate')
+                # v1.3.0 rewrote the record to $lie here and reported no drift.
+                (($after.identity.image -eq $real) -and ($after.built_from -eq $real) -and $said -and $rebuild).ToString()
+            }
+            finally {
+                if ($null -ne $saved) { [IO.File]::WriteAllBytes($cfgPath, $saved) }
+                elseif (Test-Path -LiteralPath $cfgPath) { Remove-Item -LiteralPath $cfgPath -Force }
+            }
         }
-        finally {
-            if ($null -ne $saved) { [IO.File]::WriteAllText($cfgPath, $saved) }
-            elseif (Test-Path -LiteralPath $cfgPath) { Remove-Item -LiteralPath $cfgPath -Force }
+        $now = $null
+        if (Test-Path -LiteralPath $cfgPath) { $now = [IO.File]::ReadAllBytes($cfgPath) }
+        $restored = if ($null -eq $saved) { $null -eq $now } else {
+            ($null -ne $now) -and ([Convert]::ToBase64String($now) -eq [Convert]::ToBase64String($saved))
         }
+        if (-not $restored) { return "the configuration at $cfgPath was not restored byte for byte" }
+        $verdict
     }
 
     # WSL-51: the nearest configuration wins WHOLE, and `config` says which file
@@ -1678,15 +1723,24 @@ try {
     # WSL-50 and WSL-52.
 
     # The heartbeat speaks during a silence and only then. The payload writes one
-    # line, then is silent for longer than three ticks, then writes another, so
-    # the count of ticks does not depend on how the writes fall against the
-    # interval.
+    # line, then is silent, then writes another.
+    #
+    # WSL-132. WHAT A LOADED MACHINE STILL GUARANTEES, AND NOTHING MORE. A tick
+    # waits on one probe of the container, and the probe may spend its whole
+    # budget, so how many ticks land in a silence is the load's to decide: two in
+    # seven seconds failed beside mutation rows and passed idle. This silence
+    # outlasts the interval, the relay's poll and the probe's budget, so one tick
+    # lands however long the probe takes. observe_test.go holds the two together.
     Test-Case 'a job that outlives the tick interval says so, and stops saying it' 'True' {
         $r = Invoke-Tool @('run', '--tick', '2s', '--timeout', '2m', '--image', 'alpine',
-            '-c', 'echo first; sleep 7; echo second')
+            '-c', 'echo first; sleep 30; echo second')
         if ($r.Code -ne 0) { return "the job exited $($r.Code): $($r.Err)" }
         $ticks = @(($r.Err -split "`n") | Where-Object { $_ -match '^\d+s silent \| elapsed ' })
-        if ($ticks.Count -lt 2) { return "only $($ticks.Count) tick(s) over seven silent seconds at 2s: $($r.Err)" }
+        if ($ticks.Count -lt 1) { return "no tick over thirty silent seconds at 2s: $($r.Err)" }
+        # A tick speaks only once the interval has passed in silence, whatever the
+        # load, because the relay asks again after the probe answers.
+        $early = @($ticks | Where-Object { [int]($_ -replace '^(\d+)s silent .*$', '$1') -lt 2 })
+        if ($early.Count -gt 0) { return "a tick spoke before two silent seconds: $($early[0])" }
         # The counts are what had arrived: one line of six bytes, not a timer.
         $counted = @($ticks | Where-Object { $_ -match '\| out 1 lines 6 B \|' })
         if ($counted.Count -lt 1) { return "no tick counted the line before the silence: $($ticks -join ' / ')" }

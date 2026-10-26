@@ -3,8 +3,13 @@
 package toolkit
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ⛔ EVERY CASE HERE READS A FUNCTION WITH NO PROCESS IN IT, on purpose. The
@@ -263,4 +268,53 @@ func TestASizeIsReadInTheUNITSTheEnginePrinted(t *testing.T) {
 			t.Fatalf("ParseHumanBytes(%q) is %d, want %d", tc.in, got, tc.want)
 		}
 	}
+}
+
+// TestTheAcceptanceTickCaseWaitsOutTheProbeBudget holds the acceptance suite's
+// tick case to what the relay guarantees on a loaded machine. WSL-132.
+//
+// ⛔ A TICK WAITS ON ONE PROBE OF THE CONTAINER, and the probe may spend all of
+// containerProbeBudget. The relay asks again once it answers and drops a tick
+// that output overtook, so a silence shorter than the interval, the poll and the
+// budget may carry none. The case asked for two in seven seconds, and failed
+// beside mutation rows while it passed idle. A longer budget, a shorter silence
+// or a second required tick each turns it back into a measure of the load.
+func TestTheAcceptanceTickCaseWaitsOutTheProbeBudget(t *testing.T) {
+	body := acceptanceCase(t, "a job that outlives the tick interval says so, and stops saying it")
+	tick := regexp.MustCompile(`'--tick', '(\d+)s'`).FindStringSubmatch(body)
+	sleep := regexp.MustCompile(`echo first; sleep (\d+); echo second`).FindStringSubmatch(body)
+	need := regexp.MustCompile(`\$ticks\.Count -lt (\d+)`).FindStringSubmatch(body)
+	if tick == nil || sleep == nil || need == nil {
+		t.Fatalf("the tick case no longer names its interval, its silence and the ticks it needs:\n%s", body)
+	}
+	interval, _ := strconv.Atoi(tick[1])
+	silent, _ := strconv.Atoi(sleep[1])
+	floor := time.Duration(interval)*time.Second + relayPoll + containerProbeBudget
+	if time.Duration(silent)*time.Second < floor {
+		t.Errorf("the tick case is silent for %ds, and one tick is certain only after %v: a %ds interval, the %v poll and the %v probe budget",
+			silent, floor, interval, relayPoll, containerProbeBudget)
+	}
+	if need[1] != "1" {
+		t.Errorf("the tick case needs %s ticks, and a loaded machine guarantees one", need[1])
+	}
+}
+
+// acceptanceCase is the body of the acceptance suite's case with this name, from
+// its Test-Case line to the brace that closes it.
+func acceptanceCase(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "acceptance.ps1"))
+	if err != nil {
+		t.Fatalf("the acceptance suite could not be read: %v", err)
+	}
+	text := strings.ReplaceAll(string(b), "\r\n", "\n")
+	start := strings.Index(text, "Test-Case '"+name+"'")
+	if start < 0 {
+		t.Fatalf("the acceptance suite has no case named %q", name)
+	}
+	end := strings.Index(text[start:], "\n    }\n")
+	if end < 0 {
+		t.Fatalf("the case %q has no closing brace at its own indentation", name)
+	}
+	return text[start : start+end]
 }
