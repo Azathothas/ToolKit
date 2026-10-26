@@ -71,7 +71,8 @@ wsl-toolkit base exec --help
 `--dir /workspaces/proj` into `C:/Program Files/Git/workspaces/proj` before the tool
 starts, and the tool refuses the rewrite. `export MSYS_NO_PATHCONV=1
 MSYS2_ARG_CONV_EXCL='*'` stops it, and the tool then reads a host path such as
-`"$PWD"` in MSYS's spelling. Every example here is PowerShell.
+`"$PWD"` in MSYS's spelling, `--home` and `WSL_TOOLKIT_HOME` included. Every example
+here is PowerShell.
 
 ⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** `cmd | Select-Object`
 gives you the pipeline's status, not the tool's. Read `$LASTEXITCODE` on the line
@@ -283,7 +284,8 @@ It is refused through the helper.
 | a Windows launcher says it is another build | `base ensure` rewrites it |
 | `no such job` for a job another shell started | the other shell may name another `--instance`, or hold another state directory. `config` and `doctor` name a second copy. Call the tool from one kind of shell, or set `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%` |
 | a helper refusal reading `and this build speaks` | a helper from another release is still running. Each instance has its own: `wsl-toolkit --instance NAME helper stop`, then `wsl-toolkit --instance NAME helper serve --detach` |
-| a line ending `and was given up` | ⭐ **a STALL, not a slow link.** A pull or an export that sends nothing for minutes is given up rather than waited out. The line says where to look |
+| a line saying `and was given up` | ⭐ **silence, and a slow link can be silent too.** A pull prints nothing while one layer downloads, so its limit is that layer's time at 256 KiB/s. On a slower link, set `WSL_TOOLKIT_PULL_STALL` to a duration such as `45m` and run it again. The line says where else to look |
+| an advisory `host-space-low` | the volume the base's disk grows into has under 6 GiB free. Jobs still run, and a full volume fails the guest's writes. Free space there. `wsl-toolkit gc` lists what the tool holds |
 
 ⭐ **The tool keeps a complete transcript of every job it runs**, until `gc` removes
 the job:

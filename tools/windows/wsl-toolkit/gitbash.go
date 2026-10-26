@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -123,6 +124,24 @@ func msysOrigin(v string) string {
 		return m.mount + "/" + strings.TrimLeft(rest, "/")
 	}
 	return ""
+}
+
+// settleHome rewrites WSL_TOOLKIT_HOME, whether --home or the caller's
+// environment set it, as one absolute host path, and exports it again.
+//
+// ⛔ EXPORTED, NOT ONLY READ. The helper and every detached child inherit the
+// variable, and a child resolving `/d/x` or a relative path on its own could
+// land somewhere else. A path read once and handed on is one state root. WSL-187.
+func settleHome() error {
+	v := strings.TrimSpace(os.Getenv("WSL_TOOLKIT_HOME"))
+	if v == "" {
+		return nil
+	}
+	abs, err := filepath.Abs(msysHostPath(v))
+	if err != nil {
+		return fmt.Errorf("the state directory %q cannot be resolved: %w", v, err)
+	}
+	return os.Setenv("WSL_TOOLKIT_HOME", abs)
 }
 
 // msysRoot is the directory MSYS maps `/` to, in the forward-slash form its

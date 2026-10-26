@@ -230,10 +230,29 @@ func fakeEngineMain(state, role string, args []string) int {
 	switch args[0] {
 	case "info":
 		fmt.Println(runtime.GOARCH)
+	case "manifest":
+		// ⭐ WSL-176: `manifest inspect REF` answers the manifest the case wrote for
+		// REF, and a reference it wrote none for is unknown, as a registry says.
+		if len(args) == 3 && args[1] == "inspect" {
+			if body, err := os.ReadFile(filepath.Join(state, fakeManifestFile(args[2]))); err == nil {
+				_, _ = os.Stdout.Write(body)
+				return 0
+			}
+		}
+		fmt.Fprintln(os.Stderr, "Error: reading manifest: manifest unknown")
+		return 125
 	case "pull":
 		if refused, _ := os.ReadFile(filepath.Join(state, "pull")); strings.TrimSpace(string(refused)) == "refused" {
 			fmt.Fprintln(os.Stderr, "Error: initializing source: reading manifest: manifest unknown")
 			return 125
+		}
+		// ⭐ WSL-176: silent for the span the case wrote, as podman is while one
+		// layer downloads, then done.
+		if quiet, err := os.ReadFile(filepath.Join(state, "pull-silent")); err == nil {
+			if d, err := time.ParseDuration(strings.TrimSpace(string(quiet))); err == nil {
+				time.Sleep(d)
+			}
+			fmt.Println("Writing manifest to image destination")
 		}
 	case "rm":
 	case "create":

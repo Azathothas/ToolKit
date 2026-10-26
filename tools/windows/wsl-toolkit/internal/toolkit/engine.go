@@ -225,9 +225,15 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	if err := ValidateImageRef(ref); err != nil {
 		return err
 	}
-	log(fmt.Sprintf("pulling %s for %s", ref, e.Platform()))
+	// ⭐ THE STALL IS SIZED BEFORE THE PULL, from the layers it will move, and
+	// the line says how long the pull may be silent and why. WSL-176.
+	lim, err := e.pullLimits(ctx, ref)
+	if err != nil {
+		return err
+	}
+	log(fmt.Sprintf("pulling %s for %s. It may be silent for %s, %s", ref, e.Platform(), FormatSpan(lim.Stall), lim.Why))
 	// ⛔ NEVER EMIT NOTHING: RENDER SILENCE, WITH A TIME ON IT. The pull is
-	// bounded at thirty minutes above, which is the right ceiling and the whole
+	// bounded at thirty minutes or more below, which is the right ceiling and the whole
 	// of what this used to say. Between the line before and the pull returning,
 	// a caller saw NOTHING, so a stalled pull and a slow one were the same
 	// picture for up to half an hour.
@@ -242,10 +248,12 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	// ⭐ THE STALL DEADLINE IS WHAT CATCHES A HANG. The total ceiling has to be
 	// set for the worst legitimate pull, which makes it useless against a pull
 	// that has simply stopped; this one asks whether anything arrived recently.
+	// ⚠ A pull is silent while a layer downloads, so its stall is pullLimits',
+	// and the hint says a slow link reads the same. WSL-176.
 	out, stderr, err := (engineCall{
-		Timeout: EngineTransferTimeout, Stall: EngineStallTimeout,
+		Timeout: lim.Total, Stall: lim.Stall,
 		What: e.Name + " pull " + ref,
-		Hint: "The registry or the network is where a pull stalls. Retry, or read: podman system connection list",
+		Hint: pullStallHint(e.Name, lim),
 	}).run(ctx, e.Path, e.pullArgs(ref)...)
 	stopBeat()
 	if err != nil {

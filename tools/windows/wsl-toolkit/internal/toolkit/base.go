@@ -100,6 +100,9 @@ type BaseState struct {
 	// its guest ever wrote, whatever the guest frees. WSL-109.
 	DiskSparse    string `json:"disk_sparse,omitempty"`
 	DiskAllocated int64  `json:"disk_allocated_bytes,omitempty"`
+	// HostFree is what the volume the disk grows into has free. ⚠ Nil is not
+	// measured, which is not a full volume. WSL-180.
+	HostFree *int64 `json:"host_free_bytes,omitempty"`
 	// WslConfigSparseVhd is what .wslconfig sets for sparseVhd: true, false,
 	// unset or unreadable.
 	WslConfigSparseVhd string `json:"wslconfig_sparse_vhd,omitempty"`
@@ -316,6 +319,11 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 			st.Remediations = append(st.Remediations, r)
 		}
 	}
+	// ⭐ THE SPACE THE DISK GROWS INTO, read on every status, probe or not, so
+	// `ready` carries it too. WSL-180.
+	if r, ok := hostSpaceFacts(&st); ok {
+		st.Remediations = append(st.Remediations, r)
+	}
 	if rec, err := b.readRecord(); err == nil {
 		st.Created = rec.Created
 		// ⛔ The configured image and the one it was built from are two places
@@ -475,6 +483,89 @@ func diskSparseFacts(st *BaseState) (Remediation, bool) {
 		Repairable: true,
 		Advisory:   true,
 	}, true
+}
+
+// hostSpaceFacts reads what the volume the base's disk grows into has free, and
+// answers the advisory where that is under BaseSpaceFloor.
+//
+// ⛔ NOTHING WATCHED IT. The disk is dynamic and grows into this machine's
+// volume as the guest writes, and FreeSpace was read only before an import. A
+// volume that pulls, job workspaces, caches or Windows filled gave the guest
+// I/O errors and an ext4 read-only remount, with no word before. WSL-180.
+func hostSpaceFacts(st *BaseState) (Remediation, bool) {
+	free, ok, err := freeSpace(filepath.Dir(st.DiskPath))
+	if err != nil || !ok {
+		return Remediation{}, false
+	}
+	st.HostFree = &free
+	if free >= BaseSpaceFloor {
+		return Remediation{}, false
+	}
+	return hostSpaceLow(st.DiskPath, free), true
+}
+
+// hostSpaceLow is the advisory for a volume the disk grows into that has less
+// than BaseSpaceFloor free.
+//
+// ⚠ ADVISORY, AND NOT REPAIRABLE HERE. The base runs a job either way until the
+// volume is full, and most of what fills it is not this tool's to remove.
+func hostSpaceLow(disk string, free int64) Remediation {
+	return Remediation{
+		ID: "host-space-low",
+		What: fmt.Sprintf("the volume holding %s has %s free, under the %s this tool keeps free for the disk to grow into",
+			disk, HumanBytes(free), HumanBytes(BaseSpaceFloor)),
+		Costs: "the disk grows as the guest writes. When the volume is full, the guest's writes fail and ext4 remounts read only. " +
+			"Free space on that volume. gc lists what this tool holds there",
+		Command:  ToolCommand("gc"),
+		Advisory: true,
+	}
+}
+
+// hostSpaceWarning answers the advisory a job starts with, where the volume the
+// base's disk grows into is under BaseSpaceFloor. WSL-180.
+//
+// ⚠ THE DISK WSL NAMES, as statusFrom reads it, so a base this home does not
+// own is measured where its disk is.
+func (b *Base) hostSpaceWarning() (Remediation, bool) {
+	disk := filepath.Join(b.Dir(), "ext4.vhdx")
+	if at, registered, err := b.diskFolder(); err == nil && registered && at != "" {
+		disk = filepath.Join(at, "ext4.vhdx")
+	}
+	free, ok, err := freeSpace(filepath.Dir(disk))
+	if err != nil || !ok || free >= BaseSpaceFloor {
+		return Remediation{}, false
+	}
+	return hostSpaceLow(disk, free), true
+}
+
+// assertSpaceFloor refuses a build before its engine is asked for anything,
+// where the volume that would hold dir has less than floor free, with freed
+// bytes about to be given back.
+//
+// ⛔ THE EXPORT WROTE BEFORE ANY SPACE CHECK. A pull and a rootfs archive went
+// into a volume that could never hold the import, which then refused. The
+// import's own check needs at least this floor, so this refuses nothing that
+// check would pass. WSL-180.
+func assertSpaceFloor(dir string, floor, freed int64) error {
+	free, ok, err := freeSpace(dir)
+	if err != nil || !ok {
+		// ⚠ Unread is no refusal here. The import's check says so in its own
+		// words once the archive exists.
+		return nil
+	}
+	if free+freed < floor {
+		return fmt.Errorf("NOT ENOUGH DISK SPACE for %s. At least %s must be free before anything is pulled, and %s is free on the volume holding it%s. "+
+			"Nothing was pulled", dir, HumanBytes(floor), HumanBytes(free), freedNote(freed))
+	}
+	return nil
+}
+
+// freedNote says what a removal gives back, where it gives anything.
+func freedNote(freed int64) string {
+	if freed <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" with %s more once the old disk is removed", HumanBytes(freed))
 }
 
 // withoutRecordDrift removes the problem the host record raised, for the case
@@ -1174,6 +1265,11 @@ func (b *Base) rebuildEngine(ctx context.Context) (*Engine, error) {
 	if err := ValidateImageRef(b.cfg.Base.Image); err != nil {
 		return nil, fmt.Errorf("%s was NOT removed: base.image cannot be exported: %w", b.cfg.Base.Name, err)
 	}
+	// ⛔ THE SPACE BEFORE THE ENGINE, AND BEFORE THE REMOVAL. A rebuild into a
+	// volume under the floor pulls nothing and keeps the base. WSL-180.
+	if err := assertSpaceFloor(b.Dir(), BaseSpaceFloor, b.diskBytes()); err != nil {
+		return nil, fmt.Errorf("%s was NOT removed: %w", b.cfg.Base.Name, err)
+	}
 	b.log("asking the host engine before " + b.cfg.Base.Name + " is removed")
 	engine, err := FindEngine(ctx)
 	if err != nil {
@@ -1385,6 +1481,11 @@ func (b *Base) freshRootfs(ctx context.Context) (string, error) {
 			return "", err
 		}
 		return rootfs, nil
+	}
+	// ⛔ THE SPACE BEFORE THE ENGINE, so a volume under the floor gets no pull
+	// and no archive. WSL-180.
+	if err := assertSpaceFloor(b.Dir(), BaseSpaceFloor, 0); err != nil {
+		return "", err
 	}
 	engine, err := FindEngine(ctx)
 	if err != nil {

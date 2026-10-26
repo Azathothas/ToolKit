@@ -14,8 +14,14 @@
 // ⭐ TWO DEADLINES, BECAUSE A HANG AND A SLOW TRANSFER ARE DIFFERENT THINGS.
 // A total ceiling alone has to be set for the worst legitimate case, which
 // makes it useless against a stall. A STALL deadline asks a different question:
-// has anything happened recently. A pull moving bytes over a slow link is never
-// killed, and a pull that has stopped is given up in minutes.
+// has anything happened recently. A call that writes as it moves, such as an
+// export, is never killed for being slow, and one that has stopped is given up
+// in minutes.
+//
+// ⛔ BUT SILENCE IS ALL IT MEASURES. A pull writes nothing while a layer
+// downloads, so a pull's stall is sized from its largest layer, in
+// pullstall.go, and the refusal no longer says a slow link cannot be the cause.
+// WSL-176.
 //
 // ⛔ AND A STALL IS REPORTED AS A STALL. A deadline that fires and reports
 // "context deadline exceeded" sends a reader to look for a slow network. This
@@ -52,10 +58,15 @@ const EngineTransferTimeout = 30 * time.Minute
 // given up.
 //
 // ⭐ THIS IS THE ONE THAT CATCHES A HANG. The measured stall produced no bytes
-// at all for 28 minutes; the same pull, working, printed a progress line every
-// few seconds. ⚠ Four minutes rather than one: podman is silent while it
-// resolves a manifest and while it writes a large blob to disk, and a limit
+// at all for 28 minutes. ⚠ Four minutes rather than one: podman is silent while
+// it resolves a manifest and while it writes a large blob to disk, and a limit
 // tighter than the quietest legitimate stretch would kill working pulls.
+//
+// ⛔ IT IS THE EXPORT'S LIMIT AND A PULL'S FLOOR, NOT A PULL'S LIMIT. This said
+// a working pull printed a progress line every few seconds. It does not: podman
+// on Windows prints a line as a layer starts and one as it ends, so four minutes
+// was a minimum bandwidth over the largest layer. pullLimits sizes a pull's
+// limit from that layer, and never below this. WSL-176.
 const EngineStallTimeout = 4 * time.Minute
 
 // engineCall is one bounded invocation of the host engine.
@@ -148,8 +159,11 @@ func (c engineCall) explain(watch *stallWatch, total time.Duration, callerErr er
 		if hint == "" {
 			hint = "Read what the engine is doing with: podman system connection list"
 		}
+		// ⛔ NOT "a STALL and not a slow link", which was false for a pull: a
+		// layer downloading is as silent as a stopped transfer. The caller's hint
+		// says which it can be. WSL-176.
 		return fmt.Errorf("%s produced nothing for %s and was given up; it had run %s in total. "+
-			"⚠ This is a STALL and not a slow link: a transfer that is moving is never stopped here. %s",
+			"⚠ A STALL here is silence, not a measured speed. %s",
 			what, FormatSpan(c.Stall), FormatSpan(watch.Elapsed()), hint)
 	case watch.Elapsed() >= total:
 		return fmt.Errorf("%s did not finish within %s, which is this tool's ceiling for it",

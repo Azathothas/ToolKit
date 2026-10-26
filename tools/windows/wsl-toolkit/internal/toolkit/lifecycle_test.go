@@ -85,10 +85,16 @@ func TestAForcedRebuildTheVolumeCannotHoldKeepsTheBase(t *testing.T) {
 	h := newFakeHost(t)
 	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
 	h.engine(t, true)
-	roomyVolume(t, 1)
+	// ⚠ EXACTLY THE FLOOR, with the old disk counted, so the floor WSL-180 checks
+	// before the engine passes and the import's own check is the one that
+	// refuses: it wants the floor and twice the archive.
+	roomyVolume(t, BaseSpaceFloor-b.diskBytes())
 	_, err := b.EnsureWith(context.Background(), true, false)
 	if err == nil || !strings.Contains(err.Error(), fakeBaseName+" was NOT removed") || !strings.Contains(err.Error(), "NOT ENOUGH DISK SPACE") {
 		t.Fatalf("a forced rebuild the volume cannot hold answered %v; want the refusal naming the base and the space", err)
+	}
+	if callAt(h.calls(t), "podman export") < 0 {
+		t.Fatalf("the refusal came before the export, so the import's own check was not the one tested: %v", h.calls(t))
 	}
 	assertKept(t, h, b, disk)
 	assertNoArchive(t, b.home)

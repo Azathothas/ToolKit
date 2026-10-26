@@ -61,6 +61,63 @@ func TestAnMsysHostPathIsReadTheWayMsysMapsIt(t *testing.T) {
 	}
 }
 
+// ⛔ WSL-187: `--home` and `WSL_TOOLKIT_HOME` skipped msysHostPath, so Git Bash's
+// `/d/wsl-toolkit` named `C:\d\wsl-toolkit`, a second state root. Both spellings
+// of the flag and the variable are read the way MSYS maps them, and the answer
+// is exported absolute, so the helper and a detached child inherit it.
+func TestAnMsysHomeNamesTheDirectoryMsysMapsAndIsHandedOnAbsolute(t *testing.T) {
+	prefixMainCase(t)
+	wasQuiet := quiet
+	t.Cleanup(func() { quiet = wasQuiet })
+	t.Setenv("MSYSTEM", "MINGW64")
+	t.Setenv("EXEPATH", `C:\Program Files\Git\bin`)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⛔ READ ON EVERY HOST. A drive path is absolute only on Windows, so
+	// elsewhere it resolves under the working directory: the translated spelling,
+	// not /d/wsl-toolkit, is what proves it.
+	want := `D:\wsl-toolkit`
+	if runtime.GOOS != "windows" {
+		want = filepath.Join(cwd, "D:/wsl-toolkit")
+	}
+	for _, c := range []struct {
+		how, env string
+		args     []string
+	}{
+		{"--home DIR", "", []string{"--home", "/d/wsl-toolkit"}},
+		{"--home=DIR", "", []string{"--home=/d/wsl-toolkit"}},
+		{"WSL_TOOLKIT_HOME", "/d/wsl-toolkit", nil},
+	} {
+		t.Setenv("WSL_TOOLKIT_HOME", c.env)
+		args := append(append([]string{"--quiet"}, c.args...), "version")
+		captureStdout(t, func() {
+			if code := run(context.Background(), args); code != exitOK {
+				t.Errorf("%s: answered %d", c.how, code)
+			}
+		})
+		if got := os.Getenv("WSL_TOOLKIT_HOME"); got != want {
+			t.Errorf("%s: the state directory handed on is %q, want %q", c.how, got, want)
+		}
+		if got, err := toolkit.Home(); err != nil || got != want {
+			t.Errorf("%s: the state directory read is %q, %v; want %q", c.how, got, err, want)
+		}
+	}
+	// ⭐ A RELATIVE ONE IS HANDED ON ABSOLUTE, so a child started elsewhere reads
+	// the same directory.
+	t.Setenv("MSYSTEM", "")
+	t.Setenv("WSL_TOOLKIT_HOME", "state")
+	captureStdout(t, func() {
+		if code := run(context.Background(), []string{"--quiet", "version"}); code != exitOK {
+			t.Errorf("a relative home answered %d", code)
+		}
+	})
+	if got, want := os.Getenv("WSL_TOOLKIT_HOME"), filepath.Join(cwd, "state"); got != want {
+		t.Errorf("a relative home was handed on as %q, want %q", got, want)
+	}
+}
+
 // withStdin runs fn with this process's stdin reading body.
 func withStdin(t *testing.T, body string, fn func()) {
 	t.Helper()

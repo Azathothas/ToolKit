@@ -218,6 +218,14 @@ func run(ctx context.Context, args []string) int {
 			}
 		}
 	}
+	// ⛔ ONE SPELLING OF THE STATE DIRECTORY, SETTLED BEFORE ANYTHING READS IT.
+	// --home and WSL_TOOLKIT_HOME skipped msysHostPath, so `/d/wsl-toolkit` from
+	// Git Bash named `C:\d\wsl-toolkit`: a second state root, with its own jobs,
+	// ledger, locks and grants. WSL-187.
+	if err := settleHome(); err != nil {
+		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
+		return exitCannot
+	}
 	if err := readJSONEnv(); err != nil {
 		fmt.Fprintln(os.Stderr, "wsl-toolkit: ! "+err.Error())
 	}

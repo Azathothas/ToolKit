@@ -858,6 +858,11 @@ func (t *Throwaways) Preflight(ctx context.Context, spec ThrowawaySpec) (NewPref
 		return pre, err
 	}
 	if spec.Image != "" {
+		// ⛔ THE SPACE BEFORE THE ENGINE, as a base's build checks it, so a dry
+		// run refuses it too. WSL-180.
+		if err := assertSpaceFloor(t.dir, ThrowawaySpaceFloor, 0); err != nil {
+			return pre, err
+		}
 		if pre.Engine, err = FindEngine(ctx); err != nil {
 			return pre, refuse("a distribution built from an image needs a host engine: %w", err)
 		}

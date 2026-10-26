@@ -71,6 +71,11 @@ read the way MSYS maps it**: `/c/...` on drive C, `/tmp/...` in the temporary
 directory, and any other `/...` under the Git install. So `--workspace "$PWD"`
 works. `WSL-111`
 
+⭐ **The state directory is read the same way.** `--home /d/wsl-toolkit` and
+`WSL_TOOLKIT_HOME=/d/wsl-toolkit` name `D:\wsl-toolkit`, and so does `--config` for
+its file. The directory is handed to the helper and to each detached child as one
+absolute path. `WSL-187`
+
 - `--script -` reads the command from stdin, so a generated script needs no file.
   An empty stdin is refused. `run`, `matrix`, `base exec`, `distro` and `bsd run`
   take it, and `run --detach` hands it to its owner as a file in the job's
@@ -2038,8 +2043,21 @@ that left files in the base, with their size, as `leftovers`. `base recreate` re
 them, with everything else made in the base.
 
 ⭐ **A finding the base works without is marked `advisory`**: a disk that is not
-sparse, a leftover adapter, a gone or unrecorded QEMU handler. `ready` lists it in
-its notes with its command, and never names it as the way forward.
+sparse, a leftover adapter, a gone or unrecorded QEMU handler, a volume under the
+floor. `ready` lists it in its notes with its command, and never names it as the way
+forward.
+
+⭐ **The volume the disk grows into is watched.** The disk is dynamic, and a full
+volume fails the guest's writes and remounts ext4 read only. `base status` and
+`ready` read the volume's free space, and `--json` carries it as `host_free_bytes`.
+Under 6 GiB free they report the advisory `host-space-low`. A job starting under it
+says so on stderr, and still runs. `WSL-180`
+
+⛔ **A build under that floor refuses before the host engine is asked.**
+`base ensure`, `base recreate` and a `--preset` switch refuse before the pull, so no
+archive lands on a volume that cannot hold the import. A rebuild counts the old disk
+as freed, and keeps the base. `distro new --image` checks its own floor of 256 MiB
+the same way, and so does its `--dry-run`. `WSL-180`
 
 ---
 
@@ -2222,6 +2240,20 @@ asks the host engine, pulls the image, exports its rootfs and checks the volume
 first. The space check counts the old disk as freed. When any step fails, each
 exits 2 with the reason, and the base stays registered. A `base.image` that is not
 fully qualified is refused the same way. `WSL-169`
+
+⭐ **A pull may be silent for as long as its largest layer takes at 256 KiB/s.**
+podman on Windows prints a line as a layer starts and one as it ends, and nothing
+between. So a build reads the image's manifest first, with `manifest inspect`. The
+pull's stall limit is that layer's time at the floor rate, and never under four
+minutes. The build's `pulling` line says the limit and where it came from. Its total
+ceiling grows past thirty minutes where every layer at that rate needs it. `WSL-176`
+
+⚠ **On a slower link, set `WSL_TOOLKIT_PULL_STALL`** to a duration such as `45m`. It
+names every pull's stall limit outright, and a value that is no duration refuses the
+build before anything is pulled. Where the manifest cannot be read, as with `wslc`,
+the limit is four minutes and the line says why. The export keeps four minutes,
+because it writes the archive as it moves. A refusal for silence says a slow link
+reads the same, and names the variable. `WSL-176`
 
 ⭐ **`--preset` is compared with the image the base was built from.** This machine's
 record of the base answers, and the configuration answers where there is no record.

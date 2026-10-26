@@ -147,6 +147,39 @@ now its host record goes too, once its answer is written.
 | a project file that writes only `container_lifecycle`, `platform`, `workspace`, `exclude` or `gitignore` is now read strictly under a named instance. A broken file, or one a newer build wrote, now refuses | runs a named instance from a working tree whose file was ignored before and is broken or newer | fixes the project's file, or names the file to read with `--config` |
 | `config --json` drops `project_held` and carries `project_lends`, each key the project lent. `config`, `run` and `matrix` print no ⚠ line about held keys | parses `project_held` or that line | reads `project_lends` |
 
+### ⚠ What a pull's sized stall changes, and what a caller does
+
+`WSL-176`. Not released yet. No exit code changes for a call that names no new
+variable.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a pull may be silent for its largest layer's time at 256 KiB/s, and never under four minutes. Its total ceiling grows past thirty minutes where every layer needs it. A slow pull that was given up now finishes | relied on a slow pull failing within four minutes | sets `WSL_TOOLKIT_PULL_STALL` to the limit it wants |
+| `base ensure`, `base recreate` and `distro new --image` ask the engine for the image's manifest before the pull. The `pulling` line on stderr adds the limit and why | treats every stderr line of a build as one it knows | reads the exit code, or `--json` |
+| a stall's refusal says silence is not a measured speed and names `WSL_TOOLKIT_PULL_STALL`. It no longer says the cause is not a slow link | matches the old refusal's words | matches `and was given up` |
+| a `WSL_TOOLKIT_PULL_STALL` that is no positive duration refuses the build before anything is pulled | | sets a duration such as `45m`, or removes it |
+
+### ⚠ What watching the host's free space changes, and what a caller does
+
+`WSL-180`. Not released yet.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `base status --json` adds `host_free_bytes`, and the advisory `host-space-low` under 6 GiB free. `ready` lists the advisory in its notes, and its verdict does not change | | reads them, or ignores them |
+| `base status` prints the `host-space-low` block under that floor | treats every line of `base status` as one it knows | reads `--json` |
+| a job starting under that floor prints a ⚠ line on stderr, and still runs | treats every stderr line of a job as one it knows | reads the exit code, or `--json` |
+| `base ensure`, `base recreate`, a `--preset` switch and `distro new --image` refuse before the engine is asked, under the floor. Each refused later before, with the same exit code | | nothing |
+| `distro new --image --dry-run` exits 2 under 256 MiB free, where it exited 0 and the real run refused | reads that exit 0 as a run that would succeed | frees space, or reads the refusal |
+
+### ⚠ What reading `--home` the MSYS way changes, and what a caller does
+
+`WSL-187`. Not released yet.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| under Git Bash, `--home /d/x` and `WSL_TOOLKIT_HOME=/d/x` name `D:\x`. They named `x` under the current drive's root, such as `C:\d\x` | keeps jobs, a ledger, locks or grants in that second root | moves what it needs to `D:\x`, or passes the old root's Windows spelling |
+| `WSL_TOOLKIT_HOME` is handed on absolute, so the helper and a detached child read the directory their parent read | | nothing |
+
 ### ⭐ What the base runtime adds, and what a caller reads
 
 `WSL-126`, `WSL-130` and the limits in `WSL-136`. Not released yet. No exit

@@ -612,6 +612,14 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	if err := markAdmitted(r.home, id); err != nil {
 		r.log("could not mark job " + id + " as running, so --max-running will not count it: " + err.Error())
 	}
+	// ⚠ THE BASE'S DISK GROWS INTO THIS MACHINE'S VOLUME AS THE JOB WRITES, so a
+	// job that starts with it under the floor says so. A warning and never a
+	// refusal: the job may fit. WSL-180.
+	if r.base != nil {
+		if low, ok := r.base.hostSpaceWarning(); ok {
+			r.log("⚠ " + low.What + ". " + low.Costs + ". Run: " + low.Command)
+		}
+	}
 
 	user := r.cfg.Base.User
 	guestHome, err := r.guestHome(ctx)
