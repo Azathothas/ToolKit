@@ -43,11 +43,20 @@ say() {
 say identity info "account=$(id -un) uid=$(id -u) distro=${WSL_DISTRO_NAME:-unset} pid1=$(cat /proc/1/comm 2>/dev/null)"
 
 # ------------------------------------------------------------- filesystem ----
-drives=$(awk '$2 ~ /^\/mnt\/[A-Za-z]$/ {printf "%s ", $2}' /proc/mounts 2>/dev/null)
+# ⛔ THE DRIVES ARE WHERE wsl.conf PUTS THEM, read as verify.sh reads them. This
+# hardcoded /mnt, so a distribution adopted with `[automount] root = /windows`
+# reported its drives closed while every one was mounted. The case
+# TestBothReadersOfTheAutomountRootAgree drives both readers. WSL-188.
+drive_root=$(
+  sed -n 's/^[[:space:]]*root[[:space:]]*=[[:space:]]*//p' /etc/wsl.conf 2>/dev/null |
+    tail -n 1 | tr -d '"' | sed 's#/*$##'
+)
+[ -n "$drive_root" ] || drive_root=/mnt
+drives=$(awk -v root="$drive_root/" 'index($2, root) == 1 && substr($2, length(root) + 1) ~ /^[A-Za-z]$/ {printf "%s ", $2}' /proc/mounts 2>/dev/null)
 if [ -n "$drives" ]; then
   say fs.windows-drives open "mounted: $drives"
 else
-  say fs.windows-drives closed 'no /mnt/<letter> in /proc/mounts'
+  say fs.windows-drives closed "no $drive_root/<letter> in /proc/mounts"
 fi
 
 att=/tmp/doors-$TK_DOORS_MARK
@@ -142,7 +151,7 @@ esac
 # over an attempt that never happened. That is the false closed this file exists
 # to refuse, and driving it on 2026-09-16 is what found it.
 winexe=
-for candidate in /mnt/c/Windows/System32/cmd.exe /mnt/*/Windows/System32/cmd.exe; do
+for candidate in "$drive_root"/c/Windows/System32/cmd.exe "$drive_root"/*/Windows/System32/cmd.exe; do
   [ -f "$candidate" ] || continue
   winexe=$candidate
   break
@@ -166,7 +175,7 @@ fi
 # written by the provisioner and is decidable on every base, with nothing fetched
 # and nothing reachable required.
 case ":$PATH:" in
-  *:/mnt/*) say interop.windows-path open "a Windows directory is on PATH: $PATH" ;;
+  *:"$drive_root"/*) say interop.windows-path open "a Windows directory is on PATH: $PATH" ;;
   *) say interop.windows-path closed 'no Windows directory on PATH' ;;
 esac
 say interop.env info "WSLENV=${WSLENV:-unset}"

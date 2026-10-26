@@ -376,12 +376,16 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 			bounded, cancel := context.WithTimeout(ctx, 6*time.Second)
 			out, stderr, err := Output(bounded, wsl.Resolved, "--list", "--quiet")
 			cancel()
-			report.Host["wsl_access"] = err == nil
-			if err == nil {
-				report.Host["wsl_distros"] = strings.Fields(out)
+			read := readDoctorWsl(out, stderr, err)
+			report.Host["wsl_access"] = read.Access
+			report.Host["wsl_state"] = read.State
+			if read.Access {
+				report.Host["wsl_distros"] = read.Distros
 			} else {
-				report.Host["wsl_error"] = strings.TrimSpace(out + " " + stderr)
-				report.Notes = append(report.Notes, "WSL is installed but this process cannot enumerate distributions. Retry the requested command through the agent approval flow, or use an explicitly started local helper.")
+				report.Host["wsl_error"] = read.Error
+			}
+			if read.Note != "" {
+				report.Notes = append(report.Notes, read.Note)
 			}
 		}
 	}
@@ -423,6 +427,44 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 		"Writable temporary storage was not probed: this report creates no files.",
 		"The resolved column is what would actually run. A scoop shim, a node .ps1 wrapper and a .cmd launcher all answer to --version and only one can be handed to CreateProcess.")
 	return report, nil
+}
+
+// doctorWsl is what doctor makes of one `wsl.exe --list --quiet`.
+type doctorWsl struct {
+	Access  bool     // this process may enumerate distributions
+	State   string   // listed, empty, refused, slow or failed
+	Distros []string // the names, where it listed them
+	Error   string   // what wsl.exe said, where it did not list
+	Note    string   // the sentence for the report's notes, or empty
+}
+
+// readDoctorWsl classifies one listing for doctor.
+//
+// ⛔ AN EMPTY OR A SLOW LIST IS NOT A REFUSAL. Doctor read every failure as
+// "this process cannot enumerate distributions" and sent the reader to the
+// approval flow, on a host with no distribution yet, or one whose WSL was still
+// starting when the bound ran out. Only the refusal markers are a refusal.
+// WSL-188.
+func readDoctorWsl(out, stderr string, err error) doctorWsl {
+	if err == nil {
+		return doctorWsl{Access: true, State: "listed", Distros: strings.Fields(out)}
+	}
+	said := strings.TrimSpace(out + " " + stderr)
+	if emptyMachine(out, stderr) {
+		return doctorWsl{Access: true, State: "empty", Distros: []string{}}
+	}
+	if errors.Is(classifyWslFailure(out, stderr, err), ErrWslDenied) {
+		return doctorWsl{State: "refused", Error: said, Note: "WSL is installed but this process cannot enumerate distributions. " +
+			"Retry the requested command through the agent approval flow, or use an explicitly started local helper."}
+	}
+	if registryEmptyAfter(err) {
+		return doctorWsl{Access: true, State: "empty", Distros: []string{}}
+	}
+	if ExitCode(err) == ExitTimeout {
+		return doctorWsl{State: "slow", Error: "wsl.exe --list did not answer in time", Note: "WSL did not answer the listing in time, " +
+			"so whether this process may enumerate distributions is not known. A WSL that was starting answers the next run."}
+	}
+	return doctorWsl{State: "failed", Error: said, Note: "wsl.exe --list failed, and not as a refusal of this process: " + firstLine(said)}
 }
 
 func WriteDoctor(w io.Writer, report DoctorReport, asJSON bool) error {

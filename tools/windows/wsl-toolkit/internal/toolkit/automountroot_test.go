@@ -33,6 +33,11 @@ func TestBothReadersOfTheAutomountRootAgree(t *testing.T) {
 	// expressions rather than a restatement of them.
 	verifyReader := mustExtract(t, filepath.Join("verify.sh"),
 		"drive_root=$(", "[ -n \"$drive_root\" ] || drive_root=/mnt")
+	// ⛔ AND doors.sh's, which hardcoded /mnt. WSL-188.
+	readers := map[string]string{
+		"verify.sh": verifyReader,
+		"doors.sh":  mustExtract(t, "doors.sh", "drive_root=$(", "[ -n \"$drive_root\" ] || drive_root=/mnt"),
+	}
 
 	for _, tc := range []struct {
 		name, conf, want string
@@ -59,15 +64,64 @@ func TestBothReadersOfTheAutomountRootAgree(t *testing.T) {
 			}
 			// The scripts read /etc/wsl.conf by absolute path, so the fixture
 			// is substituted rather than the filesystem faked.
-			script := strings.ReplaceAll(verifyReader, "/etc/wsl.conf", filepath.ToSlash(filepath.Join(confDir, "wsl.conf")))
-			out, err := exec.Command(sh, "-c", script+"\nprintf '%s' \"$drive_root\"\n").CombinedOutput()
-			if err != nil {
-				t.Fatalf("the verifier's reader did not run: %v: %s", err, out)
-			}
-			if got := strings.TrimSpace(string(out)); got != tc.want {
-				t.Fatalf("verify.sh reads %q, want %q", got, tc.want)
+			for file, reader := range readers {
+				script := strings.ReplaceAll(reader, "/etc/wsl.conf", filepath.ToSlash(filepath.Join(confDir, "wsl.conf")))
+				out, err := exec.Command(sh, "-c", script+"\nprintf '%s' \"$drive_root\"\n").CombinedOutput()
+				if err != nil {
+					t.Fatalf("%s's reader did not run: %v: %s", file, err, out)
+				}
+				if got := strings.TrimSpace(string(out)); got != tc.want {
+					t.Fatalf("%s reads %q, want %q", file, got, tc.want)
+				}
 			}
 		})
+	}
+}
+
+// ⛔ WSL-188: doors.sh LOOKS FOR THE DRIVES WHERE wsl.conf PUTS THEM. It hardcoded
+// /mnt three times, so a distribution adopted with `[automount] root = /windows`
+// reported its drives closed, reached no cmd.exe, and read a Windows directory on
+// PATH as none. Each of the three is driven with a hand-set root.
+func TestDoorsLooksForTheDrivesUnderTheAutomountRoot(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX shell on this host")
+	}
+	dir := t.TempDir()
+	root := filepath.ToSlash(filepath.Join(dir, "windows"))
+	conf := filepath.Join(dir, "wsl.conf")
+	if err := os.WriteFile(conf, []byte("[automount]\nroot = "+root+"/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mounts := filepath.Join(dir, "mounts")
+	if err := os.WriteFile(mounts, []byte("C:\\134 "+root+"/c 9p rw 0 0\nnone /mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := filepath.Join(dir, "windows", "c", "Windows", "System32", "cmd.exe")
+	if err := os.MkdirAll(filepath.Dir(cmd), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cmd, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reader := mustExtract(t, "doors.sh", "drive_root=$(", "say fs.windows-drives closed")
+	finder := mustExtract(t, "doors.sh", "winexe=", "done")
+	path := mustExtract(t, "doors.sh", `case ":$PATH:" in`, "esac")
+	script := "say() { printf '%s|%s|%s\\n' \"$1\" \"$2\" \"$3\"; }\n" +
+		strings.NewReplacer("/etc/wsl.conf", filepath.ToSlash(conf), "/proc/mounts", filepath.ToSlash(mounts)).Replace(reader) + "\nfi\n" +
+		finder + "\nprintf 'winexe|%s\\n' \"$winexe\"\nPATH=/usr/bin:" + root + "/c/Windows\n" + path + "\n"
+	out, err := exec.Command(sh, "-c", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("doors.sh's drive rows did not run: %v: %s", err, out)
+	}
+	for _, want := range []string{
+		"fs.windows-drives|open|mounted: " + root + "/c ",
+		"winexe|" + filepath.ToSlash(cmd) + "\n",
+		"interop.windows-path|open|",
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("doors.sh does not say %q under the root %s:\n%s", want, root, out)
+		}
 	}
 }
 

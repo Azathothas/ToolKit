@@ -221,6 +221,33 @@ func retryableListFailure(err error) bool {
 	return true
 }
 
+// emptyMachine reports a listing wsl.exe refused because nothing is registered.
+//
+// ⛔ THE CODE, NOT ONLY THE SENTENCE. "no installed distributions" is English,
+// and a Windows in another language prints it in its own, so an empty machine
+// there read as a failed listing. The error code WSL prints with it is not
+// translated. WSL-188.
+func emptyMachine(out, stderr string) bool {
+	said := strings.ToLower(out + " " + stderr)
+	return strings.Contains(said, "no installed distributions") || strings.Contains(said, "wsl_e_default_distro_not_found")
+}
+
+// registryEmptyAfter reports a failed listing on a machine whose registry holds
+// no distribution, which is an empty machine.
+//
+// ⭐ WSL's OWN RECORD SAYS WHETHER ANYTHING IS REGISTERED, in every language, for
+// a listing that names no reason the code knows. ⚠ ONLY ONE wsl.exe RAN TO ITS
+// OWN END: a start that failed, a deadline or a cancel says nothing about what is
+// registered. ⛔ Asked after the refusal markers, so a process WSL refuses is
+// never read as an empty machine. WSL-188.
+func registryEmptyAfter(err error) bool {
+	if !ProcessStarted(err) || ExitCode(err) == ExitTimeout || ExitCode(err) == 130 {
+		return false
+	}
+	disks, rerr := readRegistrations()
+	return rerr == nil && len(disks) == 0
+}
+
 // listFailure names the query and what wsl.exe printed.
 //
 // ⛔ A BARE PROCESS ERROR NAMES NOTHING. The failure above surfaced as "process:
@@ -241,12 +268,15 @@ func (w *Wsl) nameQueryOnce(ctx context.Context, args ...string) ([]string, erro
 	if err != nil {
 		// ⚠ "no installed distributions" is an ANSWER, not a failure: an empty
 		// machine and a machine this process cannot ask are different facts.
-		if strings.Contains(strings.ToLower(out+stderr), "no installed distributions") {
+		if emptyMachine(out, stderr) {
 			return nil, nil
 		}
 		classified := classifyWslFailure(out, stderr, err)
 		if errors.Is(classified, ErrWslDenied) {
 			return nil, classified
+		}
+		if registryEmptyAfter(err) {
+			return nil, nil
 		}
 		return nil, listFailure(args, out, stderr, classified)
 	}

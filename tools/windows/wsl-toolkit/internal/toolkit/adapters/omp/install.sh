@@ -135,9 +135,11 @@ if as_account sh -c 'command -v bun' >/dev/null 2>&1; then
 else
   say "omp is a Bun program and this base has none; installing bun from the distribution"
   if command -v pacman >/dev/null 2>&1; then
-    pacman -Sy --noconfirm >/dev/null 2>&1 || :
-    pacman -S --noconfirm bun >/dev/null 2>&1 ||
-      die "pacman could not install bun, which omp needs. Read it with: $tool base exec --root -c 'pacman -S bun'"
+    # ⛔ ONE TRANSACTION THAT SYNCS AND UPGRADES. `-Sy` and then `-S` is the
+    # partial upgrade Arch does not support: bun built against a newer library
+    # than the base holds. provision.sh's engine step says the same. WSL-188.
+    pacman -Syu --noconfirm --needed bun >/dev/null 2>&1 ||
+      die "pacman could not install bun, which omp needs. Read it with: $tool base exec --root -c 'pacman -Syu bun'"
   elif command -v apk >/dev/null 2>&1; then
     apk add --no-cache bun >/dev/null 2>&1 ||
       die "apk could not install bun, which omp needs. Read it with: $tool base exec --root -c 'apk add bun'"

@@ -1611,6 +1611,9 @@ shell still cannot find it. `WSL-88`, `WSL-89`
 own `bun` package leaves `Bun's postinstall script was not run`, so the adapter takes
 the distribution's, which `bootstrap.sh` does not carry.
 
+⛔ **Every adapter installs with one `pacman -Syu --needed`.** A bare `-S`, or `-Sy`
+and then `-S`, is the partial upgrade Arch does not support. `WSL-188`
+
 ⛔ **A base carrying both pi and omp is REFUSED when they resolve to one extension
 directory.** Both read `PI_CODING_AGENT_DIR`, so one exported for pi redirects omp
 onto pi's directory, and herdr then refuses the omp integration. The refusal names
@@ -1815,6 +1818,10 @@ After one `linux/arm64` run, a native run of the same image answers `aarch64` on
 an x86_64 host, with only a podman warning to say so. The resolved value is on
 the result. `WSL-64`
 
+⭐ **The native platform is the machine's, not the executable's.** The amd64 build
+on an ARM64 Windows names `linux/arm64`, as Windows reports the machine. `selfupdate`
+fetches the build the machine runs natively. `WSL-188`
+
 ⚠ **A shared kernel carries handlers this tool did not register.** The WSL2
 kernel outlives any one distribution, so a foreign-architecture rootfs may RUN
 rather than fail, which is the worse outcome. A freshly imported Alpine with no
@@ -2016,6 +2023,16 @@ the owned distributions, leftovers and snapshots. `resources --host-engine` adds
 what the host's own engine holds, and prints the commands that would free it
 without running them.
 
+⭐ **An export container a killed build left is counted.** Each export marks its
+container `wsl-toolkit.export=1`, and `resources --host-engine` counts the marked ones
+as `export_containers`. It prints the `container prune` that removes them, and runs
+nothing. `wslc` marks none. `WSL-188`
+
+⚠ **`doctor` reads an empty or a slow `wsl --list` as no refusal.** `host.wsl_state`
+is `listed`, `empty`, `refused`, `slow` or `failed`. Only `refused` sends the reader to
+the approval flow. An empty machine is read from WSL's error code too, and from its
+registry, in any language. `WSL-188`
+
 ## The address a distribution reaches this host at
 
 ```powershell
@@ -2056,6 +2073,10 @@ Four settings make a claim, and only four: `base.automount = off` claims
 `fs.windows-drives`, `base.interop = "off"` claims `interop.windows-path`,
 `base.passwordless_sudo = false` claims `priv.passwordless-sudo`, and
 `base.shared_tmpfs = "off"` claims `fs.mnt-wsl-shared`.
+
+⭐ **The drives are looked for where `/etc/wsl.conf` puts them.** `fs.windows-drives`,
+`interop.run-exe` and `interop.windows-path` read `[automount] root`, as the verifier
+does. An adopted distribution with `root = /windows` is measured there. `WSL-188`
 
 ⚠ **`base.interop = "off"` claims only the PATH door**, because the other two are
 not this tool's to promise. The `WSLInterop` `binfmt_misc` registration does **not**
@@ -2464,7 +2485,7 @@ security boundary**, and no page here says otherwise.
 | thing | needed for |
 | --- | --- |
 | Windows 10 2004+ or Windows 11, with WSL2 | everything |
-| a container engine on the host: podman, docker, or `wslc`, which WSL 3.0.1 and later carries | `base ensure`, once, to export the base rootfs, and `distro new --image`. ⭐ They are tried in that order, and one whose `info` fails is passed over, so podman with its machine stopped gives way to the next. `wslc` takes no `--platform`, so what it pulls is read back and an image for another architecture is refused. `WSL-110` |
+| a container engine on the host: podman, docker, or `wslc`, which WSL 3.0.1 and later carries | `base ensure`, once, to export the base rootfs, and `distro new --image`. ⭐ They are tried in that order, and one whose `info` fails is passed over, so podman with its machine stopped gives way to the next. `wslc` takes no `--platform`, so what it pulls is read back and an image for another architecture is refused. `WSL-110`. ⛔ An engine that answers for another architecture, through a remote connection or context, is passed over with its host named. So is docker in Windows-containers mode. While another engine is installed, `info` has 20 seconds, not 90. The build says which host its engine answers from. `WSL-188` |
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 

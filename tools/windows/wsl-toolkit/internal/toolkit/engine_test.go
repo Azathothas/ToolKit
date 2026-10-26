@@ -94,15 +94,15 @@ func TestDiagnosePodmanSaysNothingWithoutAFailure(t *testing.T) {
 func TestThePodmanHintContradictsPodmansOwnAdvice(t *testing.T) {
 	cases := []struct {
 		name    string
-		running bool
+		state   machineState
 		machine string
 		conn    string
 		want    []string
 		absent  []string
 	}{
 		{
-			name:    "running, and another connection answers",
-			running: true, machine: "podman-machine-default", conn: "podman-machine-default-root",
+			name:  "running, and another connection answers",
+			state: machineRunning, machine: "podman-machine-default", conn: "podman-machine-default-root",
 			want: []string{
 				"reports Running",
 				"`podman machine start` will not help",
@@ -113,29 +113,38 @@ func TestThePodmanHintContradictsPodmansOwnAdvice(t *testing.T) {
 		{
 			// ⚠ NOTHING ANSWERS, so there is no command to offer and the hint
 			// must not invent one. It names the thing to look at instead.
-			name:    "running, and nothing answers",
-			running: true, machine: "podman-machine-default", conn: "",
+			name:  "running, and nothing answers",
+			state: machineRunning, machine: "podman-machine-default", conn: "",
 			want:   []string{"reports Running", "user@1000.service", "no amount of restarting the machine creates one"},
 			absent: []string{"podman system connection default"},
 		},
 		{
-			// ⛔ NOT RUNNING IS A DIFFERENT STATE, and `podman machine start` IS
-			// the right advice for it, so the hint must not contradict it.
-			name:    "not running",
-			running: false, machine: "", conn: "",
-			absent: []string{"will not help", "SECOND machine", "reports Running"},
-			want:   []string{"user@1000.service"},
+			// ⛔ A STOPPED MACHINE IS WHAT `podman machine start` IS FOR, so the
+			// hint says to run it and nothing about a restart that cannot help. It
+			// said a restart could not help, and this case enshrined it. WSL-188.
+			name:  "stopped",
+			state: machineStopped, machine: "podman-machine-default", conn: "",
+			want:   []string{"is stopped", "podman machine start podman-machine-default"},
+			absent: []string{"will not help", "SECOND machine", "reports Running", "no amount of restarting"},
 		},
 		{
-			name:    "not running, but a connection answers anyway",
-			running: false, machine: "", conn: "some-other",
+			// ⚠ A LIST THAT DID NOT ANSWER SAYS NOTHING OF A RESTART either way,
+			// and names both things to read. WSL-188.
+			name:  "unknown",
+			state: machineUnknown, machine: "", conn: "",
+			absent: []string{"will not help", "SECOND machine", "reports Running", "no amount of restarting"},
+			want:   []string{"podman machine list", "podman machine start", "user@1000.service"},
+		},
+		{
+			name:  "not running, but a connection answers anyway",
+			state: machineUnknown, machine: "", conn: "some-other",
 			want:   []string{"podman system connection default some-other"},
 			absent: []string{"will not help"},
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := podmanHint(c.running, c.machine, c.conn)
+			got := podmanHint(c.state, c.machine, c.conn)
 			if got == "" {
 				t.Fatal("the hint said nothing at all")
 			}
@@ -150,6 +159,25 @@ func TestThePodmanHintContradictsPodmansOwnAdvice(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ⛔ WSL-188: THE LIST IS READ IN THREE STATES. A machine that is listed and not
+// running is stopped, a running one wins over it, and a list that names none is
+// not known.
+func TestAPodmanMachineListReadsRunningStoppedOrUnknown(t *testing.T) {
+	for _, c := range []struct {
+		out, name string
+		state     machineState
+	}{
+		{"podman-machine-default* false\n", "podman-machine-default", machineStopped},
+		{"old false\npodman-machine-default* true\n", "podman-machine-default", machineRunning},
+		{"", "", machineUnknown},
+		{"a line podman did not write\n", "", machineUnknown},
+	} {
+		if state, name := machineStateOf(c.out); state != c.state || name != c.name {
+			t.Errorf("machineStateOf(%q) = %d %q, want %d %q", c.out, state, name, c.state, c.name)
+		}
 	}
 }
 
