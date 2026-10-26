@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "muse: the probe removes its stderr file",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "    rm -f \"$errors\"\n",
+      "replace": "",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the helper's ensure reads its caller's grants spelled another way as unchanged",
       "file": "internal/toolkit/base.go",
       "find": "\tif reflect.DeepEqual(stored.Portable().Base.Mounts, b.cfg.Portable().Base.Mounts) {\n",

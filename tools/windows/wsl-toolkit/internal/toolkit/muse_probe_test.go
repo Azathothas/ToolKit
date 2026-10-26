@@ -77,6 +77,15 @@ func TestTheMuseProbeAsksMuseWhetherItRunsTheReporter(t *testing.T) {
 	herdr := filepath.Join(bin, "herdr")
 	write(herdr, "#!/bin/sh\nif [ \"$1 $2\" = 'workspace list' ]; then echo '{\"result\":{\"workspaces\":[]}}'; fi\nexit 0\n", 0o755)
 	write(filepath.Join(bin, "getent"), "#!/bin/sh\nprintf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n", 0o755)
+	// ⛔ ROOT'S mktemp IS FOUND ON PATH, so a stand-in records each file it makes, and
+	// only those are checked for leftovers. /tmp is every go test run's, and a glob
+	// there read another run's stderr file as this probe's.
+	realMktemp, err := exec.LookPath("mktemp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	made := filepath.Join(root, "made")
+	write(filepath.Join(bin, "mktemp"), "#!/bin/sh\nout=$("+shellQuote(realMktemp)+" \"$@\") || exit $?\nprintf '%s\\n' \"$out\" >> "+shellQuote(made)+"\nprintf '%s\\n' \"$out\"\n", 0o755)
 	// ⛔ IN plant MODE, THE ACCOUNT RACES ROOT. Right after the account makes the
 	// probe's scratch directories, a process of the account puts a link named stderr
 	// in its own directory, pointing at a file it cannot write. Root's shell must
@@ -242,7 +251,20 @@ exit 0
 	if st.Facts["herdr_reporter_session_start"] != "reached" {
 		t.Fatalf("the planted run was read as %q", st.Facts["herdr_reporter_session_start"])
 	}
-	if left, _ := filepath.Glob("/tmp/wsl-toolkit-muse-probe-stderr.*"); len(left) != 0 {
+	raw, _ := os.ReadFile(made)
+	var errFiles, left []string
+	for _, p := range strings.Fields(string(raw)) {
+		if strings.HasPrefix(filepath.Base(p), "wsl-toolkit-muse-probe-stderr.") {
+			errFiles = append(errFiles, p)
+			if _, err := os.Lstat(p); err == nil {
+				left = append(left, p)
+			}
+		}
+	}
+	if len(errFiles) == 0 {
+		t.Fatalf("root's mktemp made no stderr file through the stand-in, so a file left behind cannot be seen: %q", raw)
+	}
+	if len(left) != 0 {
 		t.Fatalf("the probe left its stderr file behind: %v", left)
 	}
 
