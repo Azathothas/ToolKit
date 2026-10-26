@@ -81,20 +81,30 @@ func grantsEnv(cfg Config, mode string, grant BaseMount) (map[string]string, err
 // compared as Windows compares paths, and the file's own spelling to show. Both are
 // base64, and both are empty for a configuration with no file. WSL-179.
 func grantOwner(cfg Config) (key, name string) {
-	p := cfg.Path()
+	p := ownerFile(cfg)
 	if p == "" {
 		return "", ""
 	}
-	if abs, err := filepath.Abs(p); err == nil {
-		p = abs
-	}
-	p = filepath.Clean(p)
 	k := p
 	if runtime.GOOS == "windows" {
 		k = strings.ToLower(p)
 	}
 	enc := base64.StdEncoding.EncodeToString
 	return enc([]byte(k)), enc([]byte(p))
+}
+
+// ownerFile is the configuration file the grant ledger names a caller by, absolute
+// and clean, or an empty string for a configuration with no file. The helper's
+// client sends it, so the helper's base names the same file. WSL-179, WSL-190.
+func ownerFile(cfg Config) string {
+	p := cfg.Path()
+	if p == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return filepath.Clean(p)
 }
 
 // applyGrants runs grants.sh in the base for a configuration's grants. grant is
@@ -347,6 +357,10 @@ func parseHeldGrants(out string) []HeldGrant {
 
 // HeldGrantsError is the refusal of a restart over live mounts another
 // configuration file holds, or nil when there are none. WSL-179.
+//
+// ⚠ IT SAYS THE RESTART ENDS THAT FILE'S WORK, NOT THAT IT DROPS ITS GRANTS. The
+// fstab block keeps each line the ledger gives another file, so a restart mounts
+// them again, and the work running in them still ends. WSL-190.
 func HeldGrantsError(name string, held []HeldGrant) error {
 	if len(held) == 0 {
 		return nil
@@ -356,7 +370,7 @@ func HeldGrantsError(name string, held []HeldGrant) error {
 		each = append(each, h.Target+", granted by "+h.File)
 		revoke = append(revoke, "wsl-toolkit --config "+h.File+" base revoke --target "+h.Target)
 	}
-	return fmt.Errorf("%s would be re-provisioned and restarted, and the restart drops grants another configuration holds live: %s. Nothing was changed. Revoke each with its file first: %s. Or run base ensure --repair to restart over them",
+	return fmt.Errorf("%s would be re-provisioned and restarted, and the restart ends the work under grants another configuration holds live: %s. Nothing was changed. Revoke each with its file first: %s. Or run base ensure --repair to restart over them",
 		name, strings.Join(each, "; "), strings.Join(revoke, "; "))
 }
 

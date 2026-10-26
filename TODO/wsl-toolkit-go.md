@@ -16669,7 +16669,7 @@ Open.
 ## WSL-189. A grant that fails after it mounts leaves its new mount in place
 
 **Source** the 7.0.2 builders' reports, 2026-10-24, workflow wf_ac18d0b7-49c, group G4's real drive on scratch instance g4r
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -16701,13 +16701,15 @@ Exit 0, with the new case red without the fix, and its mutation row red on Linux
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/grants`, for 8.0.0.** A live grant whose read-back fails after it mounts takes its own mount away first, then puts the old block back. A mount that will not unmount is named, and nothing is mounted back over it, so a failed switch reads as left in its new mode.
+
+Driven on a scratch Debian base with `runuser` moved aside. 7.0.2 left the mount live with no fstab line and no ledger row, and the next ensure refused it as unconfigured. This build left `/etc/fstab` and the ledger byte-identical, and the next ensure exited 0. Cases `TestAGrantWhoseReadBackFailsTakesItsMountAway` and `TestAMountAFailedGrantCannotTakeAwayIsNamed`. Their rows run on Windows too, under Git for Windows' `sh`.
 
 
 ## WSL-190. The fstab block holds only the last caller's grants, so a restart drops another configuration's mount
 
 **Source** the 7.0.2 builders' reports, 2026-10-24, workflow wf_ac18d0b7-49c, group G4's report on `WSL-179`
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -16722,6 +16724,16 @@ Read in `grants.sh` and `base.go` after the 7.0.2 merge. The manual's grant sect
 ## Approach
 
 Keep each file's fstab lines in the block, keyed by the grant ledger's owner, so a restart mounts every grant that a file still holds. Or record the granted set in the guest and build the block from it. Choose one in this entry's Decision before the work.
+
+## Decision
+
+**Chosen by the 8.0.0 builder on 2026-10-25, and accepted at the merge.** Approach A: the block keeps each line whose target the grant ledger gives another file. The ledger already maps each target to its file, and the block already holds the line, so nothing new is stored. B would store each line a second time, and would still need A's fallback, because a 7.0.2 ledger row carries no line.
+
+A's accepted costs, each in the manual:
+
+- A line something else dropped is not rebuilt. A 7.0.2 build's write drops them, so a base upgraded with two files' live grants keeps the other file's grant only after that file grants or revokes once.
+- A grant whose file is gone comes back at every restart, and is taken away by writing the file again and revoking.
+- The helper's route carries its caller's file since the repair, so it no longer drops lines.
 
 ## Consumers
 
@@ -16739,7 +16751,11 @@ Exit 0, with a case where two files grant, the base restarts, and both mounts co
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/grants`, for 8.0.0.** Approach A, as the Decision says. The fstab block keeps each line whose target the ledger gives another file, in the old block's order, so each file's ensure reads the shared block as unchanged. The helper now carries its caller's file, so its route keeps other files' lines too. That moved the helper protocol to `wsl-toolkit-helper/7`, a break with its row in `docs/consumers.md`.
+
+Driven on a scratch Debian base with files A and B. On 7.0.2, a terminate left only B's grant mounted, and A's ensure refused with exit 2. On this build both mounts came back, and each file's ensure exited 0. `--repair` restarted over B's grant as asked, and all three mounts came back. Case `TestARestartMountsEveryFilesGrants` and eight more, with their rows.
+
+⚠ A row a 7.0.2 build left without its fstab line is not written back until its file grants or revokes once. The register and the manual say so.
 
 
 ## WSL-191. The helper protocol still sends a forced rebuild for a preset switch

@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 252  open 22  blocked 5  done 225
+total 252  open 20  blocked 5  done 227
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
-| P1 | 2 | 0 | 94 | 96 |
+| P1 | 0 | 0 | 96 | 96 |
 | P2 | 14 | 2 | 101 | 117 |
 | P3 | 6 | 3 | 22 | 31 |
-| **all** | **22** | **5** | **225** | **252** |
+| **all** | **20** | **5** | **227** | **252** |
 
 ---
 
@@ -283,8 +283,8 @@ total 252  open 22  blocked 5  done 225
 | WSL-186 | P2 | M | open | The default base is a tag rebuilt daily, and no digest is recorded | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-187 | P2 | S | open | `--home` and `WSL_TOOLKIT_HOME` skip msysHostPath | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-188 | P2 | M | open | Fourteen smaller hardcoded assumptions the audit found, each cheap to fix | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-189 | P1 | S | open | A grant that fails after it mounts leaves its new mount in place | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-190 | P1 | M | open | The fstab block holds only the last caller's grants, so a restart drops another configuration's mount | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-189 | P1 | S | done | A grant that fails after it mounts leaves its new mount in place | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-190 | P1 | M | done | The fstab block holds only the last caller's grants, so a restart drops another configuration's mount | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-191 | P2 | S | open | The helper protocol still sends a forced rebuild for a preset switch | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-192 | P2 | S | open | A rebuild whose pull fails does not fall back to a local image | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-193 | P2 | S | done | An instance name that starts with `wsl-` doubles the prefix in its distribution name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

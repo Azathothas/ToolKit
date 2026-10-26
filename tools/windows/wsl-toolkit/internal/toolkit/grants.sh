@@ -14,7 +14,10 @@
 #
 # The owners ledger, /var/lib/wsl-toolkit/grant-owners, says which configuration
 # file made each live grant: one line of target, owner key and owner name, the two
-# in base64. verify.sh reads it. WSL-179.
+# in base64. verify.sh reads it. WSL-179. The block keeps each line whose target the
+# ledger gives another file, so a restart mounts every grant whose line it holds.
+# ⚠ Not one whose line is already gone, as a 7.0.2 build's write leaves it: the row
+# carries no line to write back. A caller with no file keeps no line. WSL-190.
 #
 #   TK_GRANTS_MODE=write   rewrite the block and create each target, and mount nothing
 #   TK_GRANTS_MODE=live    rewrite the block, unmount or mount TK_GRANT_TARGET alone,
@@ -75,10 +78,72 @@ decode64() {
   base64 -d "$WORK/$1.b64" > "$WORK/$1" || die "the $1 payload could not be decoded"
 }
 
+# ⚠ THE THREE BELOW SET A VARIABLE, AND NONE FORKS. Each answered on stdout, so
+# each call cost a subshell and a pipe, several per line of the block. A guest
+# hardly notices, and on a Windows test host a fork costs a tenth of a second, so
+# the drives of this script ran past go test's limit. WSL-190.
+
+# holder TARGET: sets holder_of to the owner key and owner name the ledger gives
+# TARGET, or to nothing.
+holder() {
+  holder_of=
+  [ -f "$OWNERS" ] || return 0
+  while read -r holder_target holder_key holder_name _rest; do
+    if [ "$holder_target" = "$1" ]; then
+      holder_of="$holder_key $holder_name"
+      return 0
+    fi
+  done < "$OWNERS"
+  return 0
+}
+
+# fstab_target LINE: sets target_of to the mount point an fstab line names, or to
+# nothing for a blank line or a comment. A target holds letters, digits and `/._-`
+# alone, so fstab never escapes it. The line is split as `read` split it, with
+# globbing off.
+fstab_target() {
+  target_of=
+  set -f
+  # shellcheck disable=SC2086
+  set -- $1
+  set +f
+  case "${1:-}" in
+    ''|'#'*) ;;
+    *) target_of=${2:-} ;;
+  esac
+}
+
+# line_for TARGET FILE: sets line_of to the first line of FILE that mounts at
+# TARGET, or to nothing.
+line_for() {
+  line_of=
+  while IFS= read -r for_line || [ -n "$for_line" ]; do
+    fstab_target "$for_line"
+    if [ "$target_of" = "$1" ]; then
+      line_of=$for_line
+      return 0
+    fi
+  done < "$2"
+  return 0
+}
+
 # -- the new block ------------------------------------------------------------------
 # One marked block is replaced as a unit, so a grant removed from the configuration
 # is removed from the file.
+#
+# ⛔ ANOTHER CONFIGURATION FILE'S LINES ARE KEPT, KEYED BY THE GRANT LEDGER. The block
+# held this caller's grants alone, so a restart for any reason would drop every
+# grant another file had made live, and with automount off that file's next ensure
+# refused or restarted the base again. A line stays while the ledger gives its
+# target to another file, unless this run takes that target. A line the ledger
+# gives nobody, or this file, is this caller's to replace, as before. WSL-190.
+#
+# ⚠ A CALLER WITH NO FILE KEEPS NOTHING, as before. It has no ledger key, and its
+# verifier refuses every Windows mount it does not name, so a line kept for another
+# file would fail its own ensure after the restart. The helper route was one, and
+# now sends its caller's file. WSL-190.
 : > "$WORK/fstab"
+: > "$WORK/old-block"
 if [ -f /etc/fstab ]; then
   in_block=false
   while IFS= read -r line || [ -n "$line" ]; do
@@ -88,14 +153,84 @@ if [ -f /etc/fstab ]; then
     esac
     if [ "$in_block" = false ]; then
       printf '%s\n' "$line" >> "$WORK/fstab"
+    else
+      printf '%s\n' "$line" >> "$WORK/old-block"
     fi
   done < /etc/fstab
 fi
-printf '%s\n' "$FSTAB_BEGIN" >> "$WORK/fstab"
+: > "$WORK/block"
 if [ -n "$TK_FSTAB_B64" ]; then
   decode64 block "$TK_FSTAB_B64"
-  cat "$WORK/block" >> "$WORK/fstab"
 fi
+
+# claimed: the targets this run takes from another file's lines. ⛔ A LINE FOLLOWS
+# ITS LEDGER ROW. Write mode takes every target its configuration names, as its
+# ledger rows do. A live change takes its own target, a revoke too, because its
+# ledger step drops that target's row whoever held it. A line kept past its row
+# would mount, at the next restart, a grant no file holds. WSL-190.
+#
+# ⚠ THE BLOCK NAMES A TARGET ONCE. Two lines would mount two directories at one
+# target, and the last would hide the first. WSL-190.
+: > "$WORK/claimed"
+if [ "$TK_GRANTS_MODE" = write ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    fstab_target "$line"
+    [ -z "$target_of" ] || printf '%s\n' "$target_of" >> "$WORK/claimed"
+  done < "$WORK/block"
+elif [ "$TK_GRANTS_MODE" = live ] && [ -n "$TK_GRANT_TARGET" ]; then
+  decode64 claim "$TK_GRANT_TARGET"
+  printf '%s\n' "$(cat "$WORK/claim")" >> "$WORK/claimed"
+fi
+
+# listed WORD FILE: whether a line of FILE is WORD. In the shell, for the reason
+# the three above set a variable. WSL-190.
+listed() {
+  while IFS= read -r listed_line || [ -n "$listed_line" ]; do
+    [ "$listed_line" != "$1" ] || return 0
+  done < "$2"
+  return 1
+}
+
+# kept: each line kept for another file, and kept-targets its target.
+: > "$WORK/kept"
+: > "$WORK/kept-targets"
+if [ -n "$TK_GRANT_OWNER" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    fstab_target "$line"
+    kept_to=$target_of
+    [ -n "$kept_to" ] || continue
+    holder "$kept_to"
+    kept_by=$holder_of
+    if [ -n "$kept_by" ] && [ "${kept_by%% *}" != "$TK_GRANT_OWNER" ] &&
+      ! listed "$kept_to" "$WORK/claimed"; then
+      printf '%s\n' "$line" >> "$WORK/kept"
+      printf '%s\n' "$kept_to" >> "$WORK/kept-targets"
+    fi
+  done < "$WORK/old-block"
+fi
+
+# ⛔ A KEPT LINE WINS OVER THIS CONFIGURATION'S OWN FOR ITS TARGET. ⚠ THE OLD BLOCK'S
+# ORDER IS KEPT, and this configuration's new lines follow in its own. Written
+# kept-first, each file's ensure would reorder the block the other file wrote, read
+# it as changed, and restart the base over the same grants. WSL-175, WSL-190.
+cat "$WORK/old-block" "$WORK/block" > "$WORK/order"
+: > "$WORK/placed"
+printf '%s\n' "$FSTAB_BEGIN" >> "$WORK/fstab"
+while IFS= read -r line || [ -n "$line" ]; do
+  fstab_target "$line"
+  at=$target_of
+  if [ -z "$at" ] || listed "$at" "$WORK/placed"; then
+    continue
+  fi
+  if listed "$at" "$WORK/kept-targets"; then
+    line_for "$at" "$WORK/kept"
+  else
+    line_for "$at" "$WORK/block"
+    [ -n "$line_of" ] || continue
+  fi
+  printf '%s\n' "$line_of" >> "$WORK/fstab"
+  printf '%s\n' "$at" >> "$WORK/placed"
+done < "$WORK/order"
 printf '%s\n' "$FSTAB_END" >> "$WORK/fstab"
 
 # install_fstab FILE: the whole file, through a rename, so a killed run leaves one.
@@ -124,8 +259,9 @@ fi
 
 # ⭐ HELD, NOTHING IS CHANGED. It names each live DrvFS mount the ledger gives a
 # file other than TK_GRANT_OWNER, one `held-mount TARGET FILE64` row each, for
-# `base ensure` to refuse the restart that would drop them. It reads under the
-# lock, so a grant still running is read once it has finished. WSL-179.
+# `base ensure` to refuse the restart that would end the work under them. It reads
+# under the lock, so a grant still running is read once it has finished. WSL-179.
+# ⚠ The restart no longer drops a grant whose line the block holds. WSL-190.
 if [ "$TK_GRANTS_MODE" = held ]; then
   if [ -f "$OWNERS" ]; then
     while read -r held_target held_key held_name _rest; do
@@ -222,21 +358,49 @@ if [ -f /etc/fstab ]; then
   cp /etc/fstab "$WORK/fstab.before"
 fi
 : > "$WORK/unmounted"
+: > "$WORK/mounted"
 # changed is whether this run unmounted or mounted its target. ⛔ A run that did
 # neither says so, and its take-back then leaves the target alone: another
 # configuration may hold that mount. WSL-179.
 changed=false
 
-# fail_back MESSAGE: the old block back, what this run unmounted mounted again from
-# it, and the reason.
+# fail_back MESSAGE: what this run mounted unmounted, the old block back, what this
+# run unmounted mounted again from it, and the reason.
+#
+# ⛔ THIS RUN'S OWN MOUNT GOES FIRST. A read-back that failed after the mount put the
+# old block back and left the new mount, with no ledger row and in no configuration,
+# so the next `base ensure` read it as unconfigured. Met on an Alpine base, whose
+# read-back failed for want of runuser. A mount that will not go is named. WSL-189.
+#
+# ⛔ NOTHING IS MOUNTED BACK OVER A MOUNT THAT WOULD NOT GO. A mode switch whose new
+# mount stayed had its old one mounted on top, so the target held two mounts, and
+# the live mode read one while the block put back said the other. The refusal says
+# the target stays in the new mode. ⚠ A failed unmount is named only while the
+# target is still mounted. WSL-189.
 fail_back() {
+  fail_reason=$1
+  : > "$WORK/stuck"
+  while IFS= read -r made; do
+    [ -n "$made" ] || continue
+    if umount "$made" 2>"$WORK/umount.err"; then
+      continue
+    fi
+    stuck_mode=$(live_mode "$made")
+    [ -n "$stuck_mode" ] || continue
+    printf '%s\n' "$made" >> "$WORK/stuck"
+    if grep -Fxq -e "$made" "$WORK/unmounted"; then
+      fail_reason="$fail_reason. $made stays mounted $stuck_mode, the new mode, because it could not be unmounted: $(head -1 "$WORK/umount.err"). Its old mount was not put back over it"
+    else
+      fail_reason="$fail_reason. $made stays mounted, because it could not be unmounted: $(head -1 "$WORK/umount.err")"
+    fi
+  done < "$WORK/mounted"
   install_fstab "$WORK/fstab.before"
   while IFS= read -r again; do
-    if [ -n "$again" ]; then
+    if [ -n "$again" ] && ! grep -Fxq -e "$again" "$WORK/stuck"; then
       mount "$again" 2>/dev/null || :
     fi
   done < "$WORK/unmounted"
-  die "$1"
+  die "$fail_reason"
 }
 
 # live_mode TARGET: the mode a live DrvFS mount at TARGET has, or nothing.
@@ -286,22 +450,11 @@ source_key() {
     tr '[:upper:]' '[:lower:]'
 }
 
-# holder TARGET: the owner key and owner name the ledger gives TARGET, or nothing.
-holder() {
-  [ -f "$OWNERS" ] || return 0
-  while read -r held_target held_key held_name _rest; do
-    if [ "$held_target" = "$1" ]; then
-      printf '%s %s\n' "$held_key" "$held_name"
-      return 0
-    fi
-  done < "$OWNERS"
-  return 0
-}
-
 # ⛔ A LIVE TARGET ANOTHER CONFIGURATION HOLDS IS REFUSED, NOT CHANGED. The ledger
 # names the file that granted it, and a grant or a revoke from this one unmounted
 # or replaced that file's checkout. The refusal names the file. WSL-179.
-held=$(holder "$OWN")
+holder "$OWN"
+held=$holder_of
 held_key=${held%% *}
 if [ -n "$held" ] && [ -n "$TK_GRANT_OWNER" ] && [ "$held_key" != "$TK_GRANT_OWNER" ] &&
   [ -n "$(live_mode "$OWN")" ]; then
@@ -385,6 +538,8 @@ while read -r mode target; do
   if [ -z "$current" ]; then
     mount "$target" 2>"$WORK/mount.err" || fail_back "$target could not be mounted: $(head -1 "$WORK/mount.err")"
     changed=true
+    # ⛔ RECORDED, so a read-back that then fails takes this mount away. WSL-189.
+    printf '%s\n' "$target" >> "$WORK/mounted"
     say "mounted $target $mode"
   fi
 done < "$WORK/targets"

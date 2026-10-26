@@ -306,10 +306,11 @@ func (c *Config) contribute(path string) error {
 // Portable is this configuration as another process reads it: each grant's
 // source resolved against the file that names it.
 //
-// ⛔ THE FILE'S PATH DOES NOT CROSS THE HELPER PROTOCOL, so a relative source
+// ⛔ THE FILE'S PATH DID NOT CROSS THE HELPER PROTOCOL, so a relative source
 // sent as it was written resolved against the helper's own working directory,
 // and `base ensure` through the helper mounted the wrong directory or none.
-// WSL-131.
+// WSL-131. ⚠ An ensure or a probe sends the path now, and a job's request still
+// does not, so the sources still go resolved. WSL-190.
 func (c Config) Portable() Config {
 	resolved, err := c.ResolvedBaseMounts()
 	if err != nil || len(resolved) == 0 {

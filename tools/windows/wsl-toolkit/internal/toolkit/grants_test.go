@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -210,8 +212,9 @@ func TestALiveGrantChangeNamesItsOneTarget(t *testing.T) {
 // grantsDrive runs grants.sh live under a POSIX shell, with /etc/fstab and
 // /proc/mounts in dir and mount, umount and runuser standing in. A stand-in mount
 // adds the target to the mounts file from the source and in the mode the fstab
-// gives it, and fails once when dir holds mount.fail. The grant ledger is dir's
-// owners file, and the caller's configuration file is grantsMine.
+// gives it, and fails once when dir holds mount.fail. umount fails once when dir
+// holds umount.fail, and runuser fails while it holds runuser.fail. The grant
+// ledger is dir's owners file, and the caller's configuration file is grantsMine.
 func grantsDrive(t *testing.T, dir string, mounts []BaseMount, target string) (string, error) {
 	t.Helper()
 	return grantsDriveIn(t, dir, GrantsLive, mounts, target)
@@ -261,10 +264,24 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 	if err != nil {
 		t.Fatal(err)
 	}
-	standIns := `
+	return grantsRun(t, dir, map[string]string{
+		"TK_USER": "agent", "TK_GRANTS_MODE": mode,
+		"TK_FSTAB_B64": fstab64, "TK_MOUNT_CHECKS": checks, "TK_GRANT_TARGET": target,
+		"TK_GRANT_SOURCE": source64, "TK_GRANT_OWNER": b64(owner), "TK_GRANT_OWNER_NAME": b64(owner),
+	})
+}
+
+// grantsStandIns are mount, umount and runuser, and the two commands that would
+// touch the host. umount fails once when dir holds umount.fail, and on its Nth call
+// when dir's umount.failat holds N. With umount.gone it takes the mount away
+// before it fails, as when another process unmounted it first. WSL-189.
+//
+// ⚠ IN THE SHELL, WITH NO PIPE AND NO SUBSHELL. Git for Windows' sh pays a tenth of
+// a second a fork, and the stand-ins ran on every mount. WSL-190.
+const grantsStandIns = `
 mkdir() { :; }
 chmod() { :; }
-runuser() { return 0; }
+runuser() { [ ! -e "$TK_TEST_DIR/runuser.fail" ]; }
 mount() {
   printf 'mount %s\n' "$1" >> "$TK_TEST_DIR/log"
   if [ -e "$TK_TEST_DIR/mount.fail" ]; then
@@ -272,27 +289,127 @@ mount() {
     printf 'the stand-in mount failed\n' >&2
     return 1
   fi
-  m=$(grep " $1 drvfs " "$TK_TEST_DIR/fstab" | sed 's/.* drvfs metadata,\([a-z]*\),.*/\1/')
-  s=$(grep " $1 drvfs " "$TK_TEST_DIR/fstab" | cut -d' ' -f1)
-  printf '%s %s drvfs %s,noatime 0 0\n' "$s" "$1" "$m" >> "$TK_TEST_DIR/mounts"
+  sm_from= sm_mode=
+  while read -r sm_source sm_target sm_type sm_options sm_rest; do
+    if [ "$sm_target" = "$1" ] && [ "$sm_type" = drvfs ]; then
+      sm_from=$sm_source
+      sm_mode=${sm_options#metadata,}
+      sm_mode=${sm_mode%%,*}
+      break
+    fi
+  done < "$TK_TEST_DIR/fstab"
+  printf '%s %s drvfs %s,noatime 0 0\n' "$sm_from" "$1" "$sm_mode" >> "$TK_TEST_DIR/mounts"
+}
+su_count=0
+su_drop() {
+  su_keep=
+  while IFS= read -r su_line; do
+    case "$su_line" in
+      *" $1 drvfs "*) ;;
+      *) su_keep="$su_keep$su_line
+" ;;
+    esac
+  done < "$TK_TEST_DIR/mounts"
+  printf '%s' "$su_keep" > "$TK_TEST_DIR/mounts"
 }
 umount() {
   printf 'umount %s\n' "$1" >> "$TK_TEST_DIR/log"
-  grep -v " $1 drvfs " "$TK_TEST_DIR/mounts" > "$TK_TEST_DIR/mounts.new" || :
-  mv "$TK_TEST_DIR/mounts.new" "$TK_TEST_DIR/mounts"
+  su_count=$((su_count + 1))
+  su_at=
+  if [ -e "$TK_TEST_DIR/umount.failat" ]; then
+    read -r su_at < "$TK_TEST_DIR/umount.failat" || :
+  fi
+  if [ -e "$TK_TEST_DIR/umount.fail" ] || [ "$su_at" = "$su_count" ]; then
+    rm -f "$TK_TEST_DIR/umount.fail"
+    if [ -e "$TK_TEST_DIR/umount.gone" ]; then
+      su_drop "$1"
+    fi
+    printf 'the stand-in umount failed\n' >&2
+    return 1
+  fi
+  su_drop "$1"
 }
 `
-	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", dir+"/fstab")
-	script = strings.ReplaceAll(script, "/proc/mounts", dir+"/mounts")
-	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", dir+"/owners")
-	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grants.lock", dir+"/grants.lock")
-	script = strings.Replace(script, "set -eu\n", "set -eu\n"+standIns, 1)
-	cmd := exec.Command(posixShell(t), "-c", script)
-	cmd.Env = append(os.Environ(), "TK_TEST_DIR="+dir, "TK_USER=agent", "TK_GRANTS_MODE="+mode,
-		"TK_FSTAB_B64="+fstab64, "TK_MOUNT_CHECKS="+checks, "TK_GRANT_TARGET="+target,
-		"TK_GRANT_SOURCE="+source64, "TK_GRANT_OWNER="+b64(owner), "TK_GRANT_OWNER_NAME="+b64(owner))
+
+// grantsRun runs grants.sh under grantsShell, handed env as the guest hands it,
+// with dir's fstab, mounts and owners files for the guest's and grantsStandIns.
+//
+// ⚠ FROM A FILE, AND WITH FORWARD SLASHES. A Windows command line holds 32767
+// characters, which the script with its stand-ins nears, and a backslash in a path
+// is an escape to the shell. WSL-189, WSL-190.
+func grantsRun(t *testing.T, dir string, env map[string]string) (string, error) {
+	t.Helper()
+	sh, bin := grantsShell(t)
+	at := filepath.ToSlash(dir)
+	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", at+"/fstab")
+	script = strings.ReplaceAll(script, "/proc/mounts", at+"/mounts")
+	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", at+"/owners")
+	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grants.lock", at+"/grants.lock")
+	script = strings.Replace(script, "set -eu\n", "set -eu\n"+grantsStandIns, 1)
+	run := filepath.Join(dir, "grants-run.sh")
+	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(sh, filepath.ToSlash(run))
+	cmd.Env = append(shellEnv(bin), "TK_TEST_DIR="+at)
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// grantsShell is the POSIX shell grants.sh and verify.sh are driven under, and the
+// directories its tools come from, or a skip.
+//
+// ⭐ ON WINDOWS IT IS GIT FOR WINDOWS' sh, found beside the git on PATH. A drive
+// needs sh, grep, sed, cut, awk, base64 and mktemp, which Git carries, and flock,
+// which it does not and which grants.sh runs without. Skipped there, every WSL-189
+// and WSL-190 case passed with its fix reverted. WSL-189, WSL-190.
+//
+// ⚠ KEPT ONCE FOUND, so a case that puts the fake host's PATH in place first still
+// finds it. A miss is not kept. ⚠ ELSEWHERE bin IS THE SYSTEM'S OWN DIRECTORIES:
+// the fake host's PATH holds its fakes alone, and the script found no mktemp.
+func grantsShell(t *testing.T) (sh, bin string) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return posixShell(t), "/usr/local/bin:/usr/bin:/bin"
+	}
+	gitShell.mu.Lock()
+	defer gitShell.mu.Unlock()
+	if gitShell.sh != "" {
+		return gitShell.sh, filepath.Dir(gitShell.sh)
+	}
+	if git, err := exec.LookPath("git"); err == nil {
+		dir := filepath.Dir(git)
+		for range 3 {
+			dir = filepath.Dir(dir)
+			candidate := filepath.Join(dir, "usr", "bin", "sh.exe")
+			if _, err := os.Stat(candidate); err == nil {
+				gitShell.sh = candidate
+				return candidate, filepath.Dir(candidate)
+			}
+		}
+	}
+	t.Skip("no Git for Windows sh beside the git on PATH, so no POSIX shell to drive the script under")
+	return "", ""
+}
+
+// gitShell is the sh.exe grantsShell found.
+var gitShell struct {
+	mu sync.Mutex
+	sh string
+}
+
+// shellEnv is this process's environment with bin, a PATH list, first on PATH.
+// ⚠ A later PATH wins over the Path Windows names it, since exec drops a key's
+// earlier copies.
+func shellEnv(bin string) []string {
+	env := os.Environ()
+	if bin != "" {
+		env = append(env, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+	return env
 }
 
 // TestALiveGrantOrRevokeLeavesAnotherCallersMount drives a base holding a mount

@@ -471,6 +471,13 @@ func TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant(t *testing.T) {
 		!strings.Contains(err.Error(), "base ensure --repair") {
 		t.Fatalf("an ensure over another file's live grant answered %v", err)
 	}
+	// ⛔ THE RESTART ENDS THAT FILE'S WORK, AND IT NO LONGER DROPS ITS GRANT: the
+	// fstab block keeps that file's line, so the refusal says what the restart
+	// costs now. WSL-190.
+	if !strings.Contains(err.Error(), "the restart ends the work under grants another configuration holds live") ||
+		strings.Contains(err.Error(), "drops") {
+		t.Fatalf("an ensure over another file's live grant gave its cost as %v", err)
+	}
 	if s.said("re-provisioning") || callAt(h.calls(t), "wsl --terminate") >= 0 {
 		t.Fatalf("a refused ensure re-provisioned or restarted the base: %v\n%v", s.lines, h.calls(t))
 	}

@@ -792,11 +792,13 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 				return st, b.notJudgedRefusal(nj)
 			}
 			// ⛔ NO RESTART OVER ANOTHER CONFIGURATION'S LIVE GRANTS UNLESS ASKED.
-			// Its grant is not in this file's block, so the restart dropped its
+			// Its grant was not in this file's block, so the restart dropped its
 			// checkout and ended every agent in the base, and that file's next
 			// ensure did the same back. The grant lock is held through the
 			// provisioning, so no grant lands between the read and the restart.
-			// WSL-179.
+			// WSL-179. ⚠ The block keeps that file's lines now, so the restart
+			// mounts them again, and it still ends the work running in them.
+			// WSL-190.
 			release, err := LockGrants(ctx, b.log)
 			if err != nil {
 				return st, err
@@ -895,6 +897,12 @@ func (b *Base) adoptStoredGrants() (bool, error) {
 		return false, fmt.Errorf("the configuration could not be read again under the base's lock: %w", err)
 	}
 	if reflect.DeepEqual(stored.Base.Mounts, b.cfg.Base.Mounts) {
+		return false, nil
+	}
+	// ⚠ THE SAME GRANTS SPELLED ANOTHER WAY ARE NOT A CHANGE. The helper is handed
+	// each source resolved and reads the file as written, so since it is sent its
+	// caller's file, a relative source read as a change on every ensure. WSL-190.
+	if reflect.DeepEqual(stored.Portable().Base.Mounts, b.cfg.Portable().Base.Mounts) {
 		return false, nil
 	}
 	b.log("the grants changed while this waited; using the ones " + path + " names now")
