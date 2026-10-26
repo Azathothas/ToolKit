@@ -127,11 +127,11 @@ var sentenceRe = regexp.MustCompile(`[^.!?\n]{40,}`)
 // could not see it, and neither could a reader: the two copies were ninety
 // lines apart, and each read correctly where it stood.
 //
-// Two exemptions, both narrow. The entry-point routers are exempt from each
+// Three exemptions, each narrow. The entry-point routers are exempt from each
 // other, because each states the absolutes in full for a session that may be
-// handed exactly one of them. And docs/history/ is exempt entirely, because a
-// superseded page states things the live pages now state differently, which is
-// the point of it.
+// handed exactly one of them. The skills are exempt from each other for the
+// same reason. And docs/history/ is exempt entirely, because a superseded page
+// states things the live pages now state differently, which is the point of it.
 func OneHome(t *Tree) Result {
 	const minWords = 12
 	r := Result{Extra: map[string]any{"min_words": minWords}}
@@ -189,14 +189,12 @@ func OneHome(t *Tree) Result {
 		if len(files) < 2 {
 			continue
 		}
-		all := true
-		for _, f := range files {
-			if !routers[f] {
-				all = false
-				break
-			}
-		}
-		if all {
+		// ⭐ A SKILL STANDS ALONE TOO, for the routers' reason. skills/README.md
+		// says each is handed to an agent with nothing else, so it repeats what
+		// it needs. A sentence in two skills and nowhere else is one rule stated
+		// for two readers who each hold one page. The same sentence in a skill
+		// and any other page is still a second home. DOC-11.
+		if every(files, func(f string) bool { return routers[f] }) || every(files, standaloneSkill) {
 			continue
 		}
 		sort.Strings(files)
@@ -208,6 +206,22 @@ func OneHome(t *Tree) Result {
 	}
 	r.Extra["files"] = n
 	return r
+}
+
+// every says whether each of files satisfies in.
+func every(files []string, in func(string) bool) bool {
+	for _, f := range files {
+		if !in(f) {
+			return false
+		}
+	}
+	return true
+}
+
+// standaloneSkill says whether f is a skill's own page, which an agent is
+// handed with nothing else.
+func standaloneSkill(f string) bool {
+	return strings.HasPrefix(f, SkillsDir) && strings.HasSuffix(f, "/SKILL.md")
 }
 
 // sentenceSplit ends a sentence at a full stop, colon, exclamation or question

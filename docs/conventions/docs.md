@@ -58,6 +58,12 @@ the source, or have a check assert the two agree.
 ⚠ The trap is that a value which never changes cannot expose a missing check.
 It sits correct for a year and drifts the first time it moves.
 
+⚠ **A skill repeats what it needs.**
+[`../../skills/README.md`](../../skills/README.md) says each is handed to an agent
+with nothing else. The page that owns a fact still wins where they differ.
+[`../../scripts/README.md`](../../scripts/README.md) says what the `one-home` check
+allows a skill. `DOC-11`
+
 ### The technical reference wins
 
 ⛔ **Every fact has a document that owns it, and when two disagree the owner is

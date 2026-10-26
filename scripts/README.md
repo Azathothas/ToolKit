@@ -206,6 +206,10 @@ that one fact lives in one document; this is what enforces it.
 `docs/AGENTS.md`. ⭐ An exemption for a file that does not exist grants itself to
 whatever lands at that path next, so none is kept.
 
+⚠ **Two skills may share a sentence**, because an agent is handed one skill and
+nothing else. A sentence a skill shares with any other page is still refused,
+`skills/README.md` included. `DOC-11`
+
 ⚠ **It compares sentences**, so a fact restated in different words passes here
 and fails a review instead. That is the same split every other prose rule has.
 
