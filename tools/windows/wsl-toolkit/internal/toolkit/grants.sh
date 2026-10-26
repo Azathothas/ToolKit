@@ -555,19 +555,24 @@ while read -r mode target; do
 done < "$WORK/targets"
 
 # -- read this call's grant back, as the account ---------------------------------------
-# as_account COMMAND...: COMMAND as the account, through runuser, or through su where
-# there is no runuser.
+# as_account SCRIPT ARG...: SCRIPT run by sh as the account, each ARG one of its
+# positional parameters, through runuser, or through su where there is no runuser.
 #
 # ⛔ ALPINE HAS NO runuser, so every live grant there failed its read-back, and a
 # read-only one passed it. A runuser that is not there answers 127, and su is asked
 # instead. WSL-188.
+#
+# ⛔ su TAKES ITS OPTIONS BEFORE THE ACCOUNT, AND NO ARG BEGINS WITH A DASH. BusyBox's
+# su and util-linux's both permute, so a `-c` among the shell's arguments replaced
+# su's own. Measured on alpine and debian: the probe then ran with `sh` as its path.
+# WSL-188.
 as_account() {
+  aa_script=$1
+  shift
   aa_code=0
-  runuser -u "$TK_USER" -- "$@" 2>/dev/null || aa_code=$?
+  runuser -u "$TK_USER" -- sh -c "$aa_script" sh "$@" 2>/dev/null || aa_code=$?
   [ "$aa_code" = 127 ] || return "$aa_code"
-  # The command reaches su's shell as its positional parameters, never as source.
-  # shellcheck disable=SC2016
-  su -s /bin/sh "$TK_USER" -c '"$0" "$@"' "$@" 2>/dev/null
+  su -s /bin/sh -c "$aa_script" "$TK_USER" sh "$@" 2>/dev/null
 }
 
 # ⛔ THE ANSWER IS READ, NOT THE EXIT CODE. A read-only grant passed whenever the
@@ -583,7 +588,7 @@ while read -r mode target; do
   [ "$target" = "$OWN" ] || continue
   [ "$(live_mode "$target")" = "$mode" ] || fail_back "$target is not a live $mode Windows mount after mounting it"
   probe="$target/.wsl-toolkit-write-probe.$$"
-  wrote=$(as_account sh -c "$probe_write" sh "$probe") || wrote=
+  wrote=$(as_account "$probe_write" "$probe") || wrote=
   case "$mode:$wrote" in
     rw:writable | ro:refused) ;;
     rw:refused) fail_back "$TK_USER cannot write in $target" ;;

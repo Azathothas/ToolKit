@@ -1298,6 +1298,10 @@ none, as on Alpine.** The account says whether its write landed. Where neither r
 shell as the account, the grant is refused in either mode, and its mount goes. The
 mount names the account's own uid and gid, which `base ensure` verifies. `WSL-188`
 
+⚠ **On Alpine a read-only grant is refused.** BusyBox's `mount` drops `ro` for a
+Windows directory. The mount comes up writable, and the grant refuses it as not a live
+read-only mount. A read-write grant works there.
+
 ⛔ **Each changes its own target alone.** A mount under `/workspaces` that this
 configuration does not name stays mounted, because another configuration may hold
 it. A project's `wsl-toolkit.json` beside the home's own file is one. A
@@ -2216,7 +2220,9 @@ does nothing else cannot resolve a name. So, in this order and no other:
    refresh that reads short leaves the working file alone.
 
 ⚠ **Each waits up to ten seconds for WSL to write the shared file.** Read once, a
-start that came first kept an empty or old resolver. `WSL-188`
+start that came first kept an empty or old resolver. Provisioning waits only while
+`/mnt/wsl` is mounted, so a sealed base provisioned again keeps its resolver at once.
+`WSL-188`
 
 ⛔ **`shared_tmpfs: "off"` requires `automount: "off"`** and is refused otherwise.
 Closing the tmpfs while the Windows drives are mounted costs the resolver and seals

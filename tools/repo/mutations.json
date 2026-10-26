@@ -2,10 +2,46 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a grant's read-back hands su its options before the account",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  su -s /bin/sh -c \"$aa_script\" \"$TK_USER\" sh \"$@\" 2>/dev/null\n",
+      "replace": "  su -s /bin/sh \"$TK_USER\" -c '\"$0\" \"$@\"' sh -c \"$aa_script\" sh \"$@\" 2>/dev/null\n",
+      "run": "TestAGrantIsReadBackThroughSuWhereThereIsNoRunuser",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning waits for the shared resolver only while /mnt/wsl is mounted",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": " && grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; do\n",
+      "replace": "; do\n",
+      "run": "TestAReProvisionedSealedBaseDoesNotWaitForAClosedResolver",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doctor reports the state of its wsl listing",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doctor.go",
+      "find": "\t\t\treport.Host[\"wsl_state\"] = read.State\n",
+      "replace": "",
+      "run": "TestDoctorReportsAnEmptyMachineAsEmpty",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doctor reports an empty machine as one it may enumerate",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doctor.go",
+      "find": "\t\t\treport.Host[\"wsl_access\"] = read.Access\n",
+      "replace": "\t\t\treport.Host[\"wsl_access\"] = err == nil\n",
+      "run": "TestDoctorReportsAnEmptyMachineAsEmpty",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: provisioning waits for the shared resolver",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
-      "find": "  while [ ! -s /mnt/wsl/resolv.conf ] && [ \"$resolv_wait\" -lt 10 ]; do\n",
+      "find": "  while [ ! -s /mnt/wsl/resolv.conf ] && [ \"$resolv_wait\" -lt 10 ] && grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; do\n",
       "replace": "  while false; do\n",
       "run": "TestProvisioningWaitsForTheSharedResolver",
       "args": []

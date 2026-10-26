@@ -14,11 +14,13 @@ import (
 
 // -- WSL-188: a sealed base's resolver ----------------------------------------
 
-// ⛔ PROVISIONING WAITS FOR THE SHARED RESOLVER. WSL writes /mnt/wsl/resolv.conf
-// as a distribution starts, and read once it was empty, so a sealed base kept the
-// resolver it had. A sleep that is the moment WSL writes the file stands in for
-// the wait.
-func TestProvisioningWaitsForTheSharedResolver(t *testing.T) {
+// sharedResolverRun runs provision.sh's shared resolver section with /etc, /mnt/wsl
+// and /proc/mounts under a directory of its own, the base's resolver naming
+// 198.51.100.1, and mounts as the mount table. A sleep that is the moment WSL
+// writes the shared file, naming 192.0.2.7, stands in for the wait. It answers
+// what the section printed and the base's resolver after it.
+func sharedResolverRun(t *testing.T, mounts string) (string, string) {
+	t.Helper()
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")
@@ -33,9 +35,12 @@ func TestProvisioningWaitsForTheSharedResolver(t *testing.T) {
 	if err := os.WriteFile(etc, []byte("nameserver 198.51.100.1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(d, "mounts"), []byte(mounts), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	at := filepath.ToSlash(d)
-	section := strings.NewReplacer("/mnt/wsl/resolv.conf", at+"/mnt/wsl/resolv.conf", "/etc/resolv.conf", at+"/etc/resolv.conf").
-		Replace(provisionerSection(t, "the shared resolver"))
+	section := strings.NewReplacer("/mnt/wsl/resolv.conf", at+"/mnt/wsl/resolv.conf", "/etc/resolv.conf", at+"/etc/resolv.conf",
+		"/proc/mounts", at+"/mounts").Replace(provisionerSection(t, "the shared resolver"))
 	script := "set -eu\nsay() { printf '%s\\n' \"$*\"; }\ndie() { printf 'die: %s\\n' \"$*\"; exit 3; }\n" +
 		"sleep() { printf 'nameserver 192.0.2.7\\n' > '" + at + "/mnt/wsl/resolv.conf'; }\n" + section
 	out, err := exec.Command(sh, "-c", script).CombinedOutput()
@@ -43,8 +48,27 @@ func TestProvisioningWaitsForTheSharedResolver(t *testing.T) {
 		t.Fatalf("the shared resolver section failed: %v\n%s", err, out)
 	}
 	got, _ := os.ReadFile(etc)
-	if string(got) != "nameserver 192.0.2.7\n" || !strings.Contains(string(out), "/etc/resolv.conf, 1 nameserver(s)") {
+	return string(out), string(got)
+}
+
+// ⛔ PROVISIONING WAITS FOR THE SHARED RESOLVER. WSL writes /mnt/wsl/resolv.conf
+// as a distribution starts, and read once it was empty, so a sealed base kept the
+// resolver it had.
+func TestProvisioningWaitsForTheSharedResolver(t *testing.T) {
+	out, got := sharedResolverRun(t, "none / ext4 rw 0 0\nnone /mnt/wsl tmpfs rw 0 0\n")
+	if got != "nameserver 192.0.2.7\n" || !strings.Contains(out, "/etc/resolv.conf, 1 nameserver(s)") {
 		t.Fatalf("a shared resolver WSL wrote a moment late was not taken: /etc/resolv.conf %q\n%s", got, out)
+	}
+}
+
+// ⚠ AND ONLY WHILE /mnt/wsl IS MOUNTED. A sealed base that is provisioned again
+// closed it at its last start, so nothing can write the file, and the wait cost
+// every re-provisioning ten seconds. The base keeps the resolver it has. WSL-188.
+func TestAReProvisionedSealedBaseDoesNotWaitForAClosedResolver(t *testing.T) {
+	out, got := sharedResolverRun(t, "none / ext4 rw 0 0\n")
+	// ⚠ The resolver's path in the line is the case's own, which stands in for it.
+	if got != "nameserver 198.51.100.1\n" || !strings.Contains(out, "/etc/resolv.conf this base already had") {
+		t.Fatalf("a base whose /mnt/wsl is closed waited for its resolver: /etc/resolv.conf %q\n%s", got, out)
 	}
 }
 

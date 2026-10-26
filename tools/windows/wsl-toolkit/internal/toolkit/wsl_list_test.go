@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -82,6 +83,33 @@ func TestDoctorReadsAnEmptyOrSlowListAsNoRefusal(t *testing.T) {
 		}
 		if c.state != "refused" && strings.Contains(got.Note, "cannot enumerate") {
 			t.Errorf("%s: doctor sent the reader to the approval flow: %s", c.name, got.Note)
+		}
+	}
+}
+
+// ⛔ WSL-188: AND DOCTOR'S REPORT CARRIES WHAT IT READ. An empty machine in another
+// language reads `wsl_access` true, `wsl_state` empty and no distribution, with no
+// note sending the reader to the approval flow. Doctor asks wsl.exe on Windows
+// alone, so elsewhere this cannot fail and is skipped.
+func TestDoctorReportsAnEmptyMachineAsEmpty(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("doctor asks wsl.exe on Windows alone")
+	}
+	h := newFakeHost(t)
+	h.say(t, "listing", "localized-empty")
+	report, err := Doctor(context.Background(), DoctorOptions{Fast: true, Group: "agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Host["wsl_state"] != "empty" || report.Host["wsl_access"] != true {
+		t.Errorf("doctor reported an empty machine as wsl_state %v, wsl_access %v", report.Host["wsl_state"], report.Host["wsl_access"])
+	}
+	if distros, ok := report.Host["wsl_distros"].([]string); !ok || len(distros) != 0 {
+		t.Errorf("doctor reported an empty machine's distributions as %#v", report.Host["wsl_distros"])
+	}
+	for _, note := range report.Notes {
+		if strings.Contains(note, "cannot enumerate") {
+			t.Errorf("doctor sent the reader of an empty machine to the approval flow: %s", note)
 		}
 	}
 }

@@ -582,8 +582,11 @@ if [ "$TK_SHARED_TMPFS" = off ]; then
   # ⛔ WAITED FOR, NOT READ ONCE. WSL writes the shared file as a distribution
   # starts, and it was measured empty that early, so a base kept the resolver it
   # had, empty or old. Ten seconds, a second at a time. WSL-188.
+  # ⚠ ONLY WHILE /mnt/wsl IS MOUNTED. A sealed base that is provisioned again
+  # closed it at its last start, so nothing writes the file there, and every
+  # re-provisioning paid the ten seconds for nothing. WSL-188.
   resolv_wait=0
-  while [ ! -s /mnt/wsl/resolv.conf ] && [ "$resolv_wait" -lt 10 ]; do
+  while [ ! -s /mnt/wsl/resolv.conf ] && [ "$resolv_wait" -lt 10 ] && grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; do
     sleep 1
     resolv_wait=$((resolv_wait + 1))
   done

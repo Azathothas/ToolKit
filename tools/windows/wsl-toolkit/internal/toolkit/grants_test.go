@@ -287,6 +287,10 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 // there, while dir holds runuser.gone, and su then logs each call to su.log. The
 // account's ids are account.ids's two, and it has none while that file is absent.
 // WSL-188.
+//
+// ⛔ su PERMUTES, as BusyBox's and util-linux's were both measured to: -s and -c take
+// their value wherever they stand, a later -c replaces an earlier one, and what is
+// left, in order, is the account and then the shell's arguments. WSL-188.
 const grantsStandIns = `
 mkdir() { :; }
 chmod() { :; }
@@ -296,9 +300,18 @@ runuser() {
   account_shell "$@"
 }
 su() {
-  printf 'su %s\n' "$3" >> "$TK_TEST_DIR/su.log"
-  shift 5
-  account_shell "$@"
+  su_left=$#
+  su_cmd=
+  while [ "$su_left" -gt 0 ]; do
+    case "$1" in
+      -s) shift 2; su_left=$((su_left - 2)) ;;
+      -c) su_cmd=$2; shift 2; su_left=$((su_left - 2)) ;;
+      *) su_arg=$1; shift; set -- "$@" "$su_arg"; su_left=$((su_left - 1)) ;;
+    esac
+  done
+  printf 'su %s\n' "$1" >> "$TK_TEST_DIR/su.log"
+  shift
+  account_shell sh -c "$su_cmd" "$@"
 }
 account_shell() {
   [ ! -e "$TK_TEST_DIR/account.silent" ] || return 1
