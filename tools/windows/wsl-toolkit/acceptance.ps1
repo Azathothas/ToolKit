@@ -7,8 +7,8 @@
 # docs/methodology/gate.md, written down so it is a command rather than a memory.
 #
 # WHAT IT REQUIRES: a Windows host with WSL2, PowerShell 7.2 or later, a
-# container engine for the base build, and a network for the image pulls. It CREATES the base distribution if
-# there is none, and it leaves it registered.
+# container engine for the base build, and a network for the image pulls. It
+# CREATES the base distribution if there is none, and it leaves it registered.
 #
 # HARD RULE: IT NEVER TOUCHES podman-machine-default OR ANY OTHER DISTRIBUTION.
 # Everything it makes is inside the distribution the tool owns, and the last

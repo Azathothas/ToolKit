@@ -2076,7 +2076,7 @@ vsock connect to the host timed out. `WSL-156`
 ⛔ **The helper does not carry `base doors`.** The probe mounts, writes and opens
 sockets in the base, which the restricted helper protocol does not accept. So the
 helper route is refused with exit 2 while a helper serves. That holds when
-`--via-helper` chose the helper and when this process could not reach wsl.exe.
+`--via-helper` chose the helper and when this process could not reach `wsl.exe`.
 The reason names the session's WSL approval path. Nothing runs in the base, and
 nothing is written to stdout. `WSL-142`
 
