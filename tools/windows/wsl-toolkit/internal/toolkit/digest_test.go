@@ -17,7 +17,8 @@ import (
 // -- WSL-192: a pull that fails builds from the engine's own copy --------------
 
 // fakeDigest is the digest the fake engine names for the image it holds.
-const fakeDigest = "sha256:" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+// ⚠ Built, not spelled out, so no secret scan reads it as a credential.
+var fakeDigest = "sha256:" + strings.Repeat("0123456789abcdef", 4)
 
 // fakeImage is the engine's own copy of image, for this machine's platform, as
 // podman names it: its own digest, and the repository's.

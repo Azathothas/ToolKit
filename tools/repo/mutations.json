@@ -34,7 +34,7 @@
       "file": "internal/toolkit/base.go",
       "find": "\t\tif errors.Is(err, ErrIdentityUnread) {\n\t\t\tcause := err\n",
       "replace": "\t\tif false {\n\t\t\tcause := err\n",
-      "run": "TestAnOwnedBaseThatCannotStart",
+      "run": "TestAnOwnedBaseThatCannotStartIsRemoved|TestAnOwnedBaseThatCannotStartIsRebuilt",
       "args": []
     },
     {

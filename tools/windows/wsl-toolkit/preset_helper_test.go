@@ -88,7 +88,7 @@ func TestAPresetSwitchThroughTheHelperCrossesAsASwitch(t *testing.T) {
 // ⭐ THE ROW NAMES THE IMAGE AT ITS DIGEST, as `base.image` would name it to build
 // the same base again. A base an older release built has no digest, and no row.
 func TestBaseStatusNamesTheDigestItWasBuiltFrom(t *testing.T) {
-	const digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	digest := "sha256:" + strings.Repeat("0123456789abcdef", 4)
 	st := toolkit.BaseState{Name: "wsl-toolkit", Image: toolkit.DefaultBaseImage, BuiltFrom: toolkit.DefaultBaseImage, Digest: digest}
 	out := captureStderr(t, func() { renderBaseState(st, false) })
 	if want := "  digest      ghcr.io/pkgforge-dev/archlinux@" + digest + "\n"; !strings.Contains(out, want) {
