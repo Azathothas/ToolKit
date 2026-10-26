@@ -274,7 +274,9 @@ wsl-toolkit run --image quay.io/podman/stable --user podman --device /dev/fuse -
 `wsl-toolkit logs` lists every job and session of that instance with
 its state: `running`, `ended`, `detached` or `no owner`. With no `--instance`, it
 lists the default base's jobs. A job gets a device node with `--device /dev/kvm`, and
-a file from Windows at `/in/NAME` with `--input NAME=FILE`.
+a file from Windows at `/in/NAME` with `--input NAME=FILE`. A script to run by its
+shebang goes as `--input-exec NAME=FILE`, which arrives with LF line endings and mode
+0755. `base exec` takes both, and places them where `WSL_TOOLKIT_IN` names.
 
 `--gitignore` leaves out of the workspace copy what git ignores, and `--exclude GLOB`
 leaves out what the glob matches. They add to `jobs.gitignore` and `jobs.exclude`, and

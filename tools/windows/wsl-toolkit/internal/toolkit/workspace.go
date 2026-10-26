@@ -536,8 +536,16 @@ func walkWorkspace(root string, limits WorkspaceLimits, filter WorkspaceFilter, 
 // differs between them. A test hands in a stale FileInfo to reproduce that gap
 // with no timing in it.
 func writeRegularMember(tw *tar.Writer, up *WorkspaceUpload, p, slashRel string, info fs.FileInfo, mode int64) error {
+	return writeRegularMemberAs(tw, up, p, slashRel, slashRel, info, mode)
+}
+
+// writeRegularMemberAs is writeRegularMember for a member whose archive path is
+// not the name a refusal gives it. member is the path in the archive, and
+// slashRel the name every refusal and note gives it: an input is named where
+// the command sees it, not by the archive's own prefix. WSL-128.
+func writeRegularMemberAs(tw *tar.Writer, up *WorkspaceUpload, p, member, slashRel string, info fs.FileInfo, mode int64) error {
 	if err := tw.WriteHeader(&tar.Header{
-		Name: slashRel, Typeflag: tar.TypeReg, Mode: mode, Size: info.Size(), ModTime: info.ModTime(),
+		Name: member, Typeflag: tar.TypeReg, Mode: mode, Size: info.Size(), ModTime: info.ModTime(),
 	}); err != nil {
 		return memberError(slashRel, "writing its archive header", err)
 	}

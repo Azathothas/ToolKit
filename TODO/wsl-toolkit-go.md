@@ -13703,7 +13703,7 @@ Built, reviewed with fourteen findings, and repaired. Cases drive `Runner.Run` t
 ## WSL-128. An input file keeps CRLF and no executable bit
 
 **Source** the consumer survey of 2026-10-21, P15, and the old record's finding 112
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -13738,7 +13738,11 @@ Exit 0, then a CRLF script run as `/in/NAME` by its shebang.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/inputs`, for 8.0.0.** `base exec --input-exec NAME=FILE` beside `base exec --input`, attached and detached: the copy has LF endings and mode 0755, and the file on disk is never written. Every refusal names the flag that gave the input and the name as it was typed. An `--input-exec` that is not a regular file is refused before it is read, as `--input` is.
+
+Driven on the default base as its own account. Cases in `baseexec_cli_test.go` and `inputexec_test.go`. 18 rows, red on Windows and in the Linux proof.
+
+⚠ `--user` and `--root` were not driven with `--input-exec`.
 
 ⭐ **2026-10-25: the `run` half is merged from `rb/f2-run-config`.** `--input-exec NAME=FILE` on `run` and `matrix` and across the helper: a CRLF script arrived as `/in/run.sh` at mode 0755 with LF endings and ran by its shebang. ⚠ `base exec --input-exec` is not built; it belongs beside `base exec --input`.
 
@@ -14523,7 +14527,7 @@ The pane's working directory, read in the pane.
 ## WSL-145. The adapter contract's example probe passes with no wrapper
 
 **Source** the old record's finding 49
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14556,7 +14560,7 @@ Exit 0.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/inputs`, for 8.0.0.** The adapter contract's example probe is the `runuser -l "$TK_USER" -c "command -v NAME"` line the agent probes run. The contract says why the old `as_account sh -lc` form passes with no wrapper: in an npm adapter, `as_account` puts the account's npm prefix first. Two rows hold the contract's line and the probes' line together.
 
 
 ## WSL-146. No channel gives an agent an environment variable
@@ -14645,7 +14649,7 @@ Exit 0, then `base bootstrap` and `base ensure` on a scratch base with an agent 
 ## WSL-148. After a cancelled approval, herdr refuses every prompt, and no guide says how out
 
 **Source** the old record's finding 65
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14683,7 +14687,9 @@ Exit 0.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/inputs`, for 8.0.0.** The herdr guide has a section for a cancelled approval. Muse Code 1.3.0 fires no hook then, so herdr keeps the agent `blocked` and refuses prompts. The recovery sends the turn with `pane send-text` and `pane send-keys enter`, confirms it with `agent get` and `pane read`, and clears any text left in the input through `base attach`. The agents skill says the same.
+
+⚠ The recovery rests on the `WSL-76` measurement and was not driven again here: it needs the operator's own sign-in to Muse.
 
 
 ## WSL-149. `bootstrap.sh --dry-run` reports a failure on an image without curl

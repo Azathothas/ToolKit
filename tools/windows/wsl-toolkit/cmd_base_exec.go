@@ -32,9 +32,10 @@ const baseExecUsage = `wsl-toolkit base exec (-c COMMAND | --command-base64 BASE
   --user NAME runs it as that account of the base, and --root as root.
 
   --input NAME=FILE places a file at NAME in a directory of the command's own,
-  exported as WSL_TOOLKIT_IN. --artifacts DIR copies back what the command
-  leaves in the directory exported as WSL_TOOLKIT_OUT, and makes DIR only when
-  something arrives.
+  exported as WSL_TOOLKIT_IN. --input-exec NAME=FILE places a script there
+  with LF line endings and mode 0755, so the command runs it by its shebang.
+  --artifacts DIR copies back what the command leaves in the directory
+  exported as WSL_TOOLKIT_OUT, and makes DIR only when something arrives.
 
   --detach starts it with no client attached and answers with a session id.
   The base runs it in a process group of its own, keeps its two streams and
@@ -65,6 +66,8 @@ type baseExecFlags struct {
 	artifacts string
 	stdin     bool
 	here      bool
+	// inputExecs is --input-exec, beside --input, as run takes it. WSL-128.
+	inputExecs stringList
 }
 
 func (e *baseExecFlags) bind(fs *flag.FlagSet) {
@@ -82,6 +85,7 @@ func (e *baseExecFlags) bind(fs *flag.FlagSet) {
 	fs.BoolVar(&e.asJSON, "json", false, "with --detach, write the session as a structured answer")
 	fs.StringVar(&e.user, "user", "", "run as this account of the base instead of the configured one. The base must have it")
 	fs.Var(&e.inputs, "input", "NAME=FILE: a file on this machine, read from the current directory, placed at NAME in a directory of the command's own that WSL_TOOLKIT_IN names. Repeatable")
+	fs.Var(&e.inputExecs, "input-exec", "NAME=FILE: as --input, but the copy has CRLF turned into LF and mode 0755, so the command runs \"$WSL_TOOLKIT_IN/NAME\" by its shebang. FILE must start with #!. Repeatable")
 	fs.StringVar(&e.artifacts, "artifacts", "", "a directory on this machine to receive what the command leaves in the directory WSL_TOOLKIT_OUT names. It is made only when something arrives")
 	fs.BoolVar(&e.stdin, "stdin", false, "pass this process's stdin to the command, a pipe or a file. Refused when stdin is a terminal")
 	fs.BoolVar(&e.here, "here", false, "start in the guest directory this Windows directory is seen at: its grant, or its drive mount when base.automount is ro or rw")
@@ -235,23 +239,32 @@ func windowsDirInGuest(cfg toolkit.Config, winDir, flagName string) (string, err
 	return dir, err
 }
 
-// execInputs reads every --input NAME=FILE, each file from the current
-// directory, as --script and --env-file are. WSL-124.
+// execInputs reads every --input and --input-exec NAME=FILE, each file from the
+// current directory, as --script and --env-file are. WSL-124.
+//
+// ⭐ AN EXECUTABLE INPUT IS READ THE SAME WAY, and marked, so the one writer
+// both paths share repairs its copy and makes it 0755. WSL-128.
 func (e baseExecFlags) execInputs() ([]toolkit.JobInput, error) {
 	var out []toolkit.JobInput
-	for _, v := range e.inputs {
-		name, file, ok := strings.Cut(v, "=")
-		if !ok || file == "" {
-			return nil, fmt.Errorf("--input %q is not NAME=FILE: a name in the command's input directory, one equals sign, then a file on this machine", v)
+	for _, list := range []struct {
+		flag   string
+		values stringList
+		exec   bool
+	}{{"--input", e.inputs, false}, {"--input-exec", e.inputExecs, true}} {
+		for _, v := range list.values {
+			name, file, ok := strings.Cut(v, "=")
+			if !ok || file == "" {
+				return nil, fmt.Errorf("%s %q is not NAME=FILE: a name in the command's input directory, one equals sign, then a file on this machine", list.flag, v)
+			}
+			if err := toolkit.ValidateInputName(list.flag, name); err != nil {
+				return nil, err
+			}
+			p, err := filepath.Abs(msysHostPath(file))
+			if err != nil {
+				return nil, fmt.Errorf("%s %s: %w", list.flag, v, err)
+			}
+			out = append(out, toolkit.JobInput{Name: name, Path: p, Exec: list.exec})
 		}
-		if err := toolkit.ValidateInputName(name); err != nil {
-			return nil, err
-		}
-		p, err := filepath.Abs(msysHostPath(file))
-		if err != nil {
-			return nil, fmt.Errorf("--input %s: %w", v, err)
-		}
-		out = append(out, toolkit.JobInput{Name: name, Path: p})
 	}
 	if err := toolkit.CheckInputs(out, toolkit.DefaultWorkspaceLimits()); err != nil {
 		return nil, err

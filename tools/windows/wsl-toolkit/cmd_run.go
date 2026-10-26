@@ -336,7 +336,7 @@ func (j *jobFlags) jobInputs(cfg toolkit.Config) ([]toolkit.JobInput, error) {
 		if !ok || file == "" {
 			return nil, fmt.Errorf("--input %q is not NAME=FILE: a name under /in, one equals sign, then a file on this machine", v)
 		}
-		if err := toolkit.ValidateInputName(name); err != nil {
+		if err := toolkit.ValidateInputName("--input", name); err != nil {
 			return nil, err
 		}
 		p, err := pathFromProject(cfg, file)
@@ -352,7 +352,7 @@ func (j *jobFlags) jobInputs(cfg toolkit.Config) ([]toolkit.JobInput, error) {
 		if !ok || file == "" {
 			return nil, fmt.Errorf("--input-exec %q is not NAME=FILE: a name under /in, one equals sign, then a file on this machine", v)
 		}
-		if err := toolkit.ValidateInputName(name); err != nil {
+		if err := toolkit.ValidateInputName("--input-exec", name); err != nil {
 			return nil, err
 		}
 		p, err := pathFromProject(cfg, file)

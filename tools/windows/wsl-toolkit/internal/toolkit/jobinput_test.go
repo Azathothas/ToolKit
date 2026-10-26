@@ -133,12 +133,12 @@ func TestTheDeviceCheckRefusesInARealShell(t *testing.T) {
 
 func TestAnInputNameIsAPlainPathUnderIn(t *testing.T) {
 	for _, ok := range []string{"job.sh", "conf/app.toml", "a/b/c-1.2_x+y=z@w,v"} {
-		if err := ValidateInputName(ok); err != nil {
+		if err := ValidateInputName("--input", ok); err != nil {
 			t.Errorf("%q refused: %v", ok, err)
 		}
 	}
 	for _, bad := range []string{"", "/etc/passwd", "../x", "a/../b", "a//b", "./a", "a/.", "a b", "a$b"} {
-		if err := ValidateInputName(bad); err == nil {
+		if err := ValidateInputName("--input", bad); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
 	}

@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 253  open 12  blocked 5  done 236
+total 253  open 9  blocked 5  done 239
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 6 | 2 | 109 | 117 |
+| P2 | 3 | 2 | 112 | 117 |
 | P3 | 6 | 3 | 23 | 32 |
-| **all** | **12** | **5** | **236** | **253** |
+| **all** | **9** | **5** | **239** | **253** |
 
 ---
 
@@ -222,7 +222,7 @@ total 253  open 12  blocked 5  done 236
 | WSL-125 | P2 | M | done | A 9P grant is slow, and nothing copies a checkout into the base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-126 | P2 | M | done | `stop` does not reach a session's child that left the process group | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-127 | P2 | M | done | The tool's own exit 2 cannot be told from a job's exit 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-128 | P2 | S | open | An input file keeps CRLF and no executable bit | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-128 | P2 | S | done | An input file keeps CRLF and no executable bit | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-129 | P2 | S | done | A project cannot say which version of the tool it needs | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-130 | P2 | L | done | An engine inside a base is set up by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-131 | P2 | M | done | Job defaults are repeated in every wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -239,10 +239,10 @@ total 253  open 12  blocked 5  done 236
 | WSL-142 | P3 | S | open | `base doors --via-helper`'s refusal was never run against a live helper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-143 | P3 | S | done | The base account's login shell is `/bin/sh` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-144 | P2 | S | done | An agent pane cannot be started in the project directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-145 | P2 | S | open | The adapter contract's example probe passes with no wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-145 | P2 | S | done | The adapter contract's example probe passes with no wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-146 | P3 | S | done | No channel gives an agent an environment variable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-147 | P1 | S | done | After `base bootstrap`, agents bypass this tool's wrappers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-148 | P2 | S | open | After a cancelled approval, herdr refuses every prompt, and no guide says how out | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-148 | P2 | S | done | After a cancelled approval, herdr refuses every prompt, and no guide says how out | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-149 | P2 | S | done | `bootstrap.sh --dry-run` reports a failure on an image without curl | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-150 | P2 | M | done | A base build killed before its marker leaves a distribution only `wsl --unregister` can remove | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-151 | P2 | S | done | A cancelled `bsd run` says its budget ran out and exits 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

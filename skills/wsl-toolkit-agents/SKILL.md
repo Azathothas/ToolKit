@@ -282,5 +282,10 @@ the turn ended before the wait began. Read the agent's state first, with `agent 
 ⛔ **A cancelled approval in Muse Code 1.3.0 leaves the agent `blocked`**, and
 `agent prompt` then refuses every prompt with `agent_blocked`. This is the one place
 for the pane commands. Send one turn with `pane send-text PANE 'TEXT'`, then
-`pane send-keys PANE enter`. herdr's screen detection moves the agent off `blocked`,
-and `agent prompt` is accepted again. Read the agent to confirm it.
+`pane send-keys PANE enter`.
+
+⚠ **An idle Muse keeps such text unsent, as section 5 says, but a `blocked` one was
+measured once to start the turn.** Nobody has measured why. Confirm it before the
+next prompt: `agent get` no longer reads `blocked`, and `pane read` shows the turn,
+not the text in the input. If the text still waits there, clear it in Muse's own
+pane, through `base attach`, before any `agent prompt`.

@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 7.0.2 published from a031bcf, installed and driven
-entries         total 253  open 12  blocked 5  done 236
+entries         total 253  open 9  blocked 5  done 239
 this session    ruling 31
 ```
 
@@ -101,7 +101,7 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    `WSL-124`, `WSL-125`, `WSL-133`, `WSL-146` (F4); the base's runtime
    `WSL-126`, `WSL-130` and the limits in `WSL-136` (F5a); the base's build
    `WSL-137`, `WSL-140`, `WSL-143`, `WSL-147`, `WSL-150`, `WSL-153`, `WSL-155`
-   (F5b).
+   (F5b). **Closed:** all merged, `WSL-128` last from `r8/inputs`.
 5. **The old record's open findings, and the audit's `WSL-176`, `WSL-178`, `WSL-180`,
    `WSL-183` to `WSL-188`, `WSL-170` and `DOC-15`**: adapters `WSL-139`, `WSL-141`, `WSL-144`,
    `WSL-157` (F6a); fixes `WSL-149`, `WSL-151`, `WSL-152`, `WSL-154`, `WSL-156`,

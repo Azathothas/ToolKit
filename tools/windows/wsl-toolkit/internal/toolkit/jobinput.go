@@ -125,6 +125,49 @@ type JobInput struct {
 	// Exec makes it an executable input: the copy has CRLF turned into LF and
 	// mode 0755, so the job runs /in/NAME by its shebang. WSL-128.
 	Exec bool `json:"exec,omitempty"`
+	// dir is the archive directory under placed it in. It is kept beside Name
+	// rather than in it, so a refusal names the input as it was typed. WSL-128.
+	dir string
+}
+
+// under is the same input placed below dir in an archive: a base exec's or a
+// session's in directory. WSL-128.
+//
+// ⛔ A COPY OF THE WHOLE VALUE, NOT OF ITS FIELDS ONE BY ONE. Both places built
+// a new value from the name, the path and the bytes, which leaves behind the
+// mark that makes an input executable, and any field added after it.
+//
+// ⛔ THE NAME STAYS AS IT WAS TYPED. A name that carried the directory made a
+// refusal name in/NAME, which nobody typed, and a member /in/in/NAME.
+func (in JobInput) under(dir string) JobInput {
+	in.dir = dir
+	return in
+}
+
+// member is the input's path in its archive.
+func (in JobInput) member() string {
+	if in.dir == "" {
+		return in.Name
+	}
+	return in.dir + "/" + in.Name
+}
+
+// flag is the flag that gave this input, for a refusal to name. WSL-128.
+func (in JobInput) flag() string {
+	if in.Exec {
+		return "--input-exec"
+	}
+	return "--input"
+}
+
+// shownAt is where the command finds p, a path in this input's archive, for a
+// refusal to name: under /in in a job's container, and under WSL_TOOLKIT_IN for
+// a base exec. WSL-128.
+func (in JobInput) shownAt(p string) string {
+	if in.dir == "" {
+		return "/in/" + p
+	}
+	return "$" + ExecInEnv + strings.TrimPrefix(p, in.dir)
 }
 
 // maxExecInput bounds an executable input, which is a script read whole so its
@@ -137,12 +180,19 @@ const maxExecInput = 64 << 20
 // ⛔ A FILE WITH NO SHEBANG IS REFUSED. It cannot be run by one, and a program
 // whose bytes hold CR LF by chance would arrive changed. Such a file travels as
 // --input, byte for byte, and the job makes it executable itself.
+//
+// ⛔ SO IS ANYTHING BUT A REGULAR FILE, before it is read, as --input refuses
+// it. A directory answered with a raw read error, and a FIFO blocks the read
+// for ever on a Linux host. WSL-128.
 func execInputBytes(in JobInput) ([]byte, error) {
 	raw := in.Bytes
 	if in.Path != "" {
 		info, err := os.Stat(deviceSafePath(in.Path))
 		if err != nil {
 			return nil, fmt.Errorf("--input-exec %s=%s: %w", in.Name, in.Path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("--input-exec %s=%s is not a regular file. A directory travels as the workspace", in.Name, in.Path)
 		}
 		if info.Size() > maxExecInput {
 			return nil, fmt.Errorf("--input-exec %s=%s holds %s, and an executable input is a script of at most %s. Pass it with --input",
@@ -172,22 +222,24 @@ func execInputBytes(in JobInput) ([]byte, error) {
 const MaxHelperInputBytes = 2 << 20
 
 // ValidateInputName refuses a name that is not a relative path of plain
-// components, so no input can climb out of /in or hide behind a dot.
-func ValidateInputName(name string) error {
+// components, so no input can climb out of /in or hide behind a dot. flag is
+// the flag that gave the name, --input or --input-exec, which the refusal
+// names. WSL-128.
+func ValidateInputName(flag, name string) error {
 	if name == "" {
-		return fmt.Errorf("--input needs NAME=FILE, and the name is empty")
+		return fmt.Errorf("%s needs NAME=FILE, and the name is empty", flag)
 	}
 	if strings.HasPrefix(name, "/") {
-		return fmt.Errorf("--input name %q is absolute. A name is a path under /in, such as job.sh or conf/app.toml", name)
+		return fmt.Errorf("%s name %q is absolute. A name is a path under /in, such as job.sh or conf/app.toml", flag, name)
 	}
 	for _, part := range strings.Split(name, "/") {
 		switch part {
 		case "", ".", "..":
-			return fmt.Errorf("--input name %q holds an empty, . or .. component. A name is plain components under /in", name)
+			return fmt.Errorf("%s name %q holds an empty, . or .. component. A name is plain components under /in", flag, name)
 		}
 		for _, r := range part {
 			if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.+=@,", r) {
-				return fmt.Errorf("--input name %q carries %q. A name is letters, digits and _-.+=@, with / between components", name, r)
+				return fmt.Errorf("%s name %q carries %q. A name is letters, digits and _-.+=@, with / between components", flag, name, r)
 			}
 		}
 	}
@@ -199,15 +251,23 @@ func ValidateInputName(name string) error {
 // a set past the limits a workspace is held to.
 func CheckInputs(inputs []JobInput, limits WorkspaceLimits) error {
 	names := map[string]bool{}
+	// flags is the flag that gave each name, for a refusal to name. WSL-128.
+	flags := map[string]string{}
 	var total int64
 	for _, in := range inputs {
-		if err := ValidateInputName(in.Name); err != nil {
+		if err := ValidateInputName(in.flag(), in.Name); err != nil {
 			return err
 		}
 		if names[in.Name] {
-			return fmt.Errorf("--input names %q twice", in.Name)
+			// ⛔ ONE NAME IS ONE INPUT, ACROSS BOTH FLAGS, and the refusal names
+			// each flag that gave it. WSL-128.
+			if first := flags[in.Name]; first != in.flag() {
+				return fmt.Errorf("%s and %s both name %q. One name is one input", first, in.flag(), in.Name)
+			}
+			return fmt.Errorf("%s names %q twice", in.flag(), in.Name)
 		}
 		names[in.Name] = true
+		flags[in.Name] = in.flag()
 		size := int64(len(in.Bytes))
 		// ⭐ An executable input is read here, so its refusal comes before the
 		// job is claimed, on both routes. WSL-128.
@@ -234,7 +294,7 @@ func CheckInputs(inputs []JobInput, limits WorkspaceLimits) error {
 	for name := range names {
 		for dir := path.Dir(name); dir != "."; dir = path.Dir(dir) {
 			if names[dir] {
-				return fmt.Errorf("--input %q is a file and %q needs it to be a directory", dir, name)
+				return fmt.Errorf("%s %q is a file and %s %q needs it to be a directory", flags[dir], dir, flags[name], name)
 			}
 		}
 	}
@@ -255,17 +315,20 @@ func writeInputsTar(w io.Writer, inputs []JobInput) (WorkspaceUpload, error) {
 	var up WorkspaceUpload
 	tw := tar.NewWriter(w)
 	sorted := append([]JobInput(nil), inputs...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].member() < sorted[j].member() })
 	made := map[string]bool{}
 	now := time.Now()
 	for _, in := range sorted {
-		for _, dir := range parentDirs(in.Name) {
+		// ⛔ THE ARCHIVE HOLDS THE MEMBER, AND A REFUSAL NAMES WHERE THE COMMAND
+		// SEES IT, never the archive's own in/ prefix, which nobody typed. WSL-128.
+		member := in.member()
+		for _, dir := range parentDirs(member) {
 			if made[dir] {
 				continue
 			}
 			made[dir] = true
 			if err := tw.WriteHeader(&tar.Header{Name: dir + "/", Typeflag: tar.TypeDir, Mode: 0o755, ModTime: now}); err != nil {
-				return up, memberError("/in/"+dir+"/", "writing its archive header", err)
+				return up, memberError(in.shownAt(dir+"/"), "writing its archive header", err)
 			}
 		}
 		// ⭐ AN EXECUTABLE INPUT IS REPAIRED AND MADE 0755 HERE, the one place both
@@ -275,11 +338,11 @@ func writeInputsTar(w io.Writer, inputs []JobInput) (WorkspaceUpload, error) {
 			if err != nil {
 				return up, err
 			}
-			if err := tw.WriteHeader(&tar.Header{Name: in.Name, Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(b)), ModTime: now}); err != nil {
-				return up, memberError("/in/"+in.Name, "writing its archive header", err)
+			if err := tw.WriteHeader(&tar.Header{Name: member, Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(b)), ModTime: now}); err != nil {
+				return up, memberError(in.shownAt(member), "writing its archive header", err)
 			}
 			if _, err := tw.Write(b); err != nil {
-				return up, memberError("/in/"+in.Name, "copying its bytes", err)
+				return up, memberError(in.shownAt(member), "copying its bytes", err)
 			}
 			up.Entries++
 			up.Bytes += int64(len(b))
@@ -288,20 +351,20 @@ func writeInputsTar(w io.Writer, inputs []JobInput) (WorkspaceUpload, error) {
 		if in.Path != "" {
 			info, err := os.Stat(deviceSafePath(in.Path))
 			if err != nil {
-				return up, memberError("/in/"+in.Name, "reading its attributes", err)
+				return up, memberError(in.shownAt(member), "reading its attributes", err)
 			}
-			if err := writeRegularMember(tw, &up, in.Path, in.Name, info, 0o644); err != nil {
+			if err := writeRegularMemberAs(tw, &up, in.Path, member, in.shownAt(member), info, 0o644); err != nil {
 				return up, err
 			}
 			up.Entries++
 			up.Bytes += info.Size()
 			continue
 		}
-		if err := tw.WriteHeader(&tar.Header{Name: in.Name, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(in.Bytes)), ModTime: now}); err != nil {
-			return up, memberError("/in/"+in.Name, "writing its archive header", err)
+		if err := tw.WriteHeader(&tar.Header{Name: member, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(in.Bytes)), ModTime: now}); err != nil {
+			return up, memberError(in.shownAt(member), "writing its archive header", err)
 		}
 		if _, err := tw.Write(in.Bytes); err != nil {
-			return up, memberError("/in/"+in.Name, "copying its bytes", err)
+			return up, memberError(in.shownAt(member), "copying its bytes", err)
 		}
 		up.Entries++
 		up.Bytes += int64(len(in.Bytes))

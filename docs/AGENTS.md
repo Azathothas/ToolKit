@@ -206,6 +206,7 @@ these is held to.
 | ⭐ start a job and come back to it from another process | `wsl-toolkit run --detach`, then `logs ID --follow`, `wait ID` or `stop ID` | a wrapper that holds the client open, which dies with the harness that started it |
 | keep a command running in the base after its client exits | ⭐ `wsl-toolkit base exec --detach` | `nohup` or `setsid` inside `base exec -c`, which leaves nothing to follow, wait on or stop |
 | give a job a device node or a second file | `run --device /dev/kvm`, `run --input NAME=FILE` | copying the file into the workspace, where two jobs collide on its name |
+| run a script from Windows by its shebang, in a job or a base command | `run --input-exec NAME=FILE`, or `base exec --input-exec NAME=FILE` | a runner that strips CR and picks a shell before it can start the script |
 | ⭐ call the tool from Git Bash | export `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` once, then call it directly: `--workspace "$PWD"` and `--script -` are read | a PowerShell bridge around every call |
 | leave a build tree and a credential out of a workspace copy | `run --gitignore`, or `jobs.gitignore` in the project's `wsl-toolkit.json` | `--exclude` patterns kept in a shell string, where an unquoted one globs |
 | keep one project's builds from running at once | `run --exclusive NAME`, and `--exclusive-wait D` to queue | a lock directory of your own, which a killed run leaves behind |

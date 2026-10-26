@@ -50,6 +50,9 @@ type execFakeCall struct {
 	Argv  []string          `json:"argv"`
 	Stdin string            `json:"stdin,omitempty"`
 	Files map[string]string `json:"files,omitempty"`
+	// Modes is each unpacked member's mode, as its archive header carried it.
+	// WSL-128.
+	Modes map[string]int64 `json:"modes,omitempty"`
 }
 
 var (
@@ -99,7 +102,7 @@ func execFakeWsl(args []string) int {
 		}
 		return 0
 	case len(argv) == 5 && argv[0] == "/bin/tar" && argv[1] == "-xf":
-		call.Files = map[string]string{}
+		call.Files, call.Modes = map[string]string{}, map[string]int64{}
 		tr := tar.NewReader(os.Stdin)
 		for {
 			h, err := tr.Next()
@@ -108,6 +111,7 @@ func execFakeWsl(args []string) int {
 			}
 			body, _ := io.ReadAll(tr)
 			call.Files[h.Name] = string(body)
+			call.Modes[h.Name] = h.Mode
 			at := filepath.Join(guest(argv[4]), filepath.FromSlash(h.Name))
 			if h.Typeflag == tar.TypeDir {
 				_ = os.MkdirAll(at, 0o700)
