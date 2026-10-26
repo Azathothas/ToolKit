@@ -24,6 +24,7 @@ func TestABuildThroughTheHelperNamesItsEngineAndHost(t *testing.T) {
 	h.say(t, "info-podman", nativeArch()+" linux build-host.example")
 	h.say(t, "provision.out", "wsl-conf unchanged\nprovision-complete\n")
 	h.say(t, "grants.out", "fstab unchanged\ngrants-complete\n")
+	h.say(t, "identity-write", "ok")
 	h.stageGuest(t, "verify=ok", "binfmt=ok")
 	srv := &HelperServer{cfg: b.cfg, log: func(string) {}, runners: map[string]*Runner{},
 		runner: &Runner{cfg: b.cfg, base: b, wsl: b.wsl, home: b.home, log: func(string) {}}}
