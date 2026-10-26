@@ -146,6 +146,7 @@ func TestACommandIsPrintedAgainWithTheFullID(t *testing.T) {
 // ⭐ --json-compact and WSL_TOOLKIT_JSON=compact put an answer on one line, and
 // the default stays indented.
 func TestAnAnswerIsOneLineWhenAskedFor(t *testing.T) {
+	noRegistrations(t)
 	t.Cleanup(func() { jsonCompact = false })
 	lines := func(args ...string) (string, int) {
 		jsonCompact = false

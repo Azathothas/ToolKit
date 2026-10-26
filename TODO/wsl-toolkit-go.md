@@ -16412,7 +16412,7 @@ The fetch was not driven under real BusyBox. The probe's twin of it was.
 ## WSL-183. A base that cannot start reads as "no identity marker", so remove and recreate refuse it
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 14; verified by two skeptics. The audit's note on entries: WSL-150, extended to the marked-but-unstartable case.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16448,7 +16448,11 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/lifecycle`, for 8.0.0.** Only `cat` saying the marker's path does not exist counts as no marker. A marker `cat` could not read is a guest that started, and anything else is a guest that could not start. `base remove --yes`, `base recreate` and a rebuilding `--preset` switch remove such a base when `assertOwner` finds its disk in this state directory's base folder. `base ensure` refuses it and changes nothing, and `base status --probe` and `ready` name the removal and the rebuild.
+
+Driven on a scratch Alpine instance whose marker read failed with an I/O error. 7.0.2 called it a base with no marker, and `base remove --yes` refused it. This build named the read error and its likely causes, `base ensure` exited 2, and `base remove --yes` removed it. Cases in `unstartable_test.go`.
+
+⚠ A disk WSL fails to start was not made here, so that path is covered by cases only.
 
 
 ## WSL-184. Session PIDs are trusted across base restarts
@@ -16547,7 +16551,7 @@ three rows red on Windows and in golang:1.25
 ## WSL-186. The default base is a tag rebuilt daily, and no digest is recorded
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 17; verified by two skeptics. The audit's note on entries: NONE. Better filed as a note on WSL-169, since recording the old digest makes a rollback possible.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -16581,7 +16585,11 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/lifecycle`, for 8.0.0.** After a pull, the build records the image's repository digest in the identity marker, `base.json` and `base status` as `repo@sha256:...`, a value `base.image` can be set to. A build whose digest cannot be read says so and goes on, with the advisory `digest-unrecorded`.
+
+Driven on a scratch instance with wslc: the digest of `docker.io/library/alpine:latest` reached the status row, `--json`, `base.json` and the guest's marker. Cases `TestABuildRecordsTheDigestItWasBuiltFrom` and four more.
+
+⚠ docker's inspect was not measured; this host has no docker.
 
 
 ## WSL-187. `--home` and `WSL_TOOLKIT_HOME` skip msysHostPath
@@ -16781,7 +16789,7 @@ Driven on a scratch Debian base with files A and B. On 7.0.2, a terminate left o
 ## WSL-191. The helper protocol still sends a forced rebuild for a preset switch
 
 **Source** the 7.0.2 builders' reports, 2026-10-24, workflow wf_ac18d0b7-49c, group G1's report on `WSL-172` and `WSL-169`
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16813,12 +16821,16 @@ Exit 0, with a helper case that switches twice and builds once.
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/lifecycle`, for 8.0.0.** The helper's ensure carries `switch` for a `--preset` switch, and the helper decides under the base's lock whether to rebuild, as the CLI does. `force` is only `base recreate`, and both together are refused. The preset's image crosses with the request, with or without `--save`.
+
+Cases: two switches through the helper build once, a recreate still rebuilds, and the CLI's request bodies through a fake helper.
+
+⚠ Not driven against a live helper, since each switch is a full build.
 
 ## WSL-192. A rebuild whose pull fails does not fall back to a local image
 
 **Source** the 7.0.2 builders' reports, 2026-10-24, group G1's report on `WSL-169`
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16850,7 +16862,11 @@ Exit 0, with a fake-engine case whose pull fails and whose local image builds th
 
 ## Closing
 
-Open.
+**Closed 2026-10-26, merged from `r8/lifecycle`, for 8.0.0.** A rebuild whose pull fails, and was not cancelled, builds from the engine's own copy when that copy is for this machine's platform. It says so, records the copy's digest, and raises the advisory `built-from-local-copy`. With no copy, or one for another platform, it refuses with both reasons and the base stays registered.
+
+Driven with a wslc-only tag: 7.0.2's `base recreate` exited 2 and left the base. This build warned, built from the copy, and left a usable base. Cases `TestARebuildWhosePullFailsBuildsFromTheEnginesOwnCopy` and two more.
+
+⚠ Only wslc was driven.
 
 ## WSL-193. An instance name that starts with `wsl-` doubles the prefix in its distribution name
 

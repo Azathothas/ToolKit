@@ -71,6 +71,10 @@ import (
 // ⛔ VERSION 7 ALSO ADDS job_started AND tool_failed TO A JOB'S RESULT. A
 // version 6 helper sends neither, so a job it ran would read as one that never
 // started, and an end it lost as the payload's own 2. WSL-127.
+// ⚠ VERSION 7 ALSO CARRIES `switch` on base/ensure, a `--preset` switch the helper
+// decides under the base's lock. It rides in the same unreleased version, and a
+// build of 7 from before it refuses the field. So a client sends it only for a
+// switch, and every other ensure still reaches such a helper. WSL-191.
 const HelperSchema = "wsl-toolkit-helper/7"
 
 // HelperEndpoint is what a client reads to find a listening helper.
@@ -249,7 +253,11 @@ func callerFile(cfg *Config, file string) error {
 
 // helperEnsureRequest is what /v1/base/ensure reads.
 type helperEnsureRequest struct {
-	Force  bool    `json:"force"`
+	// Force rebuilds a registered base: `base recreate`.
+	Force bool `json:"force"`
+	// Switch rebuilds it only when, read under its lock, it was not built from the
+	// configured image: a `--preset` switch. WSL-191.
+	Switch bool    `json:"switch,omitempty"`
 	Repair bool    `json:"repair,omitempty"`
 	Config *Config `json:"config,omitempty"`
 	// NameFrom is the step that chose the client's base name, and Guest says
@@ -998,6 +1006,19 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": "pull_stall_ms is a positive whole number of milliseconds, or absent"})
 		return
 	}
+	// ⛔ A SWITCH IS DECIDED UNDER THE BASE'S LOCK, AS THE CLI DECIDES IT. It
+	// crossed as force, so a second switch rebuilt what the first had built.
+	// ⚠ Both at once is two answers to one question, and refused. WSL-191.
+	mode := rebuildNever
+	switch {
+	case req.Force && req.Switch:
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": "force and switch are two answers to when a base is rebuilt; send one"})
+		return
+	case req.Force:
+		mode = rebuildAlways
+	case req.Switch:
+		mode = rebuildSwitch
+	}
 	// ⛔ A CALLER THAT DOES NOT OWN THE BASE IS REFUSED WHAT ITS OWN ENSURE WOULD BE,
 	// at the same points: the helper's base runs as the caller's guest. WSL-167.
 	// ⛔ AND IT ACTS FOR THE CALLER'S FILE, as the CLI's ensure does. WSL-190.
@@ -1009,7 +1030,7 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 	// ⛔ THE CALLER'S STALL, AND NEVER THIS PROCESS'S OWN. The helper's
 	// environment is whatever the process that started it held. WSL-176.
 	ctx := withPullStall(r.Context(), time.Duration(req.PullStallMS)*time.Millisecond)
-	st, err := runner.EnsureBaseWith(ctx, req.Force, req.Repair)
+	st, err := runner.ensureBase(ctx, mode, req.Repair)
 	if err != nil {
 		// ⛔ THE STATE CROSSES WITH THE ERROR. It used to send `"state": ""`,
 		// so a refusal that carries the exact command to run next arrived over

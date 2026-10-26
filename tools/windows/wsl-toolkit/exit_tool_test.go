@@ -20,13 +20,26 @@ import (
 
 // -- WSL-127: the tool's own failure is told apart from a job's exit 2 -------
 
+// noRegistrations gives a case a WSL with nothing registered, and puts the
+// registry back afterwards.
+//
+// ⛔ A CASE HERE READ THE OPERATOR'S OWN REGISTRY. Loading the configuration
+// resolves the default base's name from it, so on a host with both default names
+// registered `run` refused before it reached what the case was about. WSL-191.
+func noRegistrations(t *testing.T) {
+	t.Helper()
+	t.Cleanup(toolkit.RegistrationsForCase(func() (map[string]string, error) { return map[string]string{}, nil }))
+}
+
 // quietCLI gives a case an empty state directory, the default instance and the
-// default tool code, and puts each back afterwards.
+// default tool code, and puts each back afterwards, over a WSL with nothing
+// registered.
 //
 // ⚠ --tool-exit SETS THE ENVIRONMENT, as --home does, so the variable is
 // registered here and a case's flag never reaches the next case.
 func quietCLI(t *testing.T) string {
 	t.Helper()
+	noRegistrations(t)
 	home := t.TempDir()
 	t.Setenv("WSL_TOOLKIT_HOME", home)
 	t.Setenv(toolkit.InstanceEnv, "")

@@ -1464,8 +1464,17 @@ func ensureBase(ctx context.Context, runner *toolkit.Runner, allowed bool) error
 // still exited 2. Plain `base ensure` still clears only with --repair. WSL-137.
 //
 // ⚠ What the helper removed is named in the helper's own log, not here.
+//
+// ⛔ A BASE BUILT FROM THE ENGINE'S OWN COPY IS SAID HERE. The helper's log said
+// it, and this caller's stderr did not, so a job ran in a base that may be older
+// than the registry's image with no word of it. WSL-192.
 func helperEnsureBase(ctx context.Context, ensure func(context.Context, bool) (toolkit.BaseState, error)) error {
-	_, err := ensure(ctx, false)
+	st, err := ensure(ctx, false)
+	for _, rem := range st.Remediations {
+		if rem.ID == toolkit.BuiltFromLocalCopyID {
+			note("⚠ " + rem.What + ". " + rem.Costs)
+		}
+	}
 	if err == nil {
 		return nil
 	}

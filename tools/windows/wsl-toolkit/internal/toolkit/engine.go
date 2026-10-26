@@ -217,13 +217,93 @@ func (e *Engine) readArch(ctx context.Context) (string, error) {
 // cleanly and then nothing in it executes.
 func (e *Engine) Platform() string { return "linux/" + e.Arch }
 
+// ExportedImage is what a base's export read about the image it exported.
+type ExportedImage struct {
+	// Digest is the image's digest as the engine named it, or empty where it
+	// named none. WSL-186.
+	Digest string
+	// DigestUnread is why a pulled image's digest is not recorded, or empty.
+	// WSL-186.
+	DigestUnread string
+	// Local says the pull failed and the copy the engine already held was
+	// exported instead, and Engine and Platform say whose copy, for which
+	// machine. ⚠ That copy may be older than the registry's. WSL-192.
+	Local    bool
+	Engine   string
+	Platform string
+}
+
+// BuiltFromLocalCopyID is the advisory a base built from the engine's own copy
+// carries. WSL-192.
+const BuiltFromLocalCopyID = "built-from-local-copy"
+
+// localCopyRemediation is the advisory a build from the engine's own copy of
+// image earns, or false where the pull answered.
+//
+// ⛔ THE BUILD SAID IT ON ITS LOG ALONE. Through the helper that log is the
+// helper's, and no field said it, so a caller got a base built from a copy that
+// may be stale and was never told. The state carries it now, so the helper's
+// answer, `--json` and `ready` do. WSL-192.
+func (x ExportedImage) localCopyRemediation(image string) (Remediation, bool) {
+	if !x.Local {
+		return Remediation{}, false
+	}
+	return Remediation{
+		ID: BuiltFromLocalCopyID,
+		What: fmt.Sprintf("the pull of %s failed, so the base was built from the copy %s already held for %s, %s",
+			image, x.Engine, x.Platform, digestWords(x.Digest)),
+		Costs:      "that copy may be older than the registry's image. Once the registry answers, base recreate builds from its image",
+		Command:    ToolCommand("base recreate"),
+		Repairable: true,
+		Advisory:   true,
+	}, true
+}
+
+// DigestUnrecordedID is the advisory a build whose digest could not be read
+// carries. WSL-186.
+const DigestUnrecordedID = "digest-unrecorded"
+
+// unrecordedDigestRemediation is the advisory a build of image whose digest was
+// not read earns, or false where it was.
+//
+// ⛔ ONLY THE BUILD'S LOG SAID IT, and through the helper that log is the
+// helper's. A `digest` left out of the state read the same as a base an older
+// release built. WSL-186.
+func (x ExportedImage) unrecordedDigestRemediation(image string) (Remediation, bool) {
+	if x.Local || x.DigestUnread == "" {
+		return Remediation{}, false
+	}
+	return Remediation{
+		ID:       DigestUnrecordedID,
+		What:     "no digest is recorded for the image this base was built from: " + x.DigestUnread,
+		Costs:    "the base works as it is. Once the tag of " + image + " moves, nothing here names the image it was built from",
+		Command:  ToolCommand("base status --json") + "  # its digest stays empty until a rebuild records one",
+		Advisory: true,
+	}, true
+}
+
 // ExportRootfs turns an image reference into a rootfs archive on the host.
 //
 // It is the one place this executable talks to the host engine, and it removes
 // the container it created whether or not the export succeeded.
 func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func(string)) error {
+	_, err := e.export(ctx, ref, tarPath, log, false)
+	return err
+}
+
+// ExportBaseRootfs is ExportRootfs for the base, which records what it was built
+// from. It reads the image's digest. ⭐ Where the pull fails, it exports the copy
+// the engine already holds for this machine's platform, and says so. A host the
+// registry does not answer could not rebuild its base at all. WSL-186, WSL-192.
+func (e *Engine) ExportBaseRootfs(ctx context.Context, ref, tarPath string, log func(string)) (ExportedImage, error) {
+	return e.export(ctx, ref, tarPath, log, true)
+}
+
+// export is ExportRootfs, and ExportBaseRootfs where forBase is set.
+func (e *Engine) export(ctx context.Context, ref, tarPath string, log func(string), forBase bool) (ExportedImage, error) {
+	var got ExportedImage
 	if err := ValidateImageRef(ref); err != nil {
-		return err
+		return got, err
 	}
 	// ⭐ THE STALL IS SIZED BEFORE THE PULL, from the layers it will move, and
 	// the line says how long the pull may be silent and why. WSL-176.
@@ -232,7 +312,7 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	log(fmt.Sprintf("reading the layers of %s from its registry, for at most %s, to size the pull's limits", ref, FormatSpan(ManifestReadTimeout)))
 	lim, err := e.pullLimits(ctx, ref)
 	if err != nil {
-		return err
+		return got, err
 	}
 	log(fmt.Sprintf("pulling %s for %s. It may be silent for %s, %s", ref, e.Platform(), FormatSpan(lim.Stall), lim.Why))
 	// ⛔ NEVER EMIT NOTHING: RENDER SILENCE, WITH A TIME ON IT. The pull is
@@ -260,20 +340,41 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	}).run(ctx, e.Path, e.pullArgs(ref)...)
 	stopBeat()
 	if err != nil {
-		return fmt.Errorf("%s pull %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
-	}
-	if err := e.checkArch(ctx, ref); err != nil {
-		return err
+		pullErr := fmt.Errorf("%s pull %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
+		// ⚠ A CALL THAT WAS STOPPED IS NOT A PULL THAT FAILED, so nothing stands in
+		// for it.
+		if !forBase || ctx.Err() != nil {
+			return got, pullErr
+		}
+		// ⛔ A FAILED PULL ENDED THE REBUILD, even where the engine already held the
+		// image for this machine. So a host the registry does not answer could not
+		// rebuild its base at all. The engine's own copy is used now, and the line
+		// says it is a local copy, and which digest. WSL-192.
+		img, localErr := e.localImage(ctx, ref)
+		if localErr != nil {
+			return got, fmt.Errorf("%w%s %v", pullErr, stopAfter(pullErr.Error()), localErr)
+		}
+		got = ExportedImage{Digest: img.digestFor(ref), Local: true, Engine: e.Name, Platform: e.Platform()}
+		log("⚠ " + pullErr.Error())
+		log(fmt.Sprintf("⚠ building from the copy of %s that %s already holds, for linux/%s, %s. It may be older than the registry's",
+			ref, e.Name, e.Arch, digestWords(got.Digest)))
+	} else {
+		if err := e.checkArch(ctx, ref); err != nil {
+			return got, err
+		}
+		if forBase {
+			got.Digest, got.DigestUnread = e.digestOf(ctx, ref, log)
+		}
 	}
 
 	out, stderr, err = (engineCall{Timeout: 5 * time.Minute, What: e.Name + " create " + ref}).
 		run(ctx, e.Path, e.createArgs(ref)...)
 	if err != nil {
-		return fmt.Errorf("%s create %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
+		return got, fmt.Errorf("%s create %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
 	}
 	id := strings.TrimSpace(firstLine(out))
 	if id == "" {
-		return fmt.Errorf("%s create %s printed no container id", e.Name, ref)
+		return got, fmt.Errorf("%s create %s printed no container id", e.Name, ref)
 	}
 	defer func() {
 		// The container is this function's to remove and nothing else reads it,
@@ -291,7 +392,7 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	log("exporting the rootfs of container " + id[:min(12, len(id))])
 	f, err := os.OpenFile(tarPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		return err
+		return got, err
 	}
 	errBuf := &boundedBuffer{max: 64 << 10}
 	// ⭐ THE EXPORT GETS THE STALL DEADLINE TOO. It is the other call here that
@@ -305,10 +406,10 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	closeErr := f.Close()
 	if runErr != nil {
 		_ = os.Remove(tarPath)
-		return fmt.Errorf("%s export %s: %w: %s", e.Name, id, runErr, guestFailure(errBuf.String()))
+		return got, fmt.Errorf("%s export %s: %w: %s", e.Name, id, runErr, guestFailure(errBuf.String()))
 	}
 	if closeErr != nil {
-		return closeErr
+		return got, closeErr
 	}
 	size, ok := FileSize(tarPath)
 	if !ok || size == 0 {
@@ -316,10 +417,162 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 		// having done nothing" pattern. wsl --import would accept the empty
 		// archive and register a distribution with no userland in it.
 		_ = os.Remove(tarPath)
-		return fmt.Errorf("%s export wrote an empty archive for %s", e.Name, ref)
+		return got, fmt.Errorf("%s export wrote an empty archive for %s", e.Name, ref)
 	}
 	log(fmt.Sprintf("rootfs: %s", HumanBytes(size)))
-	return nil
+	return got, nil
+}
+
+// engineImage is the part of an engine's `image inspect` this tool reads. podman
+// and docker answer a list of one by default, and wslc with `--format json`.
+type engineImage struct {
+	// Digest is podman's digest of the image for this platform. docker and wslc
+	// name none here.
+	Digest string `json:"Digest"`
+	// RepoDigests is each repository and digest the image was pulled by, as
+	// `REPOSITORY@sha256:HEX`.
+	RepoDigests  []string `json:"RepoDigests"`
+	Architecture string   `json:"Architecture"`
+	Os           string   `json:"Os"`
+}
+
+// inspectImage reads one image from the engine's own store. It pulls nothing.
+func (e *Engine) inspectImage(ctx context.Context, ref string) (engineImage, error) {
+	args := []string{"image", "inspect", ref}
+	if e.Name == "wslc" {
+		args = []string{"image", "inspect", "--format", "json", ref}
+	}
+	out, stderr, err := (engineCall{What: e.Name + " image inspect " + ref}).run(ctx, e.Path, args...)
+	if err != nil {
+		return engineImage{}, fmt.Errorf("%s image inspect %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
+	}
+	var images []engineImage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &images); err != nil || len(images) != 1 {
+		return engineImage{}, fmt.Errorf("%s image inspect %s answered %d image(s) that do not parse as one: %v", e.Name, ref, len(images), err)
+	}
+	return images[0], nil
+}
+
+// localImage is the engine's own copy of ref, where it holds one for this
+// machine's platform. WSL-192.
+//
+// ⛔ THE PLATFORM IS READ BACK. The store is keyed by tag and not by
+// architecture, so the copy under a tag can be another platform's after one
+// `--platform` pull. Imported, it registers cleanly and nothing in it runs.
+func (e *Engine) localImage(ctx context.Context, ref string) (engineImage, error) {
+	img, err := e.inspectImage(ctx, ref)
+	if err != nil {
+		return img, fmt.Errorf("%s holds no copy of it to build from: %v", e.Name, err)
+	}
+	if !strings.EqualFold(img.Os, "linux") || !strings.EqualFold(img.Architecture, e.Arch) {
+		return img, fmt.Errorf("the copy %s holds is for %s/%s, and this machine runs linux/%s, so it is not built from",
+			e.Name, img.Os, img.Architecture, e.Arch)
+	}
+	return img, nil
+}
+
+// digestOf is the digest the engine names for an image it has just pulled, or
+// empty and why, said either way. ⚠ A digest that cannot be read leaves the build
+// as it was before digests were recorded. Refusing a base over it would trade a
+// working build for a field. WSL-186.
+func (e *Engine) digestOf(ctx context.Context, ref string, log func(string)) (string, string) {
+	img, err := e.inspectImage(ctx, ref)
+	if err != nil {
+		log("⚠ the digest of " + ref + " could not be read, so none is recorded: " + err.Error())
+		return "", "the digest of " + ref + " could not be read: " + err.Error()
+	}
+	d := img.digestFor(ref)
+	if d == "" {
+		log("⚠ " + e.Name + " names no digest for " + ref + ", so none is recorded")
+		return "", e.Name + " names no digest for " + ref
+	}
+	log("digest: " + d)
+	return d, ""
+}
+
+// digestFor is the digest img names for ref: the digest of ref's repository
+// among its repository digests, which is what the registry names for the tag.
+// Only where the repository has none is it the engine's own digest.
+//
+// ⛔ THE REPOSITORY'S DIGEST, NOT PODMAN'S OWN. Measured with the base's own podman
+// and docker.io/library/alpine:latest: `Digest` is the amd64 manifest's, and
+// `RepoDigests` holds it beside the index's. docker and wslc name the index's
+// alone. Preferring `Digest` recorded one image as two digests, by engine, and
+// podman's pinned one platform. The index's pins the same image on any engine.
+// WSL-186.
+func (img engineImage) digestFor(ref string) string {
+	want := repositoryOf(ref)
+	own := ""
+	for _, rd := range img.RepoDigests {
+		name, d, ok := strings.Cut(rd, "@")
+		if ok && isImageDigest(d) && repositoryOf(name) == want {
+			// ⚠ The platform manifest's digest is podman's `Digest` too, and the
+			// index's is the other.
+			if d != img.Digest {
+				return d
+			}
+			own = d
+		}
+	}
+	if own != "" {
+		return own
+	}
+	if isImageDigest(img.Digest) {
+		return img.Digest
+	}
+	return ""
+}
+
+// isImageDigest says whether s is a sha256 digest as an image reference spells it.
+func isImageDigest(s string) bool {
+	hex, ok := strings.CutPrefix(s, "sha256:")
+	if !ok || len(hex) != 64 {
+		return false
+	}
+	for _, r := range hex {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// repositoryOf is an image name's registry and repository, with no tag and no
+// digest, the way an engine resolves a short name: `alpine` is
+// `docker.io/library/alpine`.
+func repositoryOf(name string) string {
+	name, _, _ = strings.Cut(name, "@")
+	if colon := strings.LastIndex(name, ":"); colon > strings.LastIndex(name, "/") {
+		name = name[:colon]
+	}
+	host, rest, ok := strings.Cut(name, "/")
+	if !ok || (!strings.ContainsAny(host, ".:") && host != "localhost") {
+		host, rest = "docker.io", name
+	}
+	if isDockerHub(host) {
+		host = "docker.io"
+		if !strings.Contains(rest, "/") {
+			rest = "library/" + rest
+		}
+	}
+	return strings.ToLower(host + "/" + rest)
+}
+
+// PinnedImage is image at digest, as `base.image` would name it to build that
+// image again. ⚠ Empty where digest is.
+func PinnedImage(image, digest string) string {
+	if !isImageDigest(digest) {
+		return ""
+	}
+	return repositoryOf(image) + "@" + digest
+}
+
+// digestWords is a digest as a sentence names it.
+func digestWords(digest string) string {
+	if digest == "" {
+		return "with no digest the engine names"
+	}
+	return "digest " + digest
 }
 
 // PullBeatEvery is how often a long engine call says it is still there.

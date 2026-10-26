@@ -72,6 +72,26 @@ func presetSwitchFailed(err error, switched, saved bool, cfg toolkit.Config) err
 		err, cfg.Base.Name, cfg.Base.Image, toolkit.ToolCommand("base recreate"))
 }
 
+// helperEnsure sends `base ensure` or `base recreate` through the helper. sub is
+// the subcommand after a switch turned an ensure into a recreate, and cfg is this
+// call's configuration, with its `--preset` applied.
+//
+// ⛔ A `--preset` SWITCH CROSSES AS A SWITCH, NOT AS A RECREATE. It crossed as a
+// forced rebuild, so through the helper a second switch that waited for the
+// first rebuilt the base the first had just built. The helper decides it under
+// the base's lock, as the CLI does. WSL-191.
+//
+// ⛔ AND THE PRESET'S IMAGE CROSSES WITH IT. The client reads its configuration
+// from the file, and a `--preset` without `--save` is not in the file, so the
+// helper built from the file's image where the CLI builds the preset's. WSL-191.
+func helperEnsure(ctx context.Context, c *toolkit.HelperClient, cfg toolkit.Config, sub string, presetSwitch, repair bool) (toolkit.BaseState, error) {
+	c = c.WithBaseImage(cfg.Base.Image)
+	if presetSwitch {
+		return c.BaseEnsureSwitch(ctx, repair)
+	}
+	return c.BaseEnsureWith(ctx, sub == "recreate", repair)
+}
+
 func cmdPresets(args []string) (int, error) {
 	fs := newFlagSet("base presets")
 	asJSON := fs.Bool("json", false, "write a structured answer")

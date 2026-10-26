@@ -2,6 +2,384 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a build whose digest cannot be read says so in its state",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif r, ok := b.exported.unrecordedDigestRemediation(b.cfg.Base.Image); ok {\n",
+      "replace": "\t\tif r, ok := b.exported.unrecordedDigestRemediation(b.cfg.Base.Image); ok && false {\n",
+      "run": "TestABuildWhoseDigestCannotBeReadSaysSoInItsState",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a probe of a base whose marker cannot be read carries the rebuild as its remediation",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\t// answered `base ensure`, which refuses this base. WSL-183.\n\t\t\tst.Remediations = append(st.Remediations, UnreadMarkerRemediation())\n",
+      "replace": "\t\t\t// answered `base ensure`, which refuses this base. WSL-183.\n",
+      "run": "TestWhatReadyReadsOfABaseWhoseMarkerCannotBeRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ensure refusing a base whose marker cannot be read carries the rebuild",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tif errors.Is(err, ErrIdentityUnread) {\n\t\t\t\tst.Remediations = append(st.Remediations, UnreadMarkerRemediation())\n",
+      "replace": "\t\t\tif false {\n\t\t\t\tst.Remediations = append(st.Remediations, UnreadMarkerRemediation())\n",
+      "run": "TestWhatReadyReadsOfABaseWhoseMarkerCannotBeRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the rebuild of a base whose marker cannot be read is the way forward ready names",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tCommand:    ToolCommand(\"base recreate\"),\n\t\tRepairable: true,\n\t}\n}\n\n// UnreadMarkerRemediationFor",
+      "replace": "\t\tCommand:    ToolCommand(\"base recreate\"),\n\t\tRepairable: false,\n\t}\n}\n\n// UnreadMarkerRemediationFor",
+      "run": "TestWhatReadyReadsOfABaseWhoseMarkerCannotBeRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: ready names the rebuild from a refusal whose state carries no remediation",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\t\tif rem, ok := toolkit.UnreadMarkerRemediationFor(err.Error()); ok {\n\t\t\treturn rem.Command\n\t\t}\n",
+      "replace": "",
+      "run": "TestReadyNamesTheRebuildOfABaseWhoseMarkerCannotBeRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a probe during a build does not advise a base whose marker cannot be read away",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif holder, building := b.buildRunning(); building {\n",
+      "replace": "\t\tif holder, building := \"\", false; building {\n",
+      "run": "TestAProbeDuringABuildDoesNotAdviseAnUnreadBaseAway",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the marker is read in the C locale, so a missing one is an absence in any language",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "[]string{\"/usr/bin/env\", \"LC_ALL=C\", \"/bin/cat\", IdentityPath}",
+      "replace": "[]string{\"/bin/cat\", IdentityPath}",
+      "run": "TestAMissingMarkerInAnotherLanguageIsStillAnAbsence",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only a marker that could not be read is removed on the disk folder alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif errors.Is(err, ErrIdentityUnread) {\n\t\t\tcause := err\n",
+      "replace": "\t\tif err != nil {\n\t\t\tcause := err\n",
+      "run": "TestABaseThatCannotStartIsRemovedOnlyOnItsDiskFolder",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a marker that does not parse is not one that could not be read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "return id, fmt.Errorf(\"%s carries a %s that does not parse: %w\", name, IdentityPath, err)",
+      "replace": "return id, fmt.Errorf(\"%w: %s carries a %s that does not parse: %v\", ErrIdentityUnread, name, IdentityPath, err)",
+      "run": "TestAMarkerThatDoesNotParseStillRefusesARemoval",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the digest recorded is the index's where podman names its platform manifest's beside it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engine.go",
+      "find": "\t\t\tif d != img.Digest {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestTheDigestIsTheEnginesOrItsRepositorys",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base built from the engine's own copy says so in its state",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif r, ok := b.exported.localCopyRemediation(b.cfg.Base.Image); ok {\n",
+      "replace": "\t\tif r, ok := b.exported.localCopyRemediation(b.cfg.Base.Image); ok && false {\n",
+      "run": "TestAHelperBuildFromTheEnginesOwnCopySaysSoInItsState",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an export from the engine's own copy is marked as one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engine.go",
+      "find": ", Local: true, Engine: e.Name,",
+      "replace": ", Engine: e.Name,",
+      "run": "TestAHelperBuildFromTheEnginesOwnCopySaysSoInItsState",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ensure does not carry what an earlier build exported",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tb.exported = ExportedImage{}\n",
+      "replace": "",
+      "run": "TestAHelperBuildFromTheEnginesOwnCopySaysSoInItsState",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a run through the helper says its base was built from a local copy",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\t\tif rem.ID == toolkit.BuiltFromLocalCopyID {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestARunThroughTheHelperSaysItsBaseWasBuiltFromALocalCopy",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper client sends switch only for a switch",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\tif mode == rebuildSwitch {\n\t\tbody[\"switch\"] = true\n",
+      "replace": "\tif true {\n\t\tbody[\"switch\"] = mode == rebuildSwitch\n",
+      "run": "TestTheClientSendsASwitchApartFromARecreate",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper client sends force for a recreate alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\"force\": mode == rebuildAlways, \"repair\": repair,",
+      "replace": "\"force\": mode != rebuildNever, \"repair\": repair,",
+      "run": "TestTheClientSendsASwitchApartFromARecreate|TestAPresetSwitchThroughTheHelperCrossesAsASwitch",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a preset switch through the helper says it asks the helper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "so this asks the helper to switch it.",
+      "replace": "so this rebuilds it.",
+      "run": "TestAPresetSwitchThroughTheHelperCrossesAsASwitch",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a case answers for the registry the configuration reads",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\treadRegistrations = read\n",
+      "replace": "",
+      "run": "TestTheRegistryACaseSuppliesIsTheOneTheConfigurationReads",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only cat's missing file reads as a base with no marker",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "\t\tif strings.Contains(errBuf.String(), IdentityPath) && strings.Contains(errBuf.String(), \"No such file\") {\n",
+      "replace": "\t\tif strings.Contains(errBuf.String(), IdentityPath) {\n",
+      "run": "TestOnlyAMissingMarkerIsAnAbsence|TestAnOwnedBaseThatCannotStartIsRemoved",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: BusyBox's cat naming no path is still a guest that started",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "strings.HasPrefix(line, \"/bin/cat: \") || strings.HasPrefix(line, \"cat: \")",
+      "replace": "strings.HasPrefix(line, \"/bin/cat: \")",
+      "run": "TestOnlyAMissingMarkerIsAnAbsence",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a guest WSL did not start is told apart from one cat could not read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "fmt.Errorf(\"%w: %w: %s, exit %d: %s\", ErrIdentityUnread, ErrGuestUnstartable,",
+      "replace": "fmt.Errorf(\"%w: %v: %s, exit %d: %s\", ErrIdentityUnread, ErrGuestUnstartable,",
+      "run": "TestOnlyAMissingMarkerIsAnAbsence|TestABaseThatCannotStartNamesItsRemoval",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an owned base whose marker cannot be read is removed on its disk folder",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif errors.Is(err, ErrIdentityUnread) {\n\t\t\tcause := err\n",
+      "replace": "\t\tif false {\n\t\t\tcause := err\n",
+      "run": "TestAnOwnedBaseThatCannotStartIsRemoved|TestAnOwnedBaseThatCannotStartIsRebuilt",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ensure over a base whose marker cannot be read names its removal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tcase errors.Is(err, ErrIdentityUnread):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestABaseThatCannotStartNamesItsRemoval",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a probe of a base whose marker cannot be read names its removal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t} else if errors.Is(err, ErrIdentityUnread) {\n",
+      "replace": "\t} else if false {\n",
+      "run": "TestABaseThatCannotStartNamesItsRemoval",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a build stamps the digest it exported into the marker",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "Tool: toolVersion(), Digest: b.exported.Digest,",
+      "replace": "Tool: toolVersion(),",
+      "run": "TestABuildRecordsTheDigestItWasBuiltFrom",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a build records the digest it exported",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tDigest: b.exported.Digest,\n",
+      "replace": "",
+      "run": "TestABuildRecordsTheDigestItWasBuiltFrom",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: status reads the digest from this machine's record",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tst.Digest = rec.Digest\n",
+      "replace": "",
+      "run": "TestABuildRecordsTheDigestItWasBuiltFrom",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a probe reads the digest from the guest's marker",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tst.Digest = id.Digest\n",
+      "replace": "",
+      "run": "TestTheMarkersDigestIsReadAndRecorded",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the record written from the marker carries its digest",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "Created: id.Built, Digest: id.Digest,",
+      "replace": "Created: id.Built,",
+      "run": "TestTheMarkersDigestIsReadAndRecorded",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stamp from the record carries the record's digest",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "Tool: toolVersion(), Digest: rec.Digest,",
+      "replace": "Tool: toolVersion(),",
+      "run": "TestAStampCarriesTheRecordsDigest",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base's export reads the digest of the image it pulled",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engine.go",
+      "find": "\t\t\tgot.Digest, got.DigestUnread = e.digestOf(ctx, ref, log)\n",
+      "replace": "",
+      "run": "TestABuildRecordsTheDigestItWasBuiltFrom",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a repository digest is taken only for the repository asked for",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engine.go",
+      "find": "isImageDigest(d) && repositoryOf(name) == want {",
+      "replace": "isImageDigest(d) && (repositoryOf(name) == want || true) {",
+      "run": "TestTheDigestIsTheEnginesOrItsRepositorys",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status prints the image at the digest it was built from",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\t\tfmt.Fprintf(out, \"  digest      %s\\n\", pinned)\n",
+      "replace": "\t\t_ = pinned\n",
+      "run": "TestBaseStatusNamesTheDigestItWasBuiltFrom",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper decides a preset switch under the base's lock",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper.go",
+      "find": "\t\tmode = rebuildSwitch\n",
+      "replace": "\t\tmode = rebuildAlways\n",
+      "run": "TestAHelperSwitchedTwiceBuildsOnce",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper refuses force and switch together",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tcase req.Force && req.Switch:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAHelperRecreateStillRebuildsAndASwitchWithItIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper client sends a switch apart from a recreate",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\tif mode == rebuildSwitch {\n\t\tbody[\"switch\"] = true\n\t}\n",
+      "replace": "",
+      "run": "TestTheClientSendsASwitchApartFromARecreate|TestAPresetSwitchThroughTheHelperCrossesAsASwitch",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper client given a preset's image sends it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\tnext.cfg.Base.Image = image\n",
+      "replace": "",
+      "run": "TestTheClientSendsASwitchApartFromARecreate",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unsaved preset's image crosses to the helper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_preset.go",
+      "find": "\tc = c.WithBaseImage(cfg.Base.Image)\n",
+      "replace": "",
+      "run": "TestAPresetSwitchThroughTheHelperCrossesAsASwitch",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a preset switch through the helper crosses as a switch",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_preset.go",
+      "find": "\tif presetSwitch {\n\t\treturn c.BaseEnsureSwitch(ctx, repair)\n",
+      "replace": "\tif false {\n\t\treturn c.BaseEnsureSwitch(ctx, repair)\n",
+      "run": "TestAPresetSwitchThroughTheHelperCrossesAsASwitch",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base whose pull fails builds from the engine's own copy",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engine.go",
+      "find": "\t\tif !forBase || ctx.Err() != nil {\n",
+      "replace": "\t\tif true {\n",
+      "run": "TestARebuildWhosePullFailsBuildsFromTheEnginesOwnCopy",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a pull its caller stopped is not stood in for",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engine.go",
+      "find": "\t\tif !forBase || ctx.Err() != nil {\n",
+      "replace": "\t\tif !forBase {\n",
+      "run": "TestAStoppedPullIsNotStoodInFor",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the engine's own copy stands in only for this machine's platform",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engine.go",
+      "find": " || !strings.EqualFold(img.Architecture, e.Arch) {",
+      "replace": " {",
+      "run": "TestAPullThatFailsBuildsFromNoCopyForAnotherPlatform",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base herdr and base bootstrap answer the tool's code for their own refusal",
       "module": "tools/windows/wsl-toolkit",
       "file": "exit_tool.go",
@@ -7915,9 +8293,9 @@
     {
       "label": "wsl-toolkit: only cat naming the missing marker is an absence",
       "file": "internal/toolkit/identity.go",
-      "find": "\tif code == 1 && bounded.Err() == nil && strings.Contains(errBuf.String(), IdentityPath) {\n",
+      "find": "\tif code == 1 && bounded.Err() == nil && catAnswered(errBuf.String()) {\n",
       "replace": "\tif code != 0 || err != nil {\n",
-      "run": "TestAMarkerReadThatCouldNotAskIsNotAnAbsence",
+      "run": "TestAMarkerReadThatCouldNotAskIsNotAnAbsence|TestOnlyAMissingMarkerIsAnAbsence",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },

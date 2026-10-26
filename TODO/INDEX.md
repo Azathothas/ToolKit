@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 253  open 16  blocked 5  done 232
+total 253  open 12  blocked 5  done 236
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 10 | 2 | 105 | 117 |
+| P2 | 6 | 2 | 109 | 117 |
 | P3 | 6 | 3 | 23 | 32 |
-| **all** | **16** | **5** | **232** | **253** |
+| **all** | **12** | **5** | **236** | **253** |
 
 ---
 
@@ -277,16 +277,16 @@ total 253  open 16  blocked 5  done 232
 | WSL-180 | P2 | M | done | Nothing watches the host free space that the dynamic VHDX grows into | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-181 | P1 | S | done | The QEMU step is fatal on every ensure, and its root podman call is duplicated with the same D-Bus defect | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-182 | P1 | S | done | The privileged QEMU installer runs from a mutable Docker Hub tag | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-183 | P2 | S | open | A base that cannot start reads as "no identity marker", so remove and recreate refuse it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-183 | P2 | S | done | A base that cannot start reads as "no identity marker", so remove and recreate refuse it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-184 | P2 | S | done | Session PIDs are trusted across base restarts | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-185 | P2 | S | done | Ledger compaction is serialized only within one process | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-186 | P2 | M | open | The default base is a tag rebuilt daily, and no digest is recorded | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-186 | P2 | M | done | The default base is a tag rebuilt daily, and no digest is recorded | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-187 | P2 | S | done | `--home` and `WSL_TOOLKIT_HOME` skip msysHostPath | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-188 | P2 | M | open | Fourteen smaller hardcoded assumptions the audit found, each cheap to fix | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-189 | P1 | S | done | A grant that fails after it mounts leaves its new mount in place | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-190 | P1 | M | done | The fstab block holds only the last caller's grants, so a restart drops another configuration's mount | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-191 | P2 | S | open | The helper protocol still sends a forced rebuild for a preset switch | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-192 | P2 | S | open | A rebuild whose pull fails does not fall back to a local image | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-191 | P2 | S | done | The helper protocol still sends a forced rebuild for a preset switch | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-192 | P2 | S | done | A rebuild whose pull fails does not fall back to a local image | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-193 | P2 | S | done | An instance name that starts with `wsl-` doubles the prefix in its distribution name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-194 | P2 | S | done | A grant case fails under load and passes alone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-195 | P3 | S | open | `WSL_TOOLKIT_CACHE` skips msysHostPath, as `--home` did | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

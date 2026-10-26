@@ -2361,6 +2361,21 @@ keeps its record open, because WSL can finish that import later. `resources` lis
 the record while it is open. ⛔ A distribution neither fact covers is refused,
 naming `wsl --unregister` as a person's own step. `WSL-150`
 
+⭐ **A base whose marker cannot be read is still this tool's to remove.** A damaged
+disk, or one a virus scanner or a backup holds, can stop WSL starting the guest. It
+can also stop `cat` reading the marker. `base remove --yes` then removes the base on
+WSL's registration of its disk in this instance's `base` folder. `base recreate`
+rebuilds it the same way. ⛔ Only `cat` saying the marker is missing reads as no
+marker, so nothing stamps a guest it could not read. `base ensure` refuses such a
+base, and it and `base status --probe` name the reason and both commands. ⚠ A
+marker that names another distribution, or does not parse, still refuses. `WSL-183`
+
+⭐ **`ready` names the rebuild of such a base.** The refusal and the probe carry the
+remediation `identity-unread`, which names `base recreate` and what it deletes.
+`ready` reads it, with `--ensure` or without it. The marker is read in the C locale,
+so `cat` says a marker is missing in English in any guest. ⚠ While another process
+holds the base's lock, the probe names that process and advises nothing. `WSL-183`
+
 ⛔ **A build that is still running is never removed as a stopped one.** A build
 holds the base's lock from before its import until after its marker, and every
 removal holds the same lock. `base status --probe` reads the lock and names the
@@ -2383,6 +2398,8 @@ Removal is constrained, and every destructive path goes through the same gate.
    Removing one that was ever usable also demands the identity marker its
    provisioning wrote inside the guest. A build that stopped before writing it is
    removed only on its ledger record and WSL's registration of its disk. `WSL-150`
+   A base whose marker cannot be read at all is removed on that registration of
+   its disk in the instance's `base` folder. `WSL-183`
 2. A throwaway distribution is this tool's only when its registered disk is
    inside the state directory's `distros` folder.
 3. ⛔ **A container runtime's own distribution is refused by name**:
@@ -2472,6 +2489,17 @@ first. The space check counts the old disk as freed. When any step fails, each
 exits 2 with the reason, and the base stays registered. A `base.image` that is not
 fully qualified is refused the same way. `WSL-169`
 
+⭐ **A pull that fails builds from the engine's own copy.** The build then asks the
+host engine for the copy of the image it already holds. A copy for this machine's
+platform is exported, and the build says so and names its digest. ⚠ It may be older
+than the registry's. A copy for another platform is refused, as is no copy, and the
+base stays registered. A pull its caller stopped is not stood in for. `WSL-192`
+
+⭐ **A base built from that copy says so in its state.** The advisory
+`built-from-local-copy` names the copy and its digest. So `--json`, the helper's
+answer and `ready`'s notes say it. Through the helper, `run --ensure-base` prints it
+too. `WSL-192`
+
 ⭐ **A pull may be silent for as long as its largest layer takes at 256 KiB/s.**
 podman on Windows prints a line as a layer starts and one as it ends, and nothing
 between. The pull's stall limit is that layer's time at the floor rate, and never
@@ -2508,6 +2536,29 @@ the base's lock. A second switch that waited finds the base the first one built,
 keeps it. ⚠ `--save` writes the new image
 before the rebuild runs, so a refused rebuild leaves a configuration naming it. The
 refusal says so, and the same command run again switches the base. `WSL-169`
+
+⭐ **Through the helper, a `--preset` switch is decided the same way.** The helper
+compares the preset with the image the base was built from, under the base's lock.
+It was sent as `base recreate`, so a second switch rebuilt what the first had built.
+The preset's image goes with the request, `--save` or not. `base recreate` through
+the helper still rebuilds. The line before it says the switch is asked of the
+helper, and not that the base rebuilds. The client sends `switch` only for a switch,
+so a plain ensure still reaches a helper built before the field. `WSL-191`
+
+⭐ **A base records the digest of the image it was built from.** A tag such as the
+default's is rebuilt daily, so the tag alone does not say which image a base came
+from. The build asks the host engine for the digest it pulled. The guest's marker
+and `base.json` keep it. `base status` prints it in its `digest` row, as the image at
+that digest, and `--json` carries `digest`. Set `base.image` to that row's value to
+build the same base after the tag moved. `WSL-186`
+
+⭐ **The digest is the repository's**, which the registry names for the tag. podman
+also names its platform manifest's digest, which is kept only where the repository
+names no other. So every engine records the same digest. ⚠ A base an
+older release built has none, and so does one whose engine named none. A digest that
+cannot be read is said, and the build goes on. Its state carries the advisory
+`digest-unrecorded` with the reason, so the helper's answer and `--json` say it too.
+`WSL-186`
 
 ⛔ **A failed re-provision keeps the base.** `base ensure`, `ready --ensure` and
 `run --ensure-base` re-provision a registered base that does not verify. When that

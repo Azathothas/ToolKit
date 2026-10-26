@@ -121,10 +121,6 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	// unconditional. WSL-169, WSL-172.
 	presetSwitch := switched && sub == "ensure"
 	if presetSwitch {
-		// ⛔ A DISTRIBUTION'S ROOTFS CANNOT BE CHANGED UNDERNEATH IT. Switching
-		// preset means rebuilding, and saying so beats a caller discovering it
-		// from a build they did not expect.
-		logf("  the base is registered from a different image, so this rebuilds it")
 		sub = "recreate"
 	}
 
@@ -134,6 +130,12 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	if c, err := useHelper(ctx, flags.viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
+		// ⛔ THROUGH THE HELPER IT IS A REQUEST, AND IT SAYS SO. The line said the
+		// base rebuilds, and the helper's word that it did not went to the helper's
+		// own log, so the caller read a rebuild that never ran. WSL-191.
+		if presetSwitch {
+			logf("  the base is registered from a different image, so this asks the helper to switch it. It rebuilds the base unless, read under its lock, it is built from %s already", cfg.Base.Image)
+		}
 		switch sub {
 		case "status":
 			st, err := c.BaseStatus(ctx, flags.probe)
@@ -147,7 +149,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			}
 			return verdictFor(st), renderBase(st, flags.asJSON, flags.probe)
 		case "ensure", "recreate":
-			st, err := c.BaseEnsureWith(ctx, sub == "recreate", flags.repair)
+			st, err := helperEnsure(ctx, c, cfg, sub, presetSwitch, flags.repair)
 			if err != nil {
 				return exitCannot, presetSwitchFailed(err, switched, flags.save, cfg)
 			}
@@ -157,6 +159,13 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		}
 	}
 
+	// ⛔ A DISTRIBUTION'S ROOTFS CANNOT BE CHANGED UNDERNEATH IT. Switching preset
+	// means rebuilding, and saying so beats a caller discovering it from a build
+	// they did not expect. ⚠ A base built from the preset by the time the lock is
+	// held is not rebuilt, and the ensure says so on the next line. WSL-172.
+	if presetSwitch {
+		logf("  the base is registered from a different image, so this rebuilds it")
+	}
 	base, err := toolkit.NewBase(cfg, note)
 	if err != nil {
 		return exitCannot, err
@@ -449,6 +458,12 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	fmt.Fprintf(out, "  image       %s\n", st.Image)
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)
+	}
+	// ⭐ THE IMAGE AT THE DIGEST IT WAS BUILT FROM, as `base.image` names it. A
+	// tag rebuilt since builds something else, and this builds the same base again.
+	// WSL-186.
+	if pinned := toolkit.PinnedImage(st.BuiltFrom, st.Digest); pinned != "" {
+		fmt.Fprintf(out, "  digest      %s\n", pinned)
 	}
 	fmt.Fprintf(out, "  account     %s\n", st.User)
 	fmt.Fprintf(out, "  automount   %s\n", automountRow(st.Access))

@@ -503,7 +503,16 @@ func (r *Runner) EnsureBase(ctx context.Context, force bool) (BaseState, error) 
 // protocol and every existing caller pass two arguments, and a third one that
 // defaults to true is exactly the shape a deletion nobody asked for arrives in.
 func (r *Runner) EnsureBaseWith(ctx context.Context, force, repair bool) (BaseState, error) {
-	st, err := r.base.EnsureWith(ctx, force, repair)
+	if force {
+		return r.ensureBase(ctx, rebuildAlways, repair)
+	}
+	return r.ensureBase(ctx, rebuildNever, repair)
+}
+
+// ensureBase is EnsureBaseWith for any rebuild mode, a `--preset` switch
+// included. WSL-191.
+func (r *Runner) ensureBase(ctx context.Context, mode rebuild, repair bool) (BaseState, error) {
+	st, err := r.base.ensure(ctx, mode, repair)
 	r.ForgetGuestHome()
 	return st, err
 }
