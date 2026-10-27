@@ -2,6 +2,105 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a mutation row's bytes reach the variable that embeds the file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mutate_embed_test.go",
+      "find": "\tif p, ok := embeddedBytes()[name]; ok {\n\t\t*p = body\n\t} else",
+      "replace": "\tif p, ok := embeddedBytes()[name]; ok {\n\t\t_ = p\n\t} else",
+      "run": "TestAMutationRowsBytesReachTheVariableAndTheFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a mutation row's bytes reach an embedded directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mutate_embed_test.go",
+      "find": "\t*tree = copied\n",
+      "replace": "\t_ = copied\n",
+      "run": "TestAMutationRowsBytesReachTheVariableAndTheFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a mutation row's bytes reach the file a case reads from disk",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mutate_embed_test.go",
+      "find": "\treturn os.WriteFile(file, body, 0o600)\n}",
+      "replace": "\treturn nil\n}",
+      "run": "TestAMutationRowsBytesReachTheVariableAndTheFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every embedded script has an entry a mutation row's bytes reach",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mutate_embed_test.go",
+      "find": "\t\t\"stale.sh\":        &staleScript,\n",
+      "replace": "",
+      "run": "TestEveryEmbeddedFileCanTakeAMutation",
+      "args": []
+    },
+    {
+      "label": "mutate: a row on an embedded file runs on its baseline's binary",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tif name, ok := embeddedName(dest, m, b.pkgs); ok {",
+      "replace": "\tif name, ok := embeddedName(dest, m, b.pkgs); ok && false {",
+      "run": "TestARowOnAnEmbeddedFileRunsOnItsBaselinesBinary",
+      "args": []
+    },
+    {
+      "label": "mutate: a handed-in run whose file did not change is thrown away",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "\ttook := readErr == nil && bytes.Equal(got, changed)",
+      "replace": "\ttook := readErr == nil || bytes.Equal(got, changed)",
+      "run": "TestARunThatTookNothingCannotCertifyAGuard",
+      "args": []
+    },
+    {
+      "label": "mutate: only an ok is kept from a handed-in run",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "\tif v.State != \"ok\" {\n\t\treturn Verdict{}, false\n\t}\n\twk.p.embedded()",
+      "replace": "\tif v.State == \"\" {\n\t\treturn Verdict{}, false\n\t}\n\twk.p.embedded()",
+      "run": "TestOnlyAnOkIsKeptFromAHandedInRun",
+      "args": []
+    },
+    {
+      "label": "mutate: a file handed in is put back before anything else runs in the copy",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "\tif werr := os.WriteFile(file, body, 0o600); werr != nil {",
+      "replace": "\tif werr := error(nil); werr != nil {",
+      "run": "TestAFileHandedInIsPutBackForTheNextRow",
+      "args": []
+    },
+    {
+      "label": "mutate: a file is handed in only where one package holds the row's cases",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "\tif len(pkgs) != 1 || strings.HasSuffix(m.File, \".go\") {",
+      "replace": "\tif len(pkgs) == 0 || strings.HasSuffix(m.File, \".go\") {",
+      "run": "TestOnlyAFileTheCasesPackageEmbedsIsHandedIn",
+      "args": []
+    },
+    {
+      "label": "mutate: an embedded directory's pattern covers the files under it",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "\tfor at := name; at != \".\" && at != \"/\"; at = path.Dir(at) {",
+      "replace": "\tfor at := name; at == name; at = path.Dir(at) {",
+      "run": "TestOnlyAFileTheCasesPackageEmbedsIsHandedIn",
+      "args": []
+    },
+    {
+      "label": "mutate: a go:embed line only a test file holds embeds nothing",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "\t\tif strings.HasSuffix(f, \"_test.go\") {\n\t\t\tcontinue\n\t\t}\n\t\traw, err := os.ReadFile(f)",
+      "replace": "\t\traw, err := os.ReadFile(f)",
+      "run": "TestOnlyAFileTheCasesPackageEmbedsIsHandedIn",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the mount helper hands WSL's helper the ro of a read-only line",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/mount-helper.sh",

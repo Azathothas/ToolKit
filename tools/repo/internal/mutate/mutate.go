@@ -277,6 +277,9 @@ func Run(root string, t *Table, sel Selection, w io.Writer) ([]Verdict, error) {
 	wg.Wait()
 	close(stop)
 	<-stopped
+	if p.handed > 0 {
+		fmt.Fprintf(w, "  %d of %d row(s) changed an embedded file and were proved with no compile\n", p.handed, len(mine))
+	}
 	return p.got, nil
 }
 
@@ -389,6 +392,25 @@ func (wk *worker) one(m Mutation, b baseline) Verdict {
 		return v
 	}
 	changed := strings.Replace(string(body), m.Find, m.Replace, 1)
+
+	// ⭐ ONLY THE PACKAGES THAT HOLD THE CASES, AND NO VET. Under `./...` a
+	// toolkit row compiled and vetted the plain package and its test variant,
+	// and linked two test binaries. Only one of them held a case. Measured: 7.3
+	// s of action graph down to 5.0 s. ⚠ Vet stays in the gate, which runs it
+	// over the tree as committed.
+	args := []string{"-json", "-vet=off", "-count=1", "-run", m.Run}
+	args = append(args, b.pkgs...)
+	args = append(args, m.Args...)
+	wk.doing(strconv.Quote(m.Label))
+
+	// ⭐ A FILE THE PACKAGE EMBEDS IS HANDED TO THE BINARY THE BASELINE BUILT,
+	// and only an "ok" from that run is kept. embed.go. TOOL-40.
+	if name, ok := embeddedName(dest, m, b.pkgs); ok {
+		if v, kept := wk.onBaselineBinary(dest, name, body, []byte(changed), m, b, args); kept {
+			return v
+		}
+	}
+
 	if err := os.WriteFile(path, []byte(changed), 0o600); err != nil {
 		v.Reason = "the change could not be written: " + err.Error()
 		return v
@@ -409,15 +431,6 @@ func (wk *worker) one(m Mutation, b baseline) Verdict {
 		}
 	}()
 
-	// ⭐ ONLY THE PACKAGES THAT HOLD THE CASES, AND NO VET. Under `./...` a
-	// toolkit row compiled and vetted the plain package and its test variant,
-	// and linked two test binaries. Only one of them held a case. Measured: 7.3
-	// s of action graph down to 5.0 s. ⚠ Vet stays in the gate, which runs it
-	// over the tree as committed.
-	args := []string{"-json", "-vet=off", "-count=1", "-run", m.Run}
-	args = append(args, b.pkgs...)
-	args = append(args, m.Args...)
-	wk.doing(strconv.Quote(m.Label))
 	r, err := wk.goTest(dest, m.File, args...)
 	v = judge(v, b, r, err)
 	if !askAgain(v, r) {
