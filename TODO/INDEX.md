@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 258  open 5  blocked 0  done 253
+total 259  open 2  blocked 0  done 257
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 2 | 0 | 117 | 119 |
-| P3 | 3 | 0 | 32 | 35 |
-| **all** | **5** | **0** | **253** | **258** |
+| P2 | 1 | 0 | 119 | 120 |
+| P3 | 1 | 0 | 34 | 35 |
+| **all** | **2** | **0** | **257** | **259** |
 
 ---
 
@@ -229,10 +229,10 @@ total 258  open 5  blocked 0  done 253
 | WSL-132 | P2 | S | done | Two acceptance cases are not isolated from what they run beside | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-133 | P3 | S | done | `base shell` has no `--private-net` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-134 | P3 | S | done | A real window's focus event was never produced for herdr's `--remote` signals | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-135 | P3 | S | open | The muse-code guide was never run as one ordered pass from an empty host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-135 | P3 | S | done | The muse-code guide was never run as one ordered pass from an empty host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-136 | P2 | M | done | A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-137 | P2 | M | done | A base stops running containers after a host restart until someone repairs it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-138 | P2 | M | open | An adapter installs from npm where the provider publishes an official installer | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-138 | P2 | M | done | An adapter installs from npm where the provider publishes an official installer | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-139 | P3 | S | done | `base ensure` leaves older herdr nightly clients on disk | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-140 | P2 | S | done | A base build fails when one package mirror stalls, and nothing retries | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-141 | P2 | S | done | The herdr adapter installs 0.9.0 when this repository publishes 0.9.5 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -252,8 +252,8 @@ total 258  open 5  blocked 0  done 253
 | WSL-155 | P2 | S | done | A drive WSL mounts during a long build fails the new base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-156 | P2 | M | done | `base doors` lists three world-writable device nodes and tries none of them | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-157 | P2 | S | done | The muse probe calls the herdr reporter registered without Muse ever running it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-158 | P3 | S | open | Without the reporter, herdr shows a Muse pane as idle | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-159 | P2 | M | open | An agent started through herdr runs in the shared network namespace | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-158 | P3 | S | done | Without the reporter, herdr shows a Muse pane as idle | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-159 | P2 | M | done | An agent started through herdr runs in the shared network namespace | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-160 | P3 | S | done | Three command groups keep two lists of their subcommands that nothing compares | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-161 | P1 | S | done | A configuration that leaves out `systemd` turns systemd off | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-162 | P3 | S | done | Nothing holds a job container's log driver | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -295,6 +295,7 @@ total 258  open 5  blocked 0  done 253
 | WSL-198 | P2 | M | done | On Alpine a restart mounts no grant, and a read-only grant is refused | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-199 | P3 | S | done | `engines.sh` calls `setpriv --reuid`, which BusyBox rejects | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-200 | P2 | S | done | `gc` cleans nothing on the host once the base is gone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-201 | P2 | M | open | An adapter's root write in the account's home follows a link the account placed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 
