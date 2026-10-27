@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -162,7 +163,7 @@ func TestAJobTheCapRefusesRecordsItsEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer busy.Release()
-	if err := os.WriteFile(filepath.Join(root, "jobs", "aaaaaaaaaaaaaaaa", "admitted"), []byte("now\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, "jobs", "aaaaaaaaaaaaaaaa", "admitted"), []byte("now\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	me, err := toolkit.ClaimJob(root, cliJobID)
@@ -280,7 +281,7 @@ func TestAHelperRunEphemeralJobLeavesNoLocalCopy(t *testing.T) {
 	if err := os.MkdirAll(local, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(local, "stdout.log"), []byte("x\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(local, "stdout.log"), []byte("x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := spoolLeft(toolkit.JobResult{ID: cliJobID}, local); got != local {
@@ -334,7 +335,7 @@ func TestAFleetIsHeldByTheProjectsCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer busy.Release()
-	if err := os.WriteFile(filepath.Join(root, "jobs", "aaaaaaaaaaaaaaaa", "admitted"), []byte("now\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, "jobs", "aaaaaaaaaaaaaaaa", "admitted"), []byte("now\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	row, err := toolkit.ClaimJob(root, cliJobID)
@@ -454,7 +455,7 @@ func TestAReaderClosesARecordWhoseOwnerIsLost(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(home, "jobs", cliJobID, "stdout.log"), []byte("x\n"), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(home, "jobs", cliJobID, "stdout.log"), []byte("x\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		killed.Release()

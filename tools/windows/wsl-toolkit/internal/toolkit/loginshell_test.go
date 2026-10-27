@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestTheAccountRowsAreReadAndOnlySlashBinShEarnsTheRemediation holds the read of
@@ -183,7 +185,7 @@ func TestApplyLoginShellMovesOnlySlashBinSh(t *testing.T) {
 		if !c.last {
 			body += "\n"
 		}
-		if err := os.WriteFile(passwd, []byte(body), 0o644); err != nil {
+		if err := forksafe.WriteFile(passwd, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		script := string(loginShellScript)
@@ -261,7 +263,7 @@ func TestTheVerifierChecksTheAccountsPasswdEntry(t *testing.T) {
 	run := func(entry string) (string, string, int) {
 		t.Helper()
 		passwd := filepath.Join(t.TempDir(), "passwd")
-		if err := os.WriteFile(passwd, []byte(others+entry), 0o644); err != nil {
+		if err := forksafe.WriteFile(passwd, []byte(others+entry), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		cmd := exec.Command("/bin/sh", "-c", "set -eu\n"+passwdSection(t, passwd))

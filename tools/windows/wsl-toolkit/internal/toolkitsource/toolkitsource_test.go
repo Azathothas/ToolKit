@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/parallelread"
 )
 
@@ -459,7 +460,7 @@ func TestTheEmbedReadingRefusesWhatWouldKeepOldBytes(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(p, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

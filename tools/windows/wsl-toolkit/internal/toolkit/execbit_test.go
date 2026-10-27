@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // tarModes reads back what an upload actually put on the wire, because the
@@ -50,7 +52,7 @@ func TestTheExecutableBitSurvivesAFilesystemThatCannotHoldIt(t *testing.T) {
 	root := t.TempDir()
 	write := func(rel, body string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -98,10 +100,10 @@ func TestTheExecutableBitSurvivesAFilesystemThatCannotHoldIt(t *testing.T) {
 // declares itself with `#!` and that is what is read.
 func TestAnUnstagedScriptStillArrivesRunnable(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "new.sh"), []byte("#!/usr/bin/env bash\ntrue\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, "new.sh"), []byte("#!/usr/bin/env bash\ntrue\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "plain.txt"), []byte("#not a shebang\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, "plain.txt"), []byte("#not a shebang\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
@@ -143,7 +145,7 @@ func TestAnUnstagedScriptStillArrivesRunnable(t *testing.T) {
 func TestAFileThatGrowsDoesNotKillTheCopy(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "daemon.log")
-	if err := os.WriteFile(p, bytes.Repeat([]byte("a"), 64), 0o644); err != nil {
+	if err := forksafe.WriteFile(p, bytes.Repeat([]byte("a"), 64), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// The stat the walker would have taken.
@@ -299,7 +301,7 @@ func TestTheVerifierReadsTheSudoItPromises(t *testing.T) {
 	for _, c := range cases {
 		dir := t.TempDir()
 		if c.sudo != absent {
-			if err := os.WriteFile(filepath.Join(dir, "sudo"), []byte("#!/bin/sh\n"+c.sudo+"\n"), 0o755); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(dir, "sudo"), []byte("#!/bin/sh\n"+c.sudo+"\n"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -528,7 +530,7 @@ func TestTheVerifierReadsTheDrivesItPromises(t *testing.T) {
 			fmt.Fprintf(&table, "X:\\134 %s/%s 9p %s 0 0\n", root, m.target, m.options)
 		}
 		mounts := filepath.Join(dir, "mounts")
-		if err := os.WriteFile(mounts, []byte(table.String()), 0o600); err != nil {
+		if err := forksafe.WriteFile(mounts, []byte(table.String()), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		cmd := exec.Command("/bin/sh", "-c", verifierDriveSection(t, mounts, root))
@@ -762,7 +764,7 @@ func TestASubdirectoryWorkspaceReadsItsOwnPaths(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sub, "deep.sh"), []byte("true\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(sub, "deep.sh"), []byte("true\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	git := func(dir string, args ...string) {

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-106, issue 37 item 2: a grant whose directory is gone ---------------
@@ -157,7 +159,7 @@ func TestTheVerifierAllowsAGoneGrantsMountAndNoOther(t *testing.T) {
 	}
 	dir := t.TempDir()
 	mounts := filepath.Join(dir, "mounts")
-	if err := os.WriteFile(mounts, []byte("drvfs /workspaces/EPHM drvfs rw 0 0\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(mounts, []byte("drvfs /workspaces/EPHM drvfs rw 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	block := mustExtract(t, "verify.sh", "mount_count=0", "done < /proc/mounts") + "\nfi\n"

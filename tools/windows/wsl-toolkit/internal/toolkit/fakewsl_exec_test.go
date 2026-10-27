@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // A fake wsl.exe: this test binary, started again with execFakeEnv set. It answers
@@ -118,7 +120,7 @@ func execFakeWsl(args []string) int {
 				continue
 			}
 			_ = os.MkdirAll(filepath.Dir(at), 0o700)
-			_ = os.WriteFile(at, body, 0o600)
+			_ = forksafe.WriteFile(at, body, 0o600)
 		}
 		return 0
 	case len(argv) >= 5 && argv[0] == "/bin/tar" && argv[1] == "-cf":

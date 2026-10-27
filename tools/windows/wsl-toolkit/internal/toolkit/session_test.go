@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-95: a base session that outlives its client --------------------------
@@ -204,7 +206,7 @@ func TestASessionRunsStopsTimesOutAndIsFollowedInARealShell(t *testing.T) {
 	// that kill stayed green on such a runner. A systemd-run that refuses makes
 	// the launcher's probe fail on every host. The scope has its own case. WSL-126.
 	noScope := t.TempDir()
-	if err := os.WriteFile(filepath.Join(noScope, "systemd-run"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(noScope, "systemd-run"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	run := func(script []byte) (string, string, int) {
@@ -228,7 +230,7 @@ func TestASessionRunsStopsTimesOutAndIsFollowedInARealShell(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "payload.sh"), []byte(payload), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, "payload.sh"), []byte(payload), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		out, stderr, code := run(sessionLaunchScript(dir, "~", timeout, grace))

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -41,7 +42,7 @@ func TestTheThreeSpellingsOfACommandAreExclusiveAndEachIsRepaired(t *testing.T) 
 func TestVerbatimSendsTheBytesAndStillRefusesWhatTheChannelCannotCarry(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "run.sh")
-	if err := os.WriteFile(file, []byte("\xEF\xBB\xBFa\r\nb\r\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte("\xEF\xBB\xBFa\r\nb\r\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c := commandFlags{scriptFile: file, verbatim: true}
@@ -49,7 +50,7 @@ func TestVerbatimSendsTheBytesAndStillRefusesWhatTheChannelCannotCarry(t *testin
 	if err != nil || string(p.script) != "\xEF\xBB\xBFa\r\nb\r\n" {
 		t.Fatalf("verbatim = %q, %v", p.script, err)
 	}
-	if err := os.WriteFile(file, []byte{0xFF, 0xFE, 'e', 0, 'c', 0}, 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte{0xFF, 0xFE, 'e', 0, 'c', 0}, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.payload(toolkit.Config{}); err == nil || !strings.Contains(err.Error(), "UTF-16") {
@@ -70,7 +71,7 @@ func TestVerbatimSendsTheBytesAndStillRefusesWhatTheChannelCannotCarry(t *testin
 func TestTheEnvFileAndTheFlagsLandInOneOrderedList(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "pairs.env")
-	if err := os.WriteFile(file, []byte("# comment\r\nA=1\r\nB=2\r\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte("# comment\r\nA=1\r\nB=2\r\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c := commandFlags{command: "true", envFile: file, env: stringList{"C=3", "A=override"}}

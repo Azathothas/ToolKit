@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-127: the tool's own failure is told apart from a job's exit 2 -------
@@ -162,7 +164,7 @@ func TestAHelperOfTheEarlierProtocolIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "helper.json"), b, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "helper.json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ReadHelperEndpoint(); err == nil || !strings.Contains(err.Error(), "wsl-toolkit-helper/6") {

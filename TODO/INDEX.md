@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 262  open 2  blocked 0  done 260
+total 263  open 3  blocked 0  done 260
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 1 | 0 | 122 | 123 |
+| P2 | 2 | 0 | 122 | 124 |
 | P3 | 1 | 0 | 34 | 35 |
-| **all** | **2** | **0** | **260** | **262** |
+| **all** | **3** | **0** | **260** | **263** |
 
 ---
 
@@ -299,6 +299,7 @@ total 262  open 2  blocked 0  done 260
 | WSL-202 | P2 | M | done | A root write outside the home follows a path the account made | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-203 | P2 | S | done | A package manager that hangs holds the build with no bound | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-204 | P2 | S | open | Provisioning's limit cuts a bounded package manager try short with no name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-205 | P2 | S | open | A stand-in a case wrote can be busy when it runs, so the go job fails by chance | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-130: the engines step is the owner's, as the adapters are -------------
@@ -127,7 +129,7 @@ func (h *enginesHost) write(path, body string, mode os.FileMode) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		h.t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(body), mode); err != nil {
+	if err := forksafe.WriteFile(path, []byte(body), mode); err != nil {
 		h.t.Fatal(err)
 	}
 }

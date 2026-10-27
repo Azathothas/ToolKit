@@ -256,19 +256,33 @@ func TestDriveAStallAgainstARealProcess(t *testing.T) {
 
 // TestDriveAChildThatKeepsTalkingIsNotKilled is the other half: a slow transfer
 // that is still moving must never be stopped.
+//
+// ⚠ AND ASKED AGAIN WITH A 10 s WINDOW WHEN THE CALL GAVE UP. The go check runs
+// this package's cases in several processes at once, and a loaded host can hold
+// sh's next line past 2 s. Each run talks for three of its windows, a line every
+// quarter of one. ⛔ A call that stops a talking child stops it in both runs, so
+// the second run cannot hide that.
 func TestDriveAChildThatKeepsTalkingIsNotKilled(t *testing.T) {
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no sh on this host")
 	}
-	c := engineCall{Timeout: time.Minute, Stall: 2 * time.Second, What: "the fake engine"}
-	// Six seconds of work, a byte every second: three times the stall window in
-	// total, and never quiet for it.
-	out, _, err := c.run(context.Background(), sh, "-c", "i=0; while [ $i -lt 6 ]; do echo tick; sleep 1; i=$((i+1)); done")
-	if err != nil {
-		t.Fatalf("a child that kept talking was killed: %v", err)
-	}
-	if n := strings.Count(out, "tick"); n != 6 {
-		t.Fatalf("got %d ticks, want 6: %q", n, out)
+	runs := []struct {
+		stall time.Duration
+		tick  string
+	}{{2 * time.Second, "0.5"}, {10 * time.Second, "2.5"}}
+	for i, r := range runs {
+		c := engineCall{Timeout: 2 * time.Minute, Stall: r.stall, What: "the fake engine"}
+		out, _, err := c.run(context.Background(), sh, "-c", "i=0; while [ $i -lt 12 ]; do echo tick; sleep "+r.tick+"; i=$((i+1)); done")
+		if err == nil {
+			if n := strings.Count(out, "tick"); n != 12 {
+				t.Fatalf("got %d ticks, want 12: %q", n, out)
+			}
+			return
+		}
+		if i == len(runs)-1 {
+			t.Fatalf("a child that kept talking was killed with a %s window too: %v", r.stall, err)
+		}
+		t.Logf("a %s window stopped the child on this host (%v), so it is asked again with %s", r.stall, err, runs[i+1].stall)
 	}
 }

@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-169: a rebuild asks the host engine before it removes the base -------
@@ -80,7 +82,7 @@ func fakeWslMain(state string, args []string) int {
 		return false
 	}
 	write := func(names []string) int {
-		if err := os.WriteFile(path, []byte(strings.Join(names, "\n")), 0o600); err != nil {
+		if err := forksafe.WriteFile(path, []byte(strings.Join(names, "\n")), 0o600); err != nil {
 			return 96
 		}
 		return 0
@@ -99,7 +101,7 @@ func fakeWslMain(state string, args []string) int {
 		if addName != "" {
 			kept = append(kept, addName+"\t"+addDir)
 		}
-		if err := os.WriteFile(disks, []byte(strings.Join(kept, "\n")), 0o600); err != nil {
+		if err := forksafe.WriteFile(disks, []byte(strings.Join(kept, "\n")), 0o600); err != nil {
 			return 96
 		}
 		return 0
@@ -215,7 +217,7 @@ func fakeWslMain(state string, args []string) int {
 				return 1
 			}
 			marker, _ := io.ReadAll(tr)
-			if err := os.WriteFile(filepath.Join(state, "identity.json"), marker, 0o600); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(state, "identity.json"), marker, 0o600); err != nil {
 				return 96
 			}
 			return 0
@@ -239,7 +241,7 @@ func fakeWslMain(state string, args []string) int {
 		}
 		if out, ok := said(guest.answer); ok {
 			// ⭐ KEPT, so a case can read what the guest script was handed.
-			_ = os.WriteFile(filepath.Join(state, guest.answer+".script"), script, 0o600)
+			_ = forksafe.WriteFile(filepath.Join(state, guest.answer+".script"), script, 0o600)
 			fmt.Print(out)
 			return 0
 		}
@@ -418,7 +420,7 @@ func linkOrCopyExecutable(t *testing.T, from, to string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(to, data, 0o755); err != nil {
+	if err := forksafe.WriteFile(to, data, 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -430,7 +432,7 @@ func (h *fakeHost) engine(t *testing.T, up bool) {
 	if up {
 		state = "up"
 	}
-	if err := os.WriteFile(filepath.Join(h.state, "engine"), []byte(state), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(h.state, "engine"), []byte(state), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -454,7 +456,7 @@ func (h *fakeHost) registry() (map[string]string, error) {
 // raced import or the registry.
 func (h *fakeHost) say(t *testing.T, name, what string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(h.state, name), []byte(what), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(h.state, name), []byte(what), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -537,7 +539,7 @@ func fakeBuiltBase(t *testing.T, h *fakeHost, image string) (*Base, *sayings, st
 	if err := os.MkdirAll(b.Dir(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(disk, []byte("the disk of a working base"), 0o600); err != nil {
+	if err := forksafe.WriteFile(disk, []byte("the disk of a working base"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// ⚠ REGISTERED BEFORE ITS RECORD IS WRITTEN: only the owner records. WSL-167.
@@ -551,10 +553,10 @@ func fakeBuiltBase(t *testing.T, h *fakeHost, image string) (*Base, *sayings, st
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(h.state, "identity.json"), marker, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(h.state, "identity.json"), marker, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(h.state, "registered"), []byte(fakeBaseName), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(h.state, "registered"), []byte(fakeBaseName), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	h.say(t, "disks", fakeBaseName+"\t"+b.Dir())

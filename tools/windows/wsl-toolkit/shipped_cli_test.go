@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -51,7 +52,7 @@ func TestShippedWriteTakesItsNameOnEitherSideOfItsFlags(t *testing.T) {
 		// ⚠ THE FLAG AFTER THE NAME HAS TO MATTER, or a parse that drops it
 		// passes. A different file already there is refused without --force.
 		if order == "name between" {
-			if err := os.WriteFile(filepath.Join(dir, "bootstrap.sh"), []byte("not the carried file\n"), 0o600); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(dir, "bootstrap.sh"), []byte("not the carried file\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}

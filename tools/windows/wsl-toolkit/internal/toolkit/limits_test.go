@@ -6,12 +6,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-136: a limit is enforced, and the answer says whether it was ---------
@@ -148,7 +149,7 @@ func TestTheWrapperReadsTheContainersOwnCgroupInARealShell(t *testing.T) {
 	} {
 		root := t.TempDir()
 		for name, body := range c.files {
-			if err := os.WriteFile(filepath.Join(root, name), []byte(body+"\n"), 0o644); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(root, name), []byte(body+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -178,7 +179,7 @@ func TestAProjectsLimitsLoadAndAreHeldToTheGrammar(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := filepath.Join(dir, "wsl-toolkit.json")
-		if err := os.WriteFile(path, body, 0o600); err != nil {
+		if err := forksafe.WriteFile(path, body, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return path

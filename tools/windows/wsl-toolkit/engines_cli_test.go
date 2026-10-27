@@ -7,11 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -119,7 +119,7 @@ func TestAFailedImageLoadAnswersItsJSON(t *testing.T) {
 func TestBaseImageLoadReadsAFileFirstAndAReferenceOtherwise(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "image.tar")
-	if err := os.WriteFile(archive, []byte("archive"), 0o600); err != nil {
+	if err := forksafe.WriteFile(archive, []byte("archive"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if p, kind, err := imageSource(archive); err != nil || kind != toolkit.ImageSourceFile || p != archive {

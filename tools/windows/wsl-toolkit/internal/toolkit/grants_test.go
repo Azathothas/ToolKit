@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestANamedInstanceReadsItsOwnConfigurationFirst is WSL-75's order: for a named
@@ -28,7 +30,7 @@ func TestANamedInstanceReadsItsOwnConfigurationFirst(t *testing.T) {
 	writeImage := func(path, image string) {
 		t.Helper()
 		body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-podbox","image":"` + image + `"}}`
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -428,7 +430,7 @@ func grantsRun(t *testing.T, dir string, env map[string]string) (string, error) 
 	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grants.lock", at+"/grants.lock")
 	script = strings.Replace(script, "set -eu\n", "set -eu\n"+grantsStandIns, 1)
 	run := filepath.Join(dir, "grants-run.sh")
-	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+	if err := forksafe.WriteFile(run, []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh, filepath.ToSlash(run))
@@ -507,10 +509,10 @@ func TestALiveGrantOrRevokeLeavesAnotherCallersMount(t *testing.T) {
 	posixShell(t)
 	dir := t.TempDir()
 	theirs := "drvfs /workspaces/theirs drvfs rw,noatime 0 0\n"
-	if err := os.WriteFile(filepath.Join(dir, "mounts"), []byte(theirs), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "mounts"), []byte(theirs), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "fstab"), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "fstab"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	src := t.TempDir()
@@ -594,13 +596,13 @@ func TestATakeBackLeavesAMountItsChangeDidNotMake(t *testing.T) {
 	src := t.TempDir()
 	theirs := fstabEscape(filepath.ToSlash(src)) + " /workspaces/shared drvfs rw,noatime 0 0\n"
 	owners := "/workspaces/shared " + b64(grantsMine) + " " + b64(grantsMine) + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "mounts"), []byte(theirs), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "mounts"), []byte(theirs), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "fstab"), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "fstab"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "owners"), []byte(owners), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "owners"), []byte(owners), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}

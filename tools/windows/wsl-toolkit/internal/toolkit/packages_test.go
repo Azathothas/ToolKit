@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestTheProvisioningRunIsTheSharedTableThenTheProvisioner holds the one payload
@@ -82,7 +84,7 @@ func TestTheProvisionerInstallsAnEngineOnlyThroughTheManagersItHasPackagesFor(t 
 	for _, c := range cases {
 		dir := t.TempDir()
 		write := func(name, body string) {
-			if err := os.WriteFile(dir+"/"+name, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+			if err := forksafe.WriteFile(dir+"/"+name, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}

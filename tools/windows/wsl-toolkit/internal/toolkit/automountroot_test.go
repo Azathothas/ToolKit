@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestBothReadersOfTheAutomountRootAgree is finding 23.
@@ -63,7 +65,7 @@ func TestBothReadersOfTheAutomountRootAgree(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.conf != "" {
-				if err := os.WriteFile(filepath.Join(confDir, "wsl.conf"), []byte(tc.conf), 0o644); err != nil {
+				if err := forksafe.WriteFile(filepath.Join(confDir, "wsl.conf"), []byte(tc.conf), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -96,18 +98,18 @@ func TestDoorsLooksForTheDrivesUnderTheAutomountRoot(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.ToSlash(filepath.Join(dir, "windows"))
 	conf := filepath.Join(dir, "wsl.conf")
-	if err := os.WriteFile(conf, []byte("[automount]\nroot = "+root+"/\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(conf, []byte("[automount]\nroot = "+root+"/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	mounts := filepath.Join(dir, "mounts")
-	if err := os.WriteFile(mounts, []byte("C:\\134 "+root+"/c 9p rw 0 0\nnone /mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(mounts, []byte("C:\\134 "+root+"/c 9p rw 0 0\nnone /mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := filepath.Join(dir, "windows", "c", "Windows", "System32", "cmd.exe")
 	if err := os.MkdirAll(filepath.Dir(cmd), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cmd, nil, 0o755); err != nil {
+	if err := forksafe.WriteFile(cmd, nil, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	reader := mustExtract(t, "doors.sh", "drive_root=$(", "say fs.windows-drives closed")

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 func TestNativeInventoryCoversStandaloneProbe(t *testing.T) {
@@ -65,11 +67,11 @@ func TestScoopDescriptorResolvesRealExecutable(t *testing.T) {
 	shim := filepath.Join(dir, "tool.exe")
 	actual := filepath.Join(dir, "actual.exe")
 	for _, file := range []string{shim, actual} {
-		if err := os.WriteFile(file, []byte("fixture"), 0700); err != nil {
+		if err := forksafe.WriteFile(file, []byte("fixture"), 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "tool.shim"), []byte("path = \""+actual+"\"\n"), 0600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "tool.shim"), []byte("path = \""+actual+"\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	// ⚠ COMPARED AS CANONICAL PATHS. A CI runner's temporary directory is
@@ -98,10 +100,10 @@ func TestToolProbeContinuesAfterAnUnusablePathEntry(t *testing.T) {
 	}
 	bad := filepath.Join(first, name)
 	good := filepath.Join(second, name)
-	if err := os.WriteFile(bad, []byte(badBody), 0o700); err != nil {
+	if err := forksafe.WriteFile(bad, []byte(badBody), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(good, []byte(goodBody), 0o700); err != nil {
+	if err := forksafe.WriteFile(good, []byte(goodBody), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", strings.Join([]string{first, second}, string(os.PathListSeparator)))

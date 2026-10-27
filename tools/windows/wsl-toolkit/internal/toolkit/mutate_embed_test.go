@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/embedswap"
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // ⭐ A MUTATION ROW ON AN EMBEDDED FILE RUNS ON THE BINARY ITS BASELINE BUILT.
@@ -121,10 +122,10 @@ func TestAMutationRowsBytesReachTheVariableAndTheFile(t *testing.T) {
 		t.Helper()
 		with := filepath.Join(dir, "with-"+path.Base(name))
 		file := filepath.Join(dir, path.Base(name))
-		if err := os.WriteFile(with, body, 0o600); err != nil {
+		if err := forksafe.WriteFile(with, body, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(file, []byte("as it was\n"), 0o600); err != nil {
+		if err := forksafe.WriteFile(file, []byte("as it was\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		t.Setenv(embedswap.NameEnv, name)

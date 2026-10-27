@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // realEvents is `podman events --since 1h --stream=false --filter container=... --format json`,
@@ -172,7 +174,7 @@ func TestTheHostHalfIsAnsweredWithNoMachineAtAll(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, "jobs", "abc123"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "jobs", "abc123", "stdout.log"), []byte("hello\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "jobs", "abc123", "stdout.log"), []byte("hello\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	led, err := OpenLedger()

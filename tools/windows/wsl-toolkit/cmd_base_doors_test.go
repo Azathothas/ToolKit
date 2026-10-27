@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -34,7 +35,7 @@ func TestBaseDoorsIsRefusedThroughAServingHelper(t *testing.T) {
 	was := toolkit.ExplicitConfigPath
 	t.Cleanup(func() { toolkit.ExplicitConfigPath = was })
 	cfg := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(cfg, []byte(`{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-doorsless"}}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(cfg, []byte(`{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-doorsless"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var mu sync.Mutex

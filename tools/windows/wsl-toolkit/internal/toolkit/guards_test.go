@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // The cases here are the ones that decide whether a container can reach this
@@ -219,13 +221,13 @@ func TestAWorkspaceSymlinkPointingOutOfTheTreeIsLeftOutAndNamed(t *testing.T) {
 	}
 	root := t.TempDir()
 	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("x"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(outside, "secret"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(root, "leak")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "real.txt"), []byte("kept"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, "real.txt"), []byte("kept"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
@@ -325,7 +327,7 @@ func TestRemovingSomethingOutsideTheOwnedDirectoryIsRefused(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
 	victim := filepath.Join(outside, "keep.txt")
-	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+	if err := forksafe.WriteFile(victim, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, target := range []string{victim, outside, root, filepath.Join(root, "..")} {
@@ -346,7 +348,7 @@ func TestRemovingSomethingInsideTheOwnedDirectoryWorksAndIsReadBack(t *testing.T
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := RemoveInside(root, filepath.Join(root, "job")); err != nil {
@@ -888,7 +890,7 @@ func TestTheNearestConfigurationWinsWhole(t *testing.T) {
 	}
 	write := func(dir, image string) {
 		body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit","image":"` + image + `","user":"toolkit"}}`
-		if err := os.WriteFile(filepath.Join(dir, WorkingConfigName), []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, WorkingConfigName), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -931,7 +933,7 @@ func TestAConfigurationNamingAnotherInstancesDistributionIsRefused(t *testing.T)
 	write := func(name string) {
 		t.Helper()
 		body := `{"schema":"wsl-toolkit-config/1","base":{"name":"` + name + `"}}`
-		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(file, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -965,7 +967,7 @@ func TestAConfigurationNamingAnotherInstancesDistributionIsRefused(t *testing.T)
 	if err := os.MkdirAll(museHome, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(own, []byte(`{"schema":"wsl-toolkit-config/1"}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(own, []byte(`{"schema":"wsl-toolkit-config/1"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	previousExplicit := ExplicitConfigPath
@@ -1001,7 +1003,7 @@ func TestAStateDirectoryFileNamingAnotherInstanceIsToldToChangeTheName(t *testin
 	restore := chdir(t, t.TempDir())
 	defer restore()
 	body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-two"}}`
-	if err := os.WriteFile(filepath.Join(museHome, "config.json"), []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(museHome, "config.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := LoadConfig()
@@ -1019,7 +1021,7 @@ func TestOldConfigurationGetsPersistentJobDefaults(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("WSL_TOOLKIT_HOME", home)
 	body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit","image":"docker.io/library/alpine:latest","user":"toolkit"}}`
-	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "config.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := LoadConfig()
@@ -1034,7 +1036,7 @@ func TestOldConfigurationGetsPersistentJobDefaults(t *testing.T) {
 func TestAConfigurationThisToolDoesNotReadIsRefused(t *testing.T) {
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, RefusedConfigName), []byte("[base]\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, RefusedConfigName), []byte("[base]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	restore := chdir(t, dir)

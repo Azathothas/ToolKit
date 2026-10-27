@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-188: the account's ids are the ones it got ----------------------------
@@ -105,7 +107,7 @@ func TestAGrantNamesTheAccountsOwnIds(t *testing.T) {
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
 	dir := t.TempDir()
 	read := grantsSeed(t, dir, "", "", "")
-	if err := os.WriteFile(filepath.Join(dir, "account.ids"), []byte("1001 1002\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "account.ids"), []byte("1001 1002\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := grantsDriveIn(t, dir, GrantsWrite, []BaseMount{mine}, ""); err != nil {

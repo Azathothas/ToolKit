@@ -1,11 +1,12 @@
 package toolkit
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 func agentConfig(name, model, effort string) Config {
@@ -154,7 +155,7 @@ func museWrapperFile(t *testing.T, model, effort, subcommands string) (shell, pa
 	}
 	dir := t.TempDir()
 	launcher := filepath.Join(dir, "launcher")
-	if err := os.WriteFile(launcher, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\"\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(launcher, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := strings.NewReplacer(
@@ -178,7 +179,7 @@ func museWrapperFile(t *testing.T, model, effort, subcommands string) (shell, pa
 	}
 	body = body[:g] + body[g+e+len("\nfi\n"):]
 	path = filepath.Join(dir, "muse")
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+	if err := forksafe.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return sh, path

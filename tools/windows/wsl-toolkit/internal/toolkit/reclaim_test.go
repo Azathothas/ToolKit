@@ -4,11 +4,12 @@ package toolkit
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-109, issue 37 item 5: the space a base frees ------------------------
@@ -88,7 +89,7 @@ func TestADiskThatIsNotSparseEarnsTheReclaim(t *testing.T) {
 	}
 	t.Setenv("USERPROFILE", t.TempDir())
 	disk := filepath.Join(t.TempDir(), "ext4.vhdx")
-	if err := os.WriteFile(disk, make([]byte, 64<<10), 0o600); err != nil {
+	if err := forksafe.WriteFile(disk, make([]byte, 64<<10), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	st := BaseState{DiskPath: disk}

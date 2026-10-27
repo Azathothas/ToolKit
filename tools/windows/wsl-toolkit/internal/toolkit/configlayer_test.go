@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // namedInstance selects a scratch instance whose own file holds own, standing
@@ -30,7 +32,7 @@ func namedInstance(t *testing.T, own, project string) (ownFile, projectFile stri
 	}
 	ownFile, projectFile = filepath.Join(home, "config.json"), filepath.Join(tree, WorkingConfigName)
 	for path, body := range map[string]string{ownFile: own, projectFile: project} {
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -167,7 +169,7 @@ func TestAProjectThatIsTheConfigurationLendsNothing(t *testing.T) {
 	t.Setenv("WSL_TOOLKIT_HOME", home)
 	tree := t.TempDir()
 	body := `{"schema":"wsl-toolkit-config/1","jobs":{"image":"docker.io/library/rust:1"}}`
-	if err := os.WriteFile(filepath.Join(tree, WorkingConfigName), []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(tree, WorkingConfigName), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	restore := chdir(t, tree)
@@ -361,7 +363,7 @@ func TestAFloorNewerThanThisBuildIsRefusedNamingTheRemedy(t *testing.T) {
 	file := filepath.Join(home, "config.json")
 	load := func(body string) error {
 		t.Helper()
-		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(file, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		_, err := LoadConfig()
@@ -404,7 +406,7 @@ func TestAnUnknownKeyNamesANewerBuildAndSelfupdate(t *testing.T) {
 	restore := chdir(t, t.TempDir())
 	defer restore()
 	file := filepath.Join(home, "config.json")
-	if err := os.WriteFile(file, []byte(`{"schema":"wsl-toolkit-config/1","jobs":{"a_key_from_later":1}}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte(`{"schema":"wsl-toolkit-config/1","jobs":{"a_key_from_later":1}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := LoadConfig()
@@ -417,7 +419,7 @@ func TestAnUnknownKeyNamesANewerBuildAndSelfupdate(t *testing.T) {
 		}
 	}
 	// ⚠ A file that is broken in another way is not blamed on a newer build.
-	if err := os.WriteFile(file, []byte(`{"schema":"wsl-toolkit-config/1","jobs":{"gitignore":"yes"}}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte(`{"schema":"wsl-toolkit-config/1","jobs":{"gitignore":"yes"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := LoadConfig(); err == nil || strings.Contains(err.Error(), "newer build") {
@@ -472,7 +474,7 @@ func TestAGrantsSourceCrossesTheHelperResolved(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := `{"schema":"wsl-toolkit-config/1","base":{"automount":"off","interop":"off","mounts":[{"source":"src","target":"/workspaces/src"}]}}`
-	if err := os.WriteFile(filepath.Join(project, WorkingConfigName), []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(project, WorkingConfigName), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	restore := chdir(t, project)

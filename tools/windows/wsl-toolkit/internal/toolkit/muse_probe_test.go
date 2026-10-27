@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestTheMuseProbeAsksMuseWhetherItRunsTheReporter runs the muse adapter's probe.sh
@@ -61,7 +63,7 @@ func TestTheMuseProbeAsksMuseWhetherItRunsTheReporter(t *testing.T) {
 	}
 	write := func(path, body string, mode os.FileMode) {
 		t.Helper()
-		if err := os.WriteFile(path, []byte(body), mode); err != nil {
+		if err := forksafe.WriteFile(path, []byte(body), mode); err != nil {
 			t.Fatal(err)
 		}
 	}

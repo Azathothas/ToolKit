@@ -8066,6 +8066,15 @@
       "args": []
     },
     {
+      "label": "wsl-toolkit: a test file is written with no fork while it is open",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/forksafe/forksafe.go",
+      "find": "\tsyscall.ForkLock.RLock()\n\tdefer syscall.ForkLock.RUnlock()\n",
+      "replace": "\t_ = syscall.Getpid\n",
+      "run": "TestWriteFileWaitsForAFork",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the carried bootstrap puts its prefix after the system path",
       "file": "internal/toolkit/shipped/bootstrap.sh",
       "find": "  ip_line=\"export PATH=\\\"\\$PATH:$PREFIX/bin\\\"\"",

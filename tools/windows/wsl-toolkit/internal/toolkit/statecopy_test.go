@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-118: a package's own copy of the state directory is named ------------
@@ -23,7 +25,7 @@ func fakeLocalAppData(t *testing.T) (local, home, copyPath string) {
 		}
 	}
 	for _, f := range []string{filepath.Join(home, "config.json"), filepath.Join(copyPath, "config.json")} {
-		if err := os.WriteFile(f, []byte("{}\n"), 0o600); err != nil {
+		if err := forksafe.WriteFile(f, []byte("{}\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

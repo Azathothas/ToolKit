@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // ⭐ A FAKE wsl.exe, AND IT IS THIS TEST BINARY. A Wsl whose Path names the
@@ -95,7 +97,7 @@ func buildFakeLoad(dir string) *buildFakeState {
 
 func buildFakeSave(dir string, st *buildFakeState) {
 	b, _ := json.MarshalIndent(st, "", "  ")
-	_ = os.WriteFile(filepath.Join(dir, "state.json"), b, 0o600)
+	_ = forksafe.WriteFile(filepath.Join(dir, "state.json"), b, 0o600)
 }
 
 var buildFakeAssignment = regexp.MustCompile(`(?m)^(TK_[A-Z0-9_]+)='([^']*)'; export `)

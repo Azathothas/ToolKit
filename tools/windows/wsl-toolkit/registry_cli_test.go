@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -22,7 +23,7 @@ func registryInstance(t *testing.T, body string) {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "config.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("WSL_TOOLKIT_HOME", home)

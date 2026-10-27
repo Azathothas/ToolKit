@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-156: the paravirt device attempts, run rather than read --------------
@@ -241,10 +243,10 @@ func buildDoorsDeviceProbe(t *testing.T) string {
 		}
 	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(doorsDeviceProbeSource(t)), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "probe.c"), []byte(doorsDeviceProbeSource(t)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "fake.c"), []byte(doorsFakeLibc), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "fake.c"), []byte(doorsFakeLibc), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	probe := filepath.Join(dir, "probe")

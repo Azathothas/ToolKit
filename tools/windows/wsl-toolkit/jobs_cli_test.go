@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -89,7 +90,7 @@ func TestAStopTheHelperFindsNoJobForIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	code, err := cmdStop(context.Background(), []string{cliJobID, "--via-helper"})

@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-173: a compaction keeps the stop a job can still read ----------------
@@ -144,7 +146,7 @@ func TestALedgerReadHeldPastItsRetriesFails(t *testing.T) {
 func refusedLedger(t *testing.T, home string) *Ledger {
 	t.Helper()
 	path := filepath.Join(home, "ledger.jsonl")
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
+	if err := forksafe.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { ledgerReadFile = os.ReadFile })
@@ -157,7 +159,7 @@ func refusedLedger(t *testing.T, home string) *Ledger {
 func mostlyUnreadableLedger(t *testing.T, home string, records ...LedgerEntry) *Ledger {
 	t.Helper()
 	l := &Ledger{path: filepath.Join(home, "ledger.jsonl")}
-	if err := os.WriteFile(l.path, []byte(strings.Repeat("not a record\n", 5)), 0o600); err != nil {
+	if err := forksafe.WriteFile(l.path, []byte(strings.Repeat("not a record\n", 5)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range records {
@@ -281,7 +283,7 @@ func TestAJobRunsOverALedgerWithMostlyUnreadableLines(t *testing.T) {
 func TestARecordAppendedAfterATornLineIsRead(t *testing.T) {
 	l := &Ledger{path: filepath.Join(t.TempDir(), "ledger.jsonl")}
 	torn := `{"schema":"` + LedgerSchema + `","event":"op`
-	if err := os.WriteFile(l.path, []byte(torn), 0o600); err != nil {
+	if err := forksafe.WriteFile(l.path, []byte(torn), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Append(LedgerEntry{Event: "open", Kind: "job", ID: testJobID}); err != nil {

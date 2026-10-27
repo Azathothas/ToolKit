@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-188: a live grant is read back as the account, on every base ----------
@@ -15,7 +17,7 @@ import (
 // stage puts an empty marker file in dir.
 func stage(t *testing.T, dir, name string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

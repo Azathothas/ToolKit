@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-112: a workspace copy leaves out what git ignores --------------------
@@ -41,7 +43,7 @@ func gitWorkTree(t *testing.T) string {
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+		if err := forksafe.WriteFile(full, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -110,7 +112,7 @@ func TestGitignoreAppliesANestedRepositorysOwnRules(t *testing.T) {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
 	for name, body := range map[string]string{".gitignore": "secrets.env\n", "secrets.env": "TOKEN=x\n", "lib.rs": "pub fn f() {}\n"} {
-		if err := os.WriteFile(filepath.Join(sub, name), []byte(body), 0o644); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(sub, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -132,7 +134,7 @@ func TestGitignoreOutsideAGitWorkTreeIsRefused(t *testing.T) {
 		t.Skip("no git on PATH")
 	}
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, "a.txt"), []byte("a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// ⚠ THE TEMPORARY DIRECTORY MAY BE INSIDE A REPOSITORY, as it is under this

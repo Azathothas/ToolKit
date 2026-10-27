@@ -31,6 +31,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -54,7 +55,7 @@ func suitePwsh(t *testing.T) string {
 func runSuiteScript(t *testing.T, pwsh, script string, args ...string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "driver.ps1")
-	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(script), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(pwsh, append([]string{"-NoProfile", "-NonInteractive", "-File", path}, args...)...)
@@ -155,7 +156,7 @@ $answer = try { [string](& $case) } catch { "THREW: $($_.Exception.Message)" }
 		dir := t.TempDir()
 		cfg, snapshot, answer := filepath.Join(dir, "config.json"), filepath.Join(dir, "read.json"), filepath.Join(dir, "answer.txt")
 		if tc.file != nil {
-			if err := os.WriteFile(cfg, tc.file, 0o600); err != nil {
+			if err := forksafe.WriteFile(cfg, tc.file, 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -250,7 +251,7 @@ $edited = Edit-ConfigKey -Text $text -Section 'base' -Key 'image' -Value $args[2
 		}},
 	} {
 		in, out := filepath.Join(dir, "in.json"), filepath.Join(dir, "out.json")
-		if err := os.WriteFile(in, []byte(tc.in), 0o600); err != nil {
+		if err := forksafe.WriteFile(in, []byte(tc.in), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		runSuiteScript(t, pwsh, driver, in, out, lie)
@@ -302,7 +303,7 @@ func TestGetSuiteBaseAsksAScratchHomeForTheSuitesBase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(suite, doc, 0o600); err != nil {
+	if err := forksafe.WriteFile(suite, doc, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var code int
@@ -311,7 +312,7 @@ func TestGetSuiteBaseAsksAScratchHomeForTheSuitesBase(t *testing.T) {
 		t.Fatalf("config --json answered %d: %s", code, report)
 	}
 	answered := filepath.Join(root, "report.json")
-	if err := os.WriteFile(answered, []byte(report), 0o600); err != nil {
+	if err := forksafe.WriteFile(answered, []byte(report), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	scratch := filepath.Join(root, "scratch")

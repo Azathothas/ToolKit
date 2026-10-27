@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // museAgentBase is a configuration carrying the muse agent and one grant of a
@@ -169,7 +171,7 @@ func TestALauncherIsWrittenOnlyOverOneOfThisToolsBuilds(t *testing.T) {
 	}
 
 	foreign := []byte("somebody else's muse\n")
-	if err := os.WriteFile(launcher, foreign, 0o755); err != nil {
+	if err := forksafe.WriteFile(launcher, foreign, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.apply(context.Background(), b, nil); err == nil || !strings.Contains(err.Error(), "not a build of wsl-toolkit") {
@@ -194,7 +196,7 @@ func TestAnAgentsArgumentsReachItAsWritten(t *testing.T) {
 		t.Skip("sh is not on PATH")
 	}
 	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "muse"), []byte("#!/bin/sh\nfor a in \"$@\"; do printf '[%s]\\n' \"$a\"; done\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(bin, "muse"), []byte("#!/bin/sh\nfor a in \"$@\"; do printf '[%s]\\n' \"$a\"; done\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	args := []string{"exec", "it's", `say "hi"`, "$HOME", "`id`", "*", "two  spaces", ""}
@@ -271,7 +273,7 @@ func TestALauncherAnotherProgramHasTakenTheNameOfIsReported(t *testing.T) {
 func TestTheLauncherCheckReportsEveryFactRatherThanTheFirst(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "omp.exe")
-	if err := os.WriteFile(path, []byte("not a build of this tool"), 0o755); err != nil {
+	if err := forksafe.WriteFile(path, []byte("not a build of this tool"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	h := &agentLauncherHost{agent: "omp", dir: dir, self: path}

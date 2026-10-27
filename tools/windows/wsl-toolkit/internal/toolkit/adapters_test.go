@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 var (
@@ -150,7 +152,7 @@ func TestTheMuseInstallerRunsOnlyWhileItsDigestIsApproved(t *testing.T) {
 	}
 	write := func(path, body string) {
 		t.Helper()
-		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		if err := forksafe.WriteFile(path, []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -264,7 +266,7 @@ func TestTheHerdrReporterIsRegisteredWhereMuseReadsIt(t *testing.T) {
 	}
 	write := func(path, body string) {
 		t.Helper()
-		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		if err := forksafe.WriteFile(path, []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -369,7 +371,7 @@ func TestTheHerdrReporterIsRegisteredWhereMuseReadsIt(t *testing.T) {
 	own := `{"schema_version":1,"theme":"dark","hooks":{"Stop":[` +
 		`{"matcher":"","hooks":[{"type":"command","command":"/opt/own/stop.sh"}]},` +
 		`{"matcher":"","hooks":[{"type":"command","command":"/old/home/.local/share/wsl-toolkit/herdr-agent-state.sh"},{"type":"command","command":"/opt/own/also.sh"}]}]}}`
-	if err := os.WriteFile(settings, []byte(own), 0o600); err != nil {
+	if err := forksafe.WriteFile(settings, []byte(own), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if code, out = run(); code != 0 {
@@ -386,7 +388,7 @@ func TestTheHerdrReporterIsRegisteredWhereMuseReadsIt(t *testing.T) {
 	}
 
 	for name, body := range map[string]string{"no schema_version": `{"theme":"dark"}`, "not JSON": `{`} {
-		if err := os.WriteFile(settings, []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(settings, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		code, out = run()
@@ -429,7 +431,7 @@ func TestEveryStoredBaseFieldSurvivesLoading(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "wsl-toolkit.json")
-	if err := os.WriteFile(path, body, 0o600); err != nil {
+	if err := forksafe.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("WSL_TOOLKIT_HOME", filepath.Join(dir, "state"))
@@ -594,7 +596,7 @@ func TestTheHerdrHostHalfIsCheckedBeforeItConnects(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p.key), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p.key, []byte("key"), 0o600); err != nil {
+	if err := forksafe.WriteFile(p.key, []byte("key"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.apply(context.Background(), b, facts); err != nil {
@@ -701,7 +703,7 @@ func TestACarriedFileIsNotWrittenOverSomethingElse(t *testing.T) {
 	if _, wrote, err = WriteShipped("tmux.conf", dir, false); err != nil || wrote {
 		t.Errorf("writing the same bytes again answered (%v, %v); want no write and no error", wrote, err)
 	}
-	if err := os.WriteFile(dest, []byte("the operator edited this\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(dest, []byte("the operator edited this\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := WriteShipped("tmux.conf", dir, false); err == nil {

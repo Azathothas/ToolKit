@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-196: registry mirrors and an engine proxy, set from the host -----------
@@ -403,7 +405,7 @@ func TestBaseStatusReportsTheRegistryKeyOnlyWhereItIsSet(t *testing.T) {
 func TestAnEmptyRegistryKeyLoadsAsNone(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "wsl-toolkit.json")
-	if err := os.WriteFile(path, []byte(`{"schema":"`+ConfigSchema+`","base":{"registry":{}},"jobs":{"container_lifecycle":"persistent"}}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(`{"schema":"`+ConfigSchema+`","base":{"registry":{}},"jobs":{"container_lifecycle":"persistent"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("WSL_TOOLKIT_HOME", filepath.Join(dir, "state"))

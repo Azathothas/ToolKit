@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-167: the default base's two names, and which home may change it -------
@@ -64,7 +66,7 @@ func (c *defaultBaseCase) writeConfig(t *testing.T, body string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(own, []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(own, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -192,7 +194,7 @@ func ownedElsewhere(t *testing.T, name string) (*fakeHost, *defaultBaseCase, str
 		t.Fatal(err)
 	}
 	disk := filepath.Join(owner, "ext4.vhdx")
-	if err := os.WriteFile(disk, []byte("the owner's base"), 0o600); err != nil {
+	if err := forksafe.WriteFile(disk, []byte("the owner's base"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	h.say(t, "registered", name)
@@ -255,7 +257,7 @@ func TestAHomeThatDoesNotOwnTheBaseUsesItAndChangesNothing(t *testing.T) {
 			}
 			sshConfig := filepath.Join(os.Getenv(SSHDirEnv), "config")
 			owners := withMarkedBlock(nil, name, []string{"Host " + name})
-			if err := os.WriteFile(sshConfig, owners, 0o600); err != nil {
+			if err := forksafe.WriteFile(sshConfig, owners, 0o600); err != nil {
 				t.Fatal(err)
 			}
 			h.stageGuest(t, "verify=ok", "binfmt=ok")
@@ -460,7 +462,7 @@ func TestTheLeftoverGuardSeesThroughALink(t *testing.T) {
 		t.Fatal(err)
 	}
 	disk := filepath.Join(real, "base", "ext4.vhdx")
-	if err := os.WriteFile(disk, []byte("a registered base's disk"), 0o600); err != nil {
+	if err := forksafe.WriteFile(disk, []byte("a registered base's disk"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	h := newFakeHost(t)
@@ -553,7 +555,7 @@ func TestAHelperGuestChangesNothingOnlyTheOwnerMay(t *testing.T) {
 			roomyVolume(t, 1<<40)
 			sshConfig := filepath.Join(os.Getenv(SSHDirEnv), "config")
 			owners := withMarkedBlock(nil, fakeBaseName, []string{"Host " + fakeBaseName})
-			if err := os.WriteFile(sshConfig, owners, 0o600); err != nil {
+			if err := forksafe.WriteFile(sshConfig, owners, 0o600); err != nil {
 				t.Fatal(err)
 			}
 			h.stageGuest(t, tc.guest...)
@@ -652,7 +654,7 @@ func TestARedirectedProcessIsRefusedTheChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	disk = filepath.Join(b.Dir(), "ext4.vhdx")
-	if err := os.WriteFile(disk, []byte("the disk of a working base"), 0o600); err != nil {
+	if err := forksafe.WriteFile(disk, []byte("the disk of a working base"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	h.say(t, "disks", fakeBaseName+"\t"+b.Dir())

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -35,7 +36,7 @@ func endedJob(t *testing.T, home, id string, exit int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "jobs", id, "stdout.log"), []byte("from the job\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "jobs", id, "stdout.log"), []byte("from the job\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	res := toolkit.JobResult{ID: id, Exit: exit}
@@ -200,7 +201,7 @@ func TestAPrefixAnOldHelperRefusesIsRefusedHere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()

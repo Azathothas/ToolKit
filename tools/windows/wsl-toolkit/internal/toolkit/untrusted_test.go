@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- a .git the caller did not write never runs a program ---------------------
@@ -30,13 +32,13 @@ func plantedHook(t *testing.T) (root, marker string) {
 	}
 	hook := filepath.Join(t.TempDir(), "hook.sh")
 	body := "#!/bin/sh\nprintf ran > '" + filepath.ToSlash(marker) + "'\n"
-	if err := os.WriteFile(hook, []byte(body), 0o755); err != nil {
+	if err := forksafe.WriteFile(hook, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := exec.Command(git, "-C", root, "config", "core.fsmonitor", filepath.ToSlash(hook)).CombinedOutput(); err != nil {
 		t.Fatalf("git config: %v: %s", err, out)
 	}
-	if err := os.WriteFile(filepath.Join(root, "run.sh"), []byte("echo hi\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, "run.sh"), []byte("echo hi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := exec.Command(git, "-C", root, "add", "run.sh").CombinedOutput(); err != nil {

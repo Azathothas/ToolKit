@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-184: session ids are held to the processes their launch recorded ------
@@ -65,7 +67,7 @@ func newSessionShell(t *testing.T) sessionShell {
 	s := sessionShell{sh: sh, home: t.TempDir(), noScope: t.TempDir()}
 	// ⛔ No scope, as the process-group case says: a scope's own signal would
 	// end what this case proves the group kill does not reach.
-	if err := os.WriteFile(filepath.Join(s.noScope, "systemd-run"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(s.noScope, "systemd-run"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -180,7 +182,7 @@ func TestASessionFromAnotherBootIsGoneAndNotSignalled(t *testing.T) {
 	}
 	// ⚠ The payload outlives the case, as the bystander does, and the cleanup
 	// ends its group.
-	if err := os.WriteFile(filepath.Join(dir, "payload.sh"), []byte("sleep 600\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "payload.sh"), []byte("sleep 600\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out, stderr, code, _ := s.run(t, sessionLaunchScript(dir, "~", 0, time.Second), 30*time.Second)
@@ -222,13 +224,13 @@ func TestASessionFromAnotherBootIsGoneAndNotSignalled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "boot"), []byte(boot+" "+strconv.FormatUint(n+1, 10)+"\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "boot"), []byte(boot+" "+strconv.FormatUint(n+1, 10)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if st := s.state(t, dir); st.Alive || st.Lost != SessionLostRestart || st.Exit != nil {
 		t.Fatalf("a session from an earlier start of the distribution, on this boot, reads as %+v", st)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "boot"), []byte("00000000-0000-0000-0000-000000000000 "+initStart+"\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "boot"), []byte("00000000-0000-0000-0000-000000000000 "+initStart+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if st := s.state(t, dir); st.Alive || st.Lost != SessionLostRestart || st.Exit != nil {
@@ -264,7 +266,7 @@ func TestASessionIdThatNamesAnotherProcessIsNotItsOwn(t *testing.T) {
 			t.Fatal(err)
 		}
 		for f, body := range files {
-			if err := os.WriteFile(filepath.Join(dir, f), []byte(body+"\n"), 0o600); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(dir, f), []byte(body+"\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -309,7 +311,7 @@ func (s sessionShell) stage(t *testing.T, name string, files map[string]string) 
 		t.Fatal(err)
 	}
 	for f, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, f), []byte(body+"\n"), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, f), []byte(body+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -360,7 +362,7 @@ func standInWsl(t *testing.T) *Wsl {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "wsl")
 	body := "#!/bin/sh\nwhile [ \"$#\" -gt 0 ] && [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n"
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+	if err := forksafe.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return &Wsl{Path: path}

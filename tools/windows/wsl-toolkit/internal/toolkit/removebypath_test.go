@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-117: a tree Go's removal cannot open is removed entry by entry --------
@@ -35,7 +37,7 @@ func TestRemoveInsideRemovesATreeTheFirstRemovalCannotOpen(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		if err := forksafe.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -53,7 +55,7 @@ func TestTheFallbackRemovesALinkAndKeepsItsTarget(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
 	victim := filepath.Join(outside, "keep.txt")
-	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+	if err := forksafe.WriteFile(victim, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	job := filepath.Join(root, "job")

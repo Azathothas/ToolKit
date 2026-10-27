@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // staged is the bytes a row's file holds before the row is taken.
@@ -20,10 +22,10 @@ func row(t *testing.T, name string, body []byte) (file, with string) {
 	t.Helper()
 	dir := t.TempDir()
 	with, file = filepath.Join(dir, "with"), filepath.Join(dir, "file")
-	if err := os.WriteFile(with, body, 0o600); err != nil {
+	if err := forksafe.WriteFile(with, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, []byte(staged), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte(staged), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(NameEnv, name)
@@ -124,7 +126,7 @@ func TestAChildTakesTheBytesAndWritesNoReceipt(t *testing.T) {
 // would otherwise write its bytes into the next row's copy.
 func TestAFileNotAsStagedTakesNoReceipt(t *testing.T) {
 	file, with := row(t, "verify.sh", []byte("the row's bytes\n"))
-	if err := os.WriteFile(file, []byte("a later row's bytes\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte("a later row's bytes\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err := Take(func(string, []byte) error { return nil })

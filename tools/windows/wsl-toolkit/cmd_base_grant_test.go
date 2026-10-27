@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -24,7 +25,7 @@ func grantConfigFile(t *testing.T) string {
 	toolkit.SelectedInstance = toolkit.Instance{Name: "grants"}
 	path := filepath.Join(t.TempDir(), "config.json")
 	body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-grants","automount":"off","interop":"off"}}`
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	toolkit.ExplicitConfigPath = path

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // indexOf is where a call first appears in a fake's sequence, or -1.
@@ -98,7 +100,7 @@ func TestTheSweepRemovesOnlyEmptyDriveLetters(t *testing.T) {
 	run := func(mnt string) (string, string, int) {
 		t.Helper()
 		mounts := filepath.Join(t.TempDir(), "mounts")
-		if err := os.WriteFile(mounts, []byte("none / ext4 rw 0 0\n"), 0o644); err != nil {
+		if err := forksafe.WriteFile(mounts, []byte("none / ext4 rw 0 0\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		script := string(drivesScript)

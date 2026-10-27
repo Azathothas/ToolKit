@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-202: a grant's target is made only where it names ------------------------------
@@ -254,7 +256,7 @@ func TestATargetIsMadeOnlyWhereItNames(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(mounts, []byte("D:/src "+filepath.Join(ws, "live")+" drvfs rw,noatime 0 0\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(mounts, []byte("D:/src "+filepath.Join(ws, "live")+" drvfs rw,noatime 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	section := strings.ReplaceAll(markedSection(t, grantsScript, "each target, where it names"), "/proc/mounts", mounts)
@@ -304,7 +306,7 @@ func TestATargetIsMadeOnlyWhereItNames(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "nothing"), filepath.Join(ws, "dangling")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(ws, "file"), []byte("a file\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(ws, "file"), []byte("a file\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// ⚠ EACH REFUSAL SAYS WHAT STANDS THERE. Every one read "a link or not a directory"
@@ -449,17 +451,17 @@ func TestTheVerifierNamesABlockThatNests(t *testing.T) {
 		dir := t.TempDir()
 		at := shellPath(t, dir)
 		if fstab != "" {
-			if err := os.WriteFile(filepath.Join(dir, "fstab"), []byte(fstab), 0o644); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(dir, "fstab"), []byte(fstab), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if err := os.WriteFile(filepath.Join(dir, "owners"), []byte(owners), 0o644); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, "owners"), []byte(owners), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		script := strings.ReplaceAll(markedSection(t, verifyScript, "the block's nesting"), "/etc/fstab", at+"/fstab")
 		script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", at+"/owners")
 		file := filepath.Join(dir, "nest.sh")
-		if err := os.WriteFile(file, []byte("set -eu\n"+script+"echo passed\n"), 0o644); err != nil {
+		if err := forksafe.WriteFile(file, []byte("set -eu\n"+script+"echo passed\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		cmd := exec.Command(sh, filepath.ToSlash(file))

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -256,7 +257,7 @@ func TestADetachedOwnerGetsTheStdinCommandAsAFile(t *testing.T) {
 func TestAnEnvFileIsReadAndAnEnvAfterItWins(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "job.env")
-	if err := os.WriteFile(file, []byte("# a comment\r\nTOKEN_PATH=/c/not/rewritten\r\nKEEP=file\r\nOVERRIDE=file\r\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte("# a comment\r\nTOKEN_PATH=/c/not/rewritten\r\nKEEP=file\r\nOVERRIDE=file\r\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	j := jobFlags{envFile: file, env: stringList{"OVERRIDE=flag"}}
@@ -278,7 +279,7 @@ func TestAnEnvFileIsReadAndAnEnvAfterItWins(t *testing.T) {
 func TestBaseExecVariablesArePartOfTheCommand(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "exec.env")
-	if err := os.WriteFile(file, []byte("FROM_FILE=a b\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte("FROM_FILE=a b\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	e := baseExecFlags{command: `echo "$FROM_FILE $FROM_FLAG"`, envFile: file, env: stringList{"FROM_FLAG=$(touch /tmp/x)"}, dir: "~"}
@@ -306,7 +307,7 @@ func TestAProjectsJobSettingsReachEveryJob(t *testing.T) {
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	root := t.TempDir()
 	body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit"},"jobs":{"container_lifecycle":"ephemeral","exclude":["target",".git"],"gitignore":true}}`
-	if err := os.WriteFile(filepath.Join(root, toolkit.WorkingConfigName), []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, toolkit.WorkingConfigName), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	previous, err := os.Getwd()

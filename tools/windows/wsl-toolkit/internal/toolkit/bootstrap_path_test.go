@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // shippedBootstrap is the bootstrap.sh this executable carries, which is what
@@ -40,10 +42,10 @@ func TestBootstrapPutsItsPrefixAfterTheSystemPath(t *testing.T) {
 	before := "export PATH=\"" + prefix + "/bin:$PATH\""
 	after := "export PATH=\"$PATH:" + prefix + "/bin\""
 	profile := "# the account's own\numask 022\n\n# Added by bootstrap.\n" + before + "\nalias ll='ls -l'\n"
-	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte(profile), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, ".profile"), []byte(profile), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".bash_profile"), []byte(before+"\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, ".bash_profile"), []byte(before+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	harness := "set -eu\nSELF=bootstrap\nDRY_RUN=0\nPREFIX='" + prefix + "'\n" +

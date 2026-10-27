@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // ⛔ THE PROFILE'S OWN MECHANISMS HAD NO CASE IN THE GATE. They were driven across
@@ -27,7 +29,7 @@ func profileUnderSh(t *testing.T, args ...string) (string, string) {
 	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "shell-profile.sh")
-	if err := os.WriteFile(path, body, 0o644); err != nil {
+	if err := forksafe.WriteFile(path, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	home := filepath.Join(dir, "home")
@@ -63,7 +65,7 @@ func profilePATH(t *testing.T, in string, off bool, interactive bool) string {
 	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "shell-profile.sh")
-	if err := os.WriteFile(path, body, 0o644); err != nil {
+	if err := forksafe.WriteFile(path, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	home := filepath.Join(dir, "home")

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- the base's lifecycle, the audit's second pass: WSL-169, WSL-172, WSL-175, WSL-177
@@ -189,7 +191,7 @@ func leftoverWithDisk(t *testing.T, h *fakeHost) (*Base, *sayings, string) {
 		t.Fatal(err)
 	}
 	disk := filepath.Join(b.Dir(), "ext4.vhdx")
-	if err := os.WriteFile(disk, []byte("the disk of a base whose registration was lost"), 0o600); err != nil {
+	if err := forksafe.WriteFile(disk, []byte("the disk of a base whose registration was lost"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return b, s, disk
@@ -202,7 +204,7 @@ func TestARecordNamingAnotherDistributionKeepsItsDisk(t *testing.T) {
 	b, _, disk := leftoverWithDisk(t, h)
 	h.engine(t, true)
 	roomyVolume(t, 1<<40)
-	if err := os.WriteFile(b.recordPath(), []byte(`{"schema":"wsl-toolkit-base/1","name":"wsl-toolkit-renamed","image":"`+DefaultBaseImage+`","user":"agent"}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(b.recordPath(), []byte(`{"schema":"wsl-toolkit-base/1","name":"wsl-toolkit-renamed","image":"`+DefaultBaseImage+`","user":"agent"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := b.EnsureWith(context.Background(), false, false)
@@ -278,7 +280,7 @@ func TestInstallChangedFailsWhenTheFileCannotBeWritten(t *testing.T) {
 		t.Run(filepath.Base(sh), func(t *testing.T) {
 			dir := t.TempDir()
 			next := filepath.Join(dir, "wsl.conf.new")
-			if err := os.WriteFile(next, []byte("a\n"), 0o644); err != nil {
+			if err := forksafe.WriteFile(next, []byte("a\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			dest := filepath.Join(dir, "missing", "wsl.conf")

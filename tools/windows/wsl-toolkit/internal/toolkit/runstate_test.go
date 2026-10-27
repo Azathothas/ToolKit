@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-178: the engine's run state is per boot, and it lives on the disk ------
@@ -59,7 +61,7 @@ func stagedConmon(t *testing.T, proc string, uid int) {
 		"comm":   "conmon\n",
 		"status": "Name:\tconmon\nState:\tS (sleeping)\nUid:\t" + u + "\t" + u + "\t" + u + "\t" + u + "\n",
 	} {
-		if err := os.WriteFile(filepath.Join(p, name), []byte(body), 0o644); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(p, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -89,7 +91,7 @@ func TestTheStaleCheckClearsAStateAnEarlierStartLeft(t *testing.T) {
 	stage := func(mark string) staleHarness {
 		h := newStaleHarness(t, boot+"\n", "")
 		if mark != "" {
-			if err := os.WriteFile(filepath.Join(h.root, startMark), []byte(mark+"\n"), 0o600); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(h.root, startMark), []byte(mark+"\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -259,7 +261,7 @@ func TestTheVerifierReadsTheRunStatesBootBesideThisOne(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(dir, "libpod", "tmp"), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, "libpod", "tmp", "alive"), []byte(c.alive), 0o600); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(dir, "libpod", "tmp", "alive"), []byte(c.alive), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -375,7 +377,7 @@ func newBootScriptHost(t *testing.T) bootScriptHost {
 	} {
 		writeStandIn(t, h.bin, name, body)
 	}
-	if err := os.WriteFile(filepath.Join(d, "proc", "mounts"), []byte("none "+shellPath(t, d)+"/mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(d, "proc", "mounts"), []byte("none "+shellPath(t, d)+"/mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return h
@@ -427,7 +429,7 @@ func TestTheBootScriptChecksTheRunStateAsTheAccount(t *testing.T) {
 	if code != 0 || !strings.Contains(bootLog, "is not written yet") {
 		t.Fatalf("a start before base ensure wrote the check: exit %d, log %q", code, bootLog)
 	}
-	if err := os.WriteFile(h.rs, []byte("echo \"run-state ran\" >> \"$FAKE_LOG\"\nexit 3\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(h.rs, []byte("echo \"run-state ran\" >> \"$FAKE_LOG\"\nexit 3\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	path := h.bin + string(os.PathListSeparator) + os.Getenv("PATH")
@@ -445,7 +447,7 @@ func TestTheBootScriptChecksTheRunStateAsTheAccount(t *testing.T) {
 		t.Errorf("a base that keeps /mnt/wsl unmounted it at its start:\n%s", calls)
 	}
 
-	if err := os.WriteFile(filepath.Join(h.dir, "mnt", "wsl", "resolv.conf"), []byte("nameserver 192.0.2.53\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(h.dir, "mnt", "wsl", "resolv.conf"), []byte("nameserver 192.0.2.53\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, calls, _ = h.run("off", path)

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-188: a sealed base's resolver ----------------------------------------
@@ -33,10 +35,10 @@ func sharedResolverRun(t *testing.T, mounts string) (string, string) {
 		}
 	}
 	etc := filepath.Join(d, "etc", "resolv.conf")
-	if err := os.WriteFile(etc, []byte("nameserver 198.51.100.1\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(etc, []byte("nameserver 198.51.100.1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(d, "mounts"), []byte(mounts), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(d, "mounts"), []byte(mounts), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	at := shellPath(t, d)
@@ -190,10 +192,10 @@ func TestASealedBaseThatCannotResolveIsNotJudged(t *testing.T) {
 	}
 	d := t.TempDir()
 	at := shellPath(t, d)
-	if err := os.WriteFile(filepath.Join(d, "resolv.conf"), []byte("nameserver 192.0.2.53\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(d, "resolv.conf"), []byte("nameserver 192.0.2.53\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(d, "mounts"), []byte("none / ext4 rw 0 0\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(d, "mounts"), []byte("none / ext4 rw 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	section := strings.NewReplacer("/etc/resolv.conf", at+"/resolv.conf", "/proc/mounts", at+"/mounts").
@@ -227,7 +229,7 @@ func TestASealedBaseThatCannotResolveIsNotJudged(t *testing.T) {
 	if asked, _ := os.ReadFile(filepath.Join(d, "asked")); string(asked) != "hosts "+registryName(VerifyImage)+"\n" {
 		t.Errorf("the verifier resolved %q, want the probe's registry %s", asked, registryName(VerifyImage))
 	}
-	if err := os.WriteFile(filepath.Join(d, "getent.ok"), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(d, "getent.ok"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if code, stderr := run(); code != 0 {

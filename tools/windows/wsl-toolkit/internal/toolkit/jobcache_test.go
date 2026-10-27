@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestACacheIsNamedAndMountedWhereAJobCanUseIt is WSL-122's spelling: a name
@@ -112,7 +114,7 @@ func TestTheCacheCheckMakesAMissingVolumeInARealShell(t *testing.T) {
 		"  'volume create') if [ -e " + shellQuote(filepath.Join(dir, "race")) + " ]; then : > " + shellQuote(filepath.Join(dir, "exists")) +
 		"; echo 'already exists' >&2; exit 1; fi\n" +
 		"    [ ! -e " + shellQuote(filepath.Join(dir, "refuse")) + " ] || { echo 'no space' >&2; exit 1; } ;;\nesac\n"
-	if err := os.WriteFile(filepath.Join(dir, "podman"), []byte(fake), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "podman"), []byte(fake), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	run := func() (int, string, string) {
@@ -129,7 +131,7 @@ func TestTheCacheCheckMakesAMissingVolumeInARealShell(t *testing.T) {
 	if code, out, calls := run(); code != 0 || !strings.Contains(calls, "volume create --label wsl-toolkit.owner=wsl-toolkit --label wsl-toolkit.cache=pip wtk-cache-pip") {
 		t.Errorf("a missing volume: exit %d, %s, calls:\n%s", code, out, calls)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "exists"), nil, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "exists"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if code, _, calls := run(); code != 0 || strings.Contains(calls, "create") {
@@ -138,13 +140,13 @@ func TestTheCacheCheckMakesAMissingVolumeInARealShell(t *testing.T) {
 	if err := os.Remove(filepath.Join(dir, "exists")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "refuse"), nil, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "refuse"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if code, out, _ := run(); code != 125 || !strings.Contains(out, "--cache pip") || !strings.Contains(out, "no space") {
 		t.Errorf("a volume that cannot be made: exit %d, %q", code, out)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "race"), nil, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "race"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if code, out, _ := run(); code != 0 {
@@ -168,7 +170,7 @@ func TestACacheWithNoLabelIsStillListed(t *testing.T) {
 		"  'volume ls') case \"$*\" in *--filter*) echo wtk-cache-labelled ;; *) printf 'wtk-cache-labelled\\nwtk-cache-bare\\nsomebody\\n' ;; esac ;;\n" +
 		"  'volume inspect') echo " + shellQuote(dir) + " ;;\n" +
 		"  'unshare du') shift; exec \"$@\" ;;\nesac\n"
-	if err := os.WriteFile(filepath.Join(dir, "podman"), []byte(fake), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "podman"), []byte(fake), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh, "-c", cacheListScript())

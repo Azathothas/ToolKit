@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/embedswap"
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // embedOrderEnv starts this binary as a fake that prints verify.sh and stops.
@@ -48,10 +49,10 @@ func rowFiles(t *testing.T, body []byte) (with, file string) {
 	t.Helper()
 	dir := t.TempDir()
 	with, file = filepath.Join(dir, "with"), filepath.Join(dir, "verify.sh")
-	if err := os.WriteFile(with, body, 0o600); err != nil {
+	if err := forksafe.WriteFile(with, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, []byte("as it was\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte("as it was\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return with, file

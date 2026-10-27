@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -239,7 +240,7 @@ func TestAJobTheCapRefusesAnswersThatItNeverStarted(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer busy.Release()
-	if err := os.WriteFile(filepath.Join(root, "jobs", "aaaaaaaaaaaaaaaa", "admitted"), []byte("now\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, "jobs", "aaaaaaaaaaaaaaaa", "admitted"), []byte("now\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	me, err := toolkit.ClaimJob(root, cliJobID)
@@ -446,7 +447,7 @@ func writeHelperEndpoint(t *testing.T, home string, srv *httptest.Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

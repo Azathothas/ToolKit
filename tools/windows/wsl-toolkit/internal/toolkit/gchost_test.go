@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-200: gc cleans this machine's half when the base is gone -------------
@@ -55,7 +57,7 @@ func newNoBaseHome(t *testing.T) *noBaseHome {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(n.incoming, "stdout.log"), []byte("out\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(n.incoming, "stdout.log"), []byte("out\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	old := time.Now().Add(-48 * time.Hour).UTC()

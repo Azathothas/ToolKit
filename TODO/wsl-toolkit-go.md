@@ -17513,3 +17513,40 @@ Exit 0, with cases where a bound is cut to the deadline, a late try is refused b
 ## Closing
 
 Open.
+
+## WSL-205. A stand-in a case wrote can be busy when it runs, so the go job fails by chance
+
+**Source** the `WSL-204` Linux proof, whose go job failed in a mount helper case with "Text file busy"
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A parallel case writes a stand-in and runs it. Another case can start a process while the stand-in is open for writing, and that child keeps the descriptor until it execs. Running the stand-in in that window fails with `ETXTBSY`, so the go job goes red with no defect. The talking-child case has the same exposure to load as the stall case had.
+
+## Premise
+
+Read at `7269e63`: `runMountHelper` seeds `sbin/mount.drvfs` on every call, and `grantsCase` makes the case parallel. Go issue 22315 names the race. `TestDriveAChildThatKeepsTalkingIsNotKilled` ticks every second against a two second window.
+
+## Approach
+
+A test-only package, `internal/forksafe`, writes with `syscall.ForkLock` held for reading. Every fork takes it for writing. Every test file of the module writes through it, and a case refuses `os.WriteFile` in any of them. The talking-child case is asked again with a wider window, as the stall case is.
+
+## Consumers
+
+None. Test files only.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where a write waits while a fork holds the lock, and the scan of every test file.
+
+---
+
+## Closing
+
+Open.

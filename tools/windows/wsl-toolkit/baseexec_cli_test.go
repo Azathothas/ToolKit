@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -135,7 +136,7 @@ func TestAWindowsDirectoryIsMappedToWhereTheBaseSeesIt(t *testing.T) {
 func TestBaseExecReadsItsInputsAndArtifactsFromTheCurrentDirectory(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.WriteFile(filepath.Join(dir, "app.toml"), []byte("x"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "app.toml"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ins, err := baseExecFlags{inputs: stringList{"conf/app.toml=app.toml"}}.execInputs()
@@ -167,7 +168,7 @@ func TestBaseExecReadsAnExecutableInputBesideItsInputs(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	for name, body := range map[string]string{"app.toml": "x\r\n", "run.sh": "#!/bin/sh\r\ntrue\r\n", "data.bin": "plain\r\n"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

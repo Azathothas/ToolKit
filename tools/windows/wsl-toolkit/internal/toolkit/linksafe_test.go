@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-201: root writes nothing in the account's home -------------------------------
@@ -1185,7 +1187,7 @@ esac
 			}
 			body += "exec " + shellQuote(real) + " \"$@\"\n"
 		}
-		if err := os.WriteFile(filepath.Join(bin, tool), []byte(body), 0o755); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(bin, tool), []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1223,7 +1225,7 @@ func plant(t *testing.T, link string, p planted) planted {
 			t.Fatal(err)
 		}
 	case !p.absent:
-		if err := os.WriteFile(p.target, []byte(p.body), 0o644); err != nil {
+		if err := forksafe.WriteFile(p.target, []byte(p.body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1582,7 +1584,7 @@ func provisionHome(t *testing.T, dir, home, outside string, settings bool) (stri
 		t.Fatal(err)
 	}
 	rootHands(t, bin, "", "")
-	if err := os.WriteFile(filepath.Join(bin, "chown"), []byte(inodeChown), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(bin, "chown"), []byte(inodeChown), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	accountTools(t, account)
@@ -1645,7 +1647,7 @@ func TestProvisioningLeavesTheHomeToTheAccount(t *testing.T) {
 	confPath := filepath.Join(home, ".config", "containers", "containers.conf.d", "10-wsl-toolkit.conf")
 	conf := plant(t, confPath, planted{target: filepath.Join(outside, "conf"), body: "a file outside the home\n", mode: 0o640})
 	old := filepath.Join(home, ".config", "containers", "containers.conf")
-	if err := os.WriteFile(old, []byte("# Written by wsl-toolkit. cgroupfs works with either configured init.\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(old, []byte("# Written by wsl-toolkit. cgroupfs works with either configured init.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	given := homeDirs(t, home)
@@ -1700,14 +1702,14 @@ func TestProvisioningGivesTheAccountNoFileAHardLinkNames(t *testing.T) {
 	}
 	roots := filepath.Join(outside, "roots-own-file")
 	const rootsBody = "a file of root's\n"
-	if err := os.WriteFile(roots, []byte(rootsBody), 0o640); err != nil {
+	if err := forksafe.WriteFile(roots, []byte(rootsBody), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Link(roots, filepath.Join(home, ".cache")); err != nil {
 		t.Skipf("no hard link could be made here: %v", err)
 	}
 	state := filepath.Join(home, ".local", "state")
-	if err := os.WriteFile(state, []byte("a file of the account's\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(state, []byte("a file of the account's\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	refused := map[string]string{inode(t, roots): "the file .cache is a hard link to", inode(t, state): ".local/state"}
@@ -1751,7 +1753,7 @@ func TestProvisioningNamesAnAccountNothingCanBecome(t *testing.T) {
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(bin, "chown"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(bin, "chown"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	script := "set -eu\nTK_USER=agent\nTK_GROUP=agent\nTK_HOME=" + shellPath(t, filepath.Join(dir, "home")) + "\n" +
@@ -1759,7 +1761,7 @@ func TestProvisioningNamesAnAccountNothingCanBecome(t *testing.T) {
 		markedSection(t, provisionScript, "as the account") +
 		markedSection(t, provisionScript, "the account's XDG directories")
 	file := filepath.Join(dir, "xdg.sh")
-	if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
+	if err := forksafe.WriteFile(file, []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh, filepath.ToSlash(file))
@@ -1787,14 +1789,14 @@ func TestProvisioningNamesAFileWhereTheEngineSettingsGo(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(home, filepath.FromSlash(rel))), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(home, filepath.FromSlash(rel)), []byte("a file of the account's\n"), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(home, filepath.FromSlash(rel)), []byte("a file of the account's\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.MkdirAll(standIns, 0o755); err != nil {
 			t.Fatal(err)
 		}
 		// ⭐ Root's chown changes nothing here, and runuser is the account: the host itself.
-		if err := os.WriteFile(filepath.Join(standIns, "chown"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(standIns, "chown"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		at := shellPath(t, home)
@@ -1804,7 +1806,7 @@ func TestProvisioningNamesAFileWhereTheEngineSettingsGo(t *testing.T) {
 			markedSection(t, provisionScript, "as the account") +
 			markedSection(t, provisionScript, "the account's XDG directories")
 		file := filepath.Join(dir, "xdg.sh")
-		if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
+		if err := forksafe.WriteFile(file, []byte(script), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		cmd := exec.Command(sh, filepath.ToSlash(file))
@@ -1855,7 +1857,7 @@ func TestAnAccountReadThatHangsIsStopped(t *testing.T) {
 	// ⭐ runuser is the account: the host, with readers that never answer first on its PATH.
 	write := func(p, body string) {
 		t.Helper()
-		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+		if err := forksafe.WriteFile(p, []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1945,7 +1947,7 @@ func TestEnginesShLeavesTheAccountsDropInToTheAccount(t *testing.T) {
 	dropIn := plant(t, filepath.Join(home, ".config", "containers", "containers.conf.d"),
 		planted{target: filepath.Join(dir, "outside", "conf.d"), dir: true, mode: 0o755})
 	target := filepath.Join(dropIn.target, "50-wsl-toolkit-cgroup.conf")
-	if err := os.WriteFile(target, []byte("a file outside the home\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(target, []byte("a file outside the home\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	script := "say() { printf '  * %s\\n' \"$*\"; }\nrunuser() { return 1; }\nsu() { return 1; }\n" +
@@ -1976,7 +1978,7 @@ func enginesBus(t *testing.T, dir string, bus bool, become string) string {
 	if err := os.MkdirAll(filepath.Dir(dropIn), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(dropIn, []byte("[engine]\ncgroup_manager = \"systemd\"\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(dropIn, []byte("[engine]\ncgroup_manager = \"systemd\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	section := strings.ReplaceAll(markedSection(t, enginesScript, "the account's drop-in, by its session bus"),
@@ -1986,7 +1988,7 @@ func enginesBus(t *testing.T, dir string, bus bool, become string) string {
 		markedSection(t, enginesScript, "as the account") +
 		markedSection(t, enginesScript, "the account's engine drop-in") + section
 	file := filepath.Join(t.TempDir(), "bus.sh")
-	if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
+	if err := forksafe.WriteFile(file, []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh, filepath.ToSlash(file))
@@ -2089,7 +2091,7 @@ func TestTheMuseProbeLeavesItsScratchToTheAccount(t *testing.T) {
 		launcher: "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > " + shellQuote(seen) +
 			"\nprintf '{\"stream\":{\"kind\":\"session\",\"id\":\"s-1\"}}\\n'\nprintf 'SessionStart for s-1 \\n' >> " + shellQuote(logFile) + "\n",
 	} {
-		if err := os.WriteFile(name, []byte(body), 0o755); err != nil {
+		if err := forksafe.WriteFile(name, []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -2141,12 +2143,12 @@ func TestTheMuseReporterSelfTestMakesADirectoryOfItsOwn(t *testing.T) {
 		}
 	}
 	file := filepath.Join(dir, "reporter.sh")
-	if err := os.WriteFile(file, reporter, 0o644); err != nil {
+	if err := forksafe.WriteFile(file, reporter, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	roots := filepath.Join(outside, "roots-own-file")
 	const rootsBody = "a file of root's\n"
-	if err := os.WriteFile(roots, []byte(rootsBody), 0o644); err != nil {
+	if err := forksafe.WriteFile(roots, []byte(rootsBody), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	absent := filepath.Join(outside, "made-through-a-link")

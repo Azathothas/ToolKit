@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 func TestAThrowawayNameIsThePrefixAndTheNameAlphabet(t *testing.T) {
@@ -282,13 +284,13 @@ func TestAnOriginRecordForAnotherNameIsACopyAndReadsAsNothing(t *testing.T) {
 	copied := o
 	copied.Name = "eph-b"
 	data, _ := json.Marshal(copied)
-	if err := os.WriteFile(tw.originPath("eph-a"), data, 0o600); err != nil {
+	if err := forksafe.WriteFile(tw.originPath("eph-a"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := tw.readOrigin("eph-a"); got != nil {
 		t.Errorf("a record naming another distribution was read as this one's: %+v", got)
 	}
-	if err := os.WriteFile(tw.originPath("eph-a"), []byte(`{"schema":"someone-else/1","name":"eph-a"}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(tw.originPath("eph-a"), []byte(`{"schema":"someone-else/1","name":"eph-a"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := tw.readOrigin("eph-a"); got != nil {
@@ -327,7 +329,7 @@ func TestHeldFilesSeparateLeftoversFromSnapshots(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		if err := forksafe.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -361,7 +363,7 @@ func TestHeldFilesSeparateLeftoversFromSnapshots(t *testing.T) {
 
 func TestHeldFilesReportsAnUnreadableInventoryInsteadOfAnEmptyOne(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "not-a-directory")
-	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	tw := &Throwaways{dir: path, now: time.Now}
@@ -391,7 +393,7 @@ func writeTestFile(t *testing.T, path, body string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

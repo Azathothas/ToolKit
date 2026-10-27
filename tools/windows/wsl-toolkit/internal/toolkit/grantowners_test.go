@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
@@ -21,7 +23,7 @@ func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) 
 func grantsSeed(t *testing.T, dir, fstab, mounts, owners string) func(string) string {
 	t.Helper()
 	for name, body := range map[string]string{"fstab": fstab, "mounts": mounts, "owners": owners} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -106,7 +108,7 @@ func TestAFailedModeSwitchMountsTheOldOneBack(t *testing.T) {
 	dir := t.TempDir()
 	fstab := "# wsl-toolkit mounts begin\n" + string(block) + "# wsl-toolkit mounts end\n"
 	read := grantsSeed(t, dir, fstab, liveLine(src, shared.Target, "ro"), shared.Target+" "+b64(grantsMine)+" "+b64(grantsMine)+"\n")
-	if err := os.WriteFile(filepath.Join(dir, "mount.fail"), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "mount.fail"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, err := grantsDrive(t, dir, []BaseMount{shared}, b64(shared.Target))
@@ -192,10 +194,10 @@ func TestTheVerifierLeavesAMountTheLedgerGivesAnotherFile(t *testing.T) {
 	mounts := filepath.Join(dir, "mounts")
 	owners := filepath.Join(dir, "owners")
 	theirs := "/cfg/theirs.json"
-	if err := os.WriteFile(mounts, []byte("drvfs /workspaces/theirs drvfs rw 0 0\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(mounts, []byte("drvfs /workspaces/theirs drvfs rw 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(owners, []byte("/workspaces/theirs "+b64(theirs)+" "+b64(theirs)+"\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(owners, []byte("/workspaces/theirs "+b64(theirs)+" "+b64(theirs)+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	block := mustExtract(t, "verify.sh", "mount_count=0", "done < /proc/mounts") + "\nfi\n"
@@ -446,7 +448,7 @@ func TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant(t *testing.T) {
 	h.engine(t, false)
 	theirs := "/cfg/theirs.json"
 	held := "held-mount /workspaces/theirs " + b64(theirs) + "\ngrants-complete\n"
-	if err := os.WriteFile(filepath.Join(h.state, "held"), []byte(held), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(h.state, "held"), []byte(held), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

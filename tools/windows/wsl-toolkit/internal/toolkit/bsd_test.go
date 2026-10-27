@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // bsdJoinShapes is issue 33's comment: a comment line, a blank line and a compound
@@ -434,7 +436,7 @@ func fakeHangingQemuImg(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(cache, "bsd"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cache, "bsd", BsdImageName), []byte("an image"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(cache, "bsd", BsdImageName), []byte("an image"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -547,12 +549,12 @@ func TestTheJoinShapesRunWholeThroughTheGuestSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 	disk := filepath.Join(dir, "payload.tar")
-	if err := os.WriteFile(disk, archive, 0o600); err != nil {
+	if err := forksafe.WriteFile(disk, archive, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// A copy an ended run left behind, which the extract sweeps.
 	stale := filepath.Join(dir, "tkffffffffffffffff.sh")
-	if err := os.WriteFile(stale, []byte("exit 9\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(stale, []byte("exit 9\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	name := "tk0123456789abcdef"
@@ -584,7 +586,7 @@ func TestTheJoinShapesRunWholeThroughTheGuestSteps(t *testing.T) {
 // image keeps the size it has.
 func TestTheBsdGuestDiskIsNeverSmallerThanTheImage(t *testing.T) {
 	img := filepath.Join(t.TempDir(), "guest.raw")
-	if err := os.WriteFile(img, make([]byte, 8192), 0o600); err != nil {
+	if err := forksafe.WriteFile(img, make([]byte, 8192), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := bsdGuestDisk(img, 16384); err != nil || got != 16384 {
@@ -638,7 +640,7 @@ func TestTheFilesARunLeftAreSweptByTheirShape(t *testing.T) {
 	}
 	for name := range files {
 		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		if err := forksafe.WriteFile(path, []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if name != "tk-overlay-fedcba9876543210.qcow2" {
@@ -685,7 +687,7 @@ func TestQemuImgIsFoundBesideTheEmulator(t *testing.T) {
 	emulator := filepath.Join(dir, "qemu-system-x86_64")
 	beside := filepath.Join(dir, name)
 	for _, path := range []string{emulator, beside} {
-		if err := os.WriteFile(path, []byte("x"), 0o700); err != nil {
+		if err := forksafe.WriteFile(path, []byte("x"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}

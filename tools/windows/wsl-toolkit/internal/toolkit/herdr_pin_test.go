@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestTheDefaultHerdrIsTheBuildThisRepositoryPublished runs the herdr adapter's install.sh
@@ -66,7 +68,7 @@ func TestTheDefaultHerdrIsTheBuildThisRepositoryPublished(t *testing.T) {
 	}
 	write := func(name, body string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}

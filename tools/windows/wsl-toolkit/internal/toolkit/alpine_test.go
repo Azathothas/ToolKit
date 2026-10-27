@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-198: a grant on an Alpine base survives a restart, in its mode ---------
@@ -59,7 +61,7 @@ func installMountHelper(t *testing.T, dir string) (string, int) {
 	t.Helper()
 	sh, bin := grantsShell(t)
 	run := filepath.Join(dir, "mount-helper-run.sh")
-	if err := os.WriteFile(run, []byte(mountHelperIn(t, dir)), 0o644); err != nil {
+	if err := forksafe.WriteFile(run, []byte(mountHelperIn(t, dir)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh, filepath.ToSlash(run))
@@ -274,7 +276,7 @@ func runMountHelper(t *testing.T, dir string, args ...string) (string, int) {
 		s = strings.Replace(s, r[0], r[1], 1)
 	}
 	run := filepath.Join(dir, "mount-helper.sh")
-	if err := os.WriteFile(run, []byte(mountHelperRunStandIns+s), 0o644); err != nil {
+	if err := forksafe.WriteFile(run, []byte(mountHelperRunStandIns+s), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh, append([]string{filepath.ToSlash(run)}, args...)...)
@@ -508,7 +510,7 @@ func TestEnginesShWritesWSLsMountHelper(t *testing.T) {
 		t.Helper()
 		script := "say() { printf '  * %s\\n' \"$*\"; }\n" + markedSection(t, enginesScript, "the mount helper's install") + "printf 'section-complete\\n'\n"
 		path := filepath.Join(dir, "engines-run.sh")
-		if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
+		if err := forksafe.WriteFile(path, []byte(script), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		cmd := exec.Command(sh, filepath.ToSlash(path))
@@ -586,7 +588,7 @@ setpriv() { printf 'setpriv %s\n' "$*" >> "$BG/calls"; return 1; }
 	probe := `as_account 'printf "%s %s %s\n" "$0" "$1" "$2" > "$3"' wtk-manager one two "$BG/ran"` + "\n"
 	script := standIns + "PATH=" + at + "/empty\nTK_USER=agent\n" + markedSection(t, enginesScript, "as the account") + probe
 	run := filepath.Join(d, "engines-run.sh")
-	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+	if err := forksafe.WriteFile(run, []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh, filepath.ToSlash(run))

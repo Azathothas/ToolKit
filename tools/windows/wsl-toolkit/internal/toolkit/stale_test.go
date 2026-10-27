@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestTheStaleRunStateVerdictIsReadFromWhatTheGuestSaid holds what `run`, `matrix`
@@ -185,7 +187,7 @@ func TestRunClearsAStaleBootIDBeforeItsContainer(t *testing.T) {
 	t.Setenv("WSL_TOOLKIT_HOME", home)
 	answer := "run-state stale: the engine recorded another boot of WSL\nrun-base /tmp/wsl-toolkit-run-1000 (from the engine)\n" +
 		"removed /tmp/wsl-toolkit-run-1000/containers\nremoved /tmp/wsl-toolkit-run-1000/libpod/tmp\nrepaired run-state\n"
-	if err := os.WriteFile(filepath.Join(dir, "stale-answer"), []byte(answer), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "stale-answer"), []byte(answer), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg := Config{Base: BaseConfig{Name: "wsl-toolkit-stale", Image: "docker.io/library/alpine:latest", User: "agent"}}
@@ -252,7 +254,7 @@ func newStaleHarness(t *testing.T, alive string, podmanRunRoot string) staleHarn
 		}
 	}
 	if alive != "" {
-		if err := os.WriteFile(h.root+"/libpod/tmp/alive", []byte(alive), 0o644); err != nil {
+		if err := forksafe.WriteFile(h.root+"/libpod/tmp/alive", []byte(alive), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -451,7 +453,7 @@ func TestTheStaleCheckReadsItsRecordAgainUnderTheLock(t *testing.T) {
 	// What the first caller left while the second waited.
 	firstCaller := map[string]func(h staleHarness) error{
 		"a record naming this boot": func(h staleHarness) error {
-			return os.WriteFile(h.root+"/libpod/tmp/alive", now, 0o644)
+			return forksafe.WriteFile(h.root+"/libpod/tmp/alive", now, 0o644)
 		},
 		"no record": func(h staleHarness) error { return os.RemoveAll(h.root + "/libpod/tmp") },
 	}
@@ -610,7 +612,7 @@ func TestRepairKeepsAStateAnotherCallerClearedFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(h.root+"/libpod/tmp/alive", now, 0o644); err != nil {
+	if err := forksafe.WriteFile(h.root+"/libpod/tmp/alive", now, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	release()

@@ -4,11 +4,11 @@ package main
 
 import (
 	"bytes"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -22,11 +22,11 @@ func testJobFlags() jobFlags {
 func TestAnInputIsReadAsNameThenFile(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "job.sh")
-	if err := os.WriteFile(f, []byte("true\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(f, []byte("true\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	eq := filepath.Join(dir, "b=c.toml")
-	if err := os.WriteFile(eq, []byte("k = 1\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(eq, []byte("k = 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	j := testJobFlags()
@@ -50,7 +50,7 @@ func TestAnInputIsReadAsNameThenFile(t *testing.T) {
 // every input travels inside one JSON body.
 func TestInputsOverTheHelperAreCapped(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "big")
-	if err := os.WriteFile(f, bytes.Repeat([]byte{'x'}, toolkit.MaxHelperInputBytes+1), 0o600); err != nil {
+	if err := forksafe.WriteFile(f, bytes.Repeat([]byte{'x'}, toolkit.MaxHelperInputBytes+1), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	big := []toolkit.JobInput{
@@ -60,7 +60,7 @@ func TestInputsOverTheHelperAreCapped(t *testing.T) {
 		t.Errorf("an input past the cap answered %v", err)
 	}
 	small := filepath.Join(t.TempDir(), "small")
-	if err := os.WriteFile(small, []byte("ok"), 0o600); err != nil {
+	if err := forksafe.WriteFile(small, []byte("ok"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	one := []toolkit.JobInput{

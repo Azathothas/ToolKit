@@ -8,12 +8,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // writeTinyArchive is a build's rootfs step with no host engine: a file the
 // import is handed and that nothing reads.
 func writeTinyArchive(_ context.Context, tarPath string) error {
-	return os.WriteFile(tarPath, []byte("rootfs"), 0o600)
+	return forksafe.WriteFile(tarPath, []byte("rootfs"), 0o600)
 }
 
 // buildRecords is every ledger line about this base's build, as event and note.

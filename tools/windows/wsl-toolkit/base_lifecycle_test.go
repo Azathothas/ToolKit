@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -19,7 +20,7 @@ import (
 func writeBaseRecord(t *testing.T, home, name, image string) {
 	t.Helper()
 	rec := `{"schema":"wsl-toolkit-base/1","name":"` + name + `","image":"` + image + `","user":"agent"}`
-	if err := os.WriteFile(filepath.Join(home, "base.json"), []byte(rec), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "base.json"), []byte(rec), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

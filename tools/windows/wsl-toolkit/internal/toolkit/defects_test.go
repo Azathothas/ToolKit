@@ -18,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // ⛔ EVERY TEST HERE ANSWERS A DEFECT A CONSUMER FOUND IN A PUBLISHED BINARY,
@@ -1104,7 +1106,7 @@ func TestClientSpoolSaysWhyItHasNoTranscript(t *testing.T) {
 		home := t.TempDir()
 		// A FILE where the directory has to go. MkdirAll cannot win against it,
 		// on either platform, which is what makes this deterministic.
-		if err := os.WriteFile(filepath.Join(home, "incoming"), []byte("x"), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(home, "incoming"), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		var said []string
@@ -1187,7 +1189,7 @@ func TestClientSpoolFinishYieldsToAnExistingTranscript(t *testing.T) {
 	if err := os.MkdirAll(dest, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dest, "stdout.log"), []byte("the helper's own"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dest, "stdout.log"), []byte("the helper's own"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1223,7 +1225,7 @@ func TestClientSpoolFinishReturnsTheTranscriptItCouldNotFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A FILE where `jobs` has to be a directory, so filing cannot succeed.
-	if err := os.WriteFile(filepath.Join(home, "jobs"), []byte("x"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "jobs"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1539,7 +1541,7 @@ func TestWriteFileAtomicSurvivesConcurrentWriters(t *testing.T) {
 func TestAWritersTemporaryIsNeverAnotherWritersName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	other := []byte("another writer's bytes, still in flight")
-	if err := os.WriteFile(path+".tmp", other, 0o600); err != nil {
+	if err := forksafe.WriteFile(path+".tmp", other, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeFileAtomic(path, []byte("mine"), 0o600); err != nil {
@@ -1819,7 +1821,7 @@ func TestTheSupersededCopyMessageNamesTheCommandThatRemovesIt(t *testing.T) {
 	// The sweeper is what actually removes these, so this proves the pair: the
 	// name the message promises and the name the sweeper recognises are one.
 	stale := filepath.Join(dir, previousPrefix+"2.0.1.exe")
-	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+	if err := forksafe.WriteFile(stale, []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var said []string
@@ -1835,7 +1837,7 @@ func TestTheSupersededCopyMessageNamesTheCommandThatRemovesIt(t *testing.T) {
 	// a deletion loop over somebody's directory.
 	for _, keep := range []string{"wsl-toolkit.exe", "notes.txt", "wsl-toolkit-previous.exe"} {
 		p := filepath.Join(dir, keep)
-		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		if err := forksafe.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

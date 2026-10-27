@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-125: base sync ---------------------------------------------------------
@@ -116,7 +118,7 @@ func syncHostTree(t *testing.T, files map[string]string) (string, map[string]wor
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(p, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Chtimes(p, stamp, stamp); err != nil {
@@ -281,7 +283,7 @@ func TestGitDecidesWhatDeleteKeeps(t *testing.T) {
 	run(root, "init", "-q")
 	// ⚠ *.c IS THE CHECKOUT'S RULE AND NOT THE NESTED REPOSITORY'S, so a path in
 	// the nested one asked of the checkout reads as ignored, and the case sees it.
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("target/\n*.log\n*.c\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, ".gitignore"), []byte("target/\n*.log\n*.c\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	nested := filepath.Join(root, "vendor", "lib")
@@ -289,7 +291,7 @@ func TestGitDecidesWhatDeleteKeeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	run(nested, "init", "-q")
-	if err := os.WriteFile(filepath.Join(nested, ".gitignore"), []byte("build/\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(nested, ".gitignore"), []byte("build/\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	kept, err := gitKeeps(context.Background(), root, []string{"vendor/lib"}, map[string]bool{
@@ -322,7 +324,7 @@ func TestASyncRefusesAWindowsDirectoryAndChangesNothing(t *testing.T) {
 		{"REAL|/home/user\nHOME|/home/user\nFS|ext4\nSTATE|link\n", "is a link"},
 		{"REAL|/home/user/p\nHOME|/home/user\nFS|ext4\nSTATE|dir\nE|81a4|1|1|./a.txt\n", "stopped before its end"},
 	} {
-		if err := os.WriteFile(survey, []byte(c.answer), 0o600); err != nil {
+		if err := forksafe.WriteFile(survey, []byte(c.answer), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		before := len(g.callsOrNone(t))
@@ -350,7 +352,7 @@ func TestAForcedDeleteNeverReachesTheHomeOrADrive(t *testing.T) {
 		{"/workspaces", "REAL|/workspaces\nHOME|/home/user\nFS|ext4\nW|/workspaces/p|9p\nSTATE|dir\nE|41ed|0|1|./p\nEND\n", "holds a Windows directory at /workspaces/p (9p)"},
 		{"/srv/up", "REAL|/home\nHOME|/home/user\nFS|ext4\nSTATE|dir\nE|41ed|0|1|./user\nEND\n", "which is or holds the account's home /home/user"},
 	} {
-		if err := os.WriteFile(survey, []byte(c.answer), 0o600); err != nil {
+		if err := forksafe.WriteFile(survey, []byte(c.answer), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		before := len(g.callsOrNone(t))
@@ -376,7 +378,7 @@ func TestASyncSendsTheChangeAndRemovesTheStray(t *testing.T) {
 	answer := "REAL|/home/user/p\nHOME|/home/user\nFS|ext4\nSTATE|dir\n" +
 		fmt.Sprintf("E|%x|%d|%d|./same.txt\n", same.mode, same.size, same.mtime) +
 		"E|81a4|1|1|./stray.txt\nEND\n"
-	if err := os.WriteFile(survey, []byte(answer), 0o600); err != nil {
+	if err := forksafe.WriteFile(survey, []byte(answer), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(execFakeSurveyEnv, survey)
@@ -427,7 +429,7 @@ func TestTheGuestSurveyRunsInARealShell(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(d, "sub"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(d, "sub", "a.txt"), []byte("abc"), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(d, "sub", "a.txt"), []byte("abc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("sub/a.txt", filepath.Join(d, "l")); err != nil {

@@ -25,6 +25,8 @@ tools/windows/wsl-toolkit/
                             only test files import it
   internal/parallelread     reads which parallel cases set shared state;
                             only test files import it
+  internal/forksafe         writes a test's file with no fork while it is
+                            open; only test files import it
   internal/toolkitsource    reads internal/toolkit's source, type-checked;
                             only its own test files hold code
   acceptance.ps1            real-Windows acceptance runner
@@ -148,6 +150,14 @@ this host builds, and CI's Linux job reads the rest.
 
 ⚠ **A case with a bound a loaded host can break stays serial too,** as a child
 that must never stall for 2 s. A case waits on what it needs, never on a sleep.
+The two stall cases are asked again with a wider window when the host held
+their child.
+
+⛔ **Every test file writes through `internal/forksafe`.** A child forked while
+a stand-in was open for writing kept it open. Running the stand-in then failed
+with "text file busy", and the Linux proof's go job went red.
+`TestEveryTestFileWritesThroughForkSafe` refuses an `os.WriteFile` in any test
+file of this module. `WSL-205`
 
 ⚠ **A case that runs the acceptance suite's own PowerShell needs `pwsh`.** On
 Windows a missing one fails the case. Elsewhere it skips, as in the Linux proof's

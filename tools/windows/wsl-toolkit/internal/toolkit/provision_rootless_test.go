@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // provisionerSection is one marked section of provision.sh, between its begin and
@@ -41,7 +43,7 @@ func posixShell(t *testing.T) string {
 // writeStandIn puts one executable on the stand-in PATH.
 func writeStandIn(t *testing.T, dir, name, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -252,7 +254,7 @@ func runRootlessCases(t *testing.T, shell, section string, cases []rootlessCase)
 			t.Fatal(err)
 		}
 		for name, value := range c.caps {
-			if err := os.WriteFile(filepath.Join(capsDir, name), []byte(name+" "+value+"\n"), 0o644); err != nil {
+			if err := forksafe.WriteFile(filepath.Join(capsDir, name), []byte(name+" "+value+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}

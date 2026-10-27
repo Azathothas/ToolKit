@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-136: a machine-wide cap on running jobs -----------------------------
@@ -177,7 +179,7 @@ func TestTheNewJobsKeysSurviveLoading(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "wsl-toolkit.json")
 	body := `{"schema": "` + ConfigSchema + `", "jobs": {"container_lifecycle": "ephemeral", "max_running": 3, "max_running_wait": "10m"}}`
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("WSL_TOOLKIT_HOME", filepath.Join(dir, "state"))

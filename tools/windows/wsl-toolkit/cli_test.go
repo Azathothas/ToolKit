@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -353,7 +354,7 @@ func TestProjectConfigurationAnchorsRelativeHostPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit","image":"docker.io/library/alpine:latest","user":"toolkit"},"jobs":{"container_lifecycle":"persistent","workspace":"."}}`
-	if err := os.WriteFile(filepath.Join(root, toolkit.WorkingConfigName), []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(root, toolkit.WorkingConfigName), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	previous, err := os.Getwd()
@@ -391,7 +392,7 @@ func TestConfigRefusesAnotherInstancesDistributionAndStillReportsItsSearch(t *te
 	toolkit.SelectedInstance = toolkit.Instance{Name: "muse", Distro: "wsl-toolkit-muse", Home: museHome}
 	project := t.TempDir()
 	file := filepath.Join(project, toolkit.WorkingConfigName)
-	if err := os.WriteFile(file, []byte(`{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit"}}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte(`{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cwd, err := os.Getwd()
@@ -592,7 +593,7 @@ func TestLastLines(t *testing.T) {
 	for i := 0; i < 5000; i++ {
 		fmt.Fprintf(&b, "line %d\n", i)
 	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(b.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Open(path)
@@ -634,7 +635,7 @@ func TestLastLinesGrowsItsWindow(t *testing.T) {
 		b.WriteString(strings.Repeat("w", 50<<10))
 		b.WriteString("\n")
 	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(b.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Open(path)

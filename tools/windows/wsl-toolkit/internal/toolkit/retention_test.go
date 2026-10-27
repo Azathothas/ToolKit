@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-121: what a job leaves, and a record whose owner is gone ------------
@@ -123,7 +125,7 @@ func TestAnEphemeralJobWhoseTeardownFailedKeepsItsRecord(t *testing.T) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "teardown-fails"), nil, 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "teardown-fails"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(staleFakeWslEnv, dir)

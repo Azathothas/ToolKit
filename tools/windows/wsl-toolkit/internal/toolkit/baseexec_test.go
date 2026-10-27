@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-124: a directory the command cannot enter ------------------------------
@@ -110,14 +112,14 @@ func TestInputsAndArtifactsGetADirectoryOfTheCommandsOwn(t *testing.T) {
 	g := newExecFakeGuest(t)
 	host := t.TempDir()
 	in := filepath.Join(host, "app.toml")
-	if err := os.WriteFile(in, []byte("name = 'x'\r\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(in, []byte("name = 'x'\r\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(host, "out")
 	if err := os.MkdirAll(filepath.Join(out, "d"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(out, "d", "r.txt"), []byte("result"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(out, "d", "r.txt"), []byte("result"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(execFakeOutEnv, out)
@@ -180,12 +182,12 @@ func TestAFailedTransferKeepsTheCallsDirectoryForARetry(t *testing.T) {
 	if err := os.MkdirAll(out, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(out, "r.txt"), []byte("result"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(out, "r.txt"), []byte("result"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(execFakeOutEnv, out)
 	blocker := filepath.Join(host, "blocker")
-	if err := os.WriteFile(blocker, []byte("a file"), 0o600); err != nil {
+	if err := forksafe.WriteFile(blocker, []byte("a file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	res, err := RunBaseExec(context.Background(), g.wsl, BaseExec{
@@ -300,7 +302,7 @@ func TestAnEmptyOutputDirectoryMakesNoHostDirectory(t *testing.T) {
 		t.Errorf("the line for an empty set reads %q", line)
 	}
 	out := t.TempDir()
-	if err := os.WriteFile(filepath.Join(out, "a.txt"), []byte("abc"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(out, "a.txt"), []byte("abc"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(execFakeOutEnv, out)
@@ -330,7 +332,7 @@ func TestARunListsItsArtifactsAndAnEmptyOutMakesNoDirectory(t *testing.T) {
 		t.Fatalf("a job that left /out empty made %s: %v", dest, err)
 	}
 	out := t.TempDir()
-	if err := os.WriteFile(filepath.Join(out, "app"), []byte("binary"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(out, "app"), []byte("binary"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(execFakeOutEnv, out)
@@ -544,7 +546,7 @@ func TestASessionsOutputIsDeliveredOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := t.TempDir()
-	if err := os.WriteFile(filepath.Join(out, "r.txt"), []byte("result"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(out, "r.txt"), []byte("result"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(execFakeOutEnv, out)

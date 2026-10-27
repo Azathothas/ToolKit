@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-188: the engine's settings are drop-ins -------------------------------
@@ -37,7 +39,7 @@ func engineSettingsRun(t *testing.T, dir string, registry ...*RegistryConfig) st
 	// matching` over it with base.registry set, and read the same text whole from a file.
 	// The file sits apart from dir, whose tree a case counts.
 	run := filepath.Join(t.TempDir(), "engine-settings.sh")
-	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+	if err := forksafe.WriteFile(run, []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, err := exec.Command(sh, filepath.ToSlash(run)).CombinedOutput()
@@ -54,7 +56,7 @@ func seedFile(t *testing.T, dir, rel, body string) string {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+	if err := forksafe.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return p

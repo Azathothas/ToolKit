@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // grantsCase starts a case that drives grants.sh alone: the shell, or a skip, and
@@ -51,7 +53,7 @@ func grantsRestart(t *testing.T, dir string) {
 		}
 		fmt.Fprintf(&mounts, "%s %s drvfs %s,noatime 0 0\n", f[0], f[1], mode)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "mounts"), []byte(mounts.String()), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "mounts"), []byte(mounts.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -324,7 +326,7 @@ func TestAGrantWhoseReadBackFailsTakesItsMountAway(t *testing.T) {
 	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
 	dir := t.TempDir()
 	read := grantsSeed(t, dir, "kept\n", "", "")
-	if err := os.WriteFile(filepath.Join(dir, "runuser.fail"), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "runuser.fail"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, err := grantsDrive(t, dir, []BaseMount{mine}, b64(mine.Target))
@@ -339,7 +341,7 @@ func TestAGrantWhoseReadBackFailsTakesItsMountAway(t *testing.T) {
 	fstab := blockOf(blockLine(t, old))
 	dir = t.TempDir()
 	read = grantsSeed(t, dir, fstab, liveLine(src, mine.Target, "ro"), ownedBy(mine.Target, grantsMine))
-	if err := os.WriteFile(filepath.Join(dir, "runuser.fail"), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "runuser.fail"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := grantsDrive(t, dir, []BaseMount{mine}, b64(mine.Target)); err == nil {
@@ -359,7 +361,7 @@ func TestAMountAFailedGrantCannotTakeAwayIsNamed(t *testing.T) {
 	dir := t.TempDir()
 	grantsSeed(t, dir, "", "", "")
 	for _, name := range []string{"runuser.fail", "umount.fail"} {
-		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -383,7 +385,7 @@ func TestAFailedSwitchMountsNothingOverAMountThatStayed(t *testing.T) {
 	dir := t.TempDir()
 	read := grantsSeed(t, dir, fstab, liveLine(src, mine.Target, "ro"), ownedBy(mine.Target, grantsMine))
 	for name, body := range map[string]string{"runuser.fail": "", "umount.failat": "2\n"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -411,7 +413,7 @@ func TestAFailedUnmountOfAMountAlreadyGoneIsNotNamed(t *testing.T) {
 	dir := t.TempDir()
 	read := grantsSeed(t, dir, fstab, liveLine(src, mine.Target, "ro"), ownedBy(mine.Target, grantsMine))
 	for name, body := range map[string]string{"runuser.fail": "", "umount.failat": "2\n", "umount.gone": ""} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -441,7 +443,7 @@ func verifyHeldRun(t *testing.T, dir string, env map[string]string) (string, err
 		}
 		allow.WriteString(string(target) + "\n")
 	}
-	if err := os.WriteFile(filepath.Join(dir, "allow"), []byte(allow.String()), 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(dir, "allow"), []byte(allow.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// ⚠ FROM THE EMBEDDED SCRIPT, since a case may run from a directory of its own.
@@ -458,7 +460,7 @@ func verifyHeldRun(t *testing.T, dir string, env map[string]string) (string, err
 	script = strings.ReplaceAll(script, "/proc/mounts", at+"/mounts")
 	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", at+"/owners")
 	run := filepath.Join(dir, "verify-run.sh")
-	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+	if err := forksafe.WriteFile(run, []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh, filepath.ToSlash(run))
@@ -595,7 +597,7 @@ func TestTheHelpersEnsureReadsItsCallersGrantsAsUnchanged(t *testing.T) {
 	if raw, err = json.Marshal(file); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cfg.path, raw, 0o600); err != nil {
+	if err := forksafe.WriteFile(cfg.path, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := loadConfigFile(cfg.path, "the case")

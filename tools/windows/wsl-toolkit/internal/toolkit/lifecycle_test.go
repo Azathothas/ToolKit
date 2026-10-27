@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- the base's lifecycle: WSL-169, WSL-171, WSL-172, WSL-175 and WSL-177 -------
@@ -108,7 +110,7 @@ func TestAForcedRebuildTheVolumeCannotHoldKeepsTheBase(t *testing.T) {
 func TestTheOldDiskCountsAsFreeForARebuild(t *testing.T) {
 	dir := t.TempDir()
 	rootfs := filepath.Join(dir, "rootfs.tar")
-	if err := os.WriteFile(rootfs, []byte("0123456789"), 0o600); err != nil {
+	if err := forksafe.WriteFile(rootfs, []byte("0123456789"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	need := int64(100) + 2*10
@@ -147,7 +149,7 @@ func TestTheRootfsArchiveIsThisProcesssOwn(t *testing.T) {
 	roomyVolume(t, 1<<40)
 	other := filepath.Join(b.home, "base-rootfs.tar")
 	const theirs = "another build's archive, mid-import"
-	if err := os.WriteFile(other, []byte(theirs), 0o600); err != nil {
+	if err := forksafe.WriteFile(other, []byte(theirs), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.EnsureWith(context.Background(), true, false); err == nil {
@@ -429,11 +431,11 @@ func TestInstallChangedSaysWhetherTheFileChanged(t *testing.T) {
 			dir := t.TempDir()
 			dest, next := filepath.Join(dir, "wsl.conf"), filepath.Join(dir, "wsl.conf.new")
 			if tc.exists {
-				if err := os.WriteFile(dest, []byte(tc.before), 0o644); err != nil {
+				if err := forksafe.WriteFile(dest, []byte(tc.before), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := os.WriteFile(next, []byte(tc.next), 0o644); err != nil {
+			if err := forksafe.WriteFile(next, []byte(tc.next), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			out, err := exec.Command(sh, "-c", section+"\ninstall_changed \"$1\" \"$2\"", "sh", next, dest).CombinedOutput()
@@ -458,7 +460,7 @@ func TestInstallChangedSaysWhetherTheFileChanged(t *testing.T) {
 func TestTheGrantsBlockSaysWhetherItChanged(t *testing.T) {
 	sh := posixShell(t)
 	fstab := filepath.Join(t.TempDir(), "fstab")
-	if err := os.WriteFile(fstab, []byte("LABEL=root / ext4 defaults 0 1\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(fstab, []byte("LABEL=root / ext4 defaults 0 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", fstab)

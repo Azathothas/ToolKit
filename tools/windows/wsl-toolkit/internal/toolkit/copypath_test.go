@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // WSL-98: every failure in the copy path names the member it stopped at, the
@@ -23,7 +25,7 @@ import (
 func TestAMemberThatVanishedBeforeItsOpenIsNamed(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "gone.txt")
-	if err := os.WriteFile(p, []byte("0123456789"), 0o600); err != nil {
+	if err := forksafe.WriteFile(p, []byte("0123456789"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(p)
@@ -47,7 +49,7 @@ func writeTree(t *testing.T) string {
 	dir := t.TempDir()
 	for i := 0; i < 8; i++ {
 		body := bytes.Repeat([]byte{'x'}, 4096)
-		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.txt", i)), body, 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.txt", i)), body, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -190,7 +192,7 @@ func TestAFileNamedLikeADeviceTravelsWithItsBytes(t *testing.T) {
 	root := t.TempDir()
 	long := `\\?\` + filepath.Join(root, "NUL")
 	body := []byte("two lines of a known_hosts fragment\nand the second\n")
-	if err := os.WriteFile(long, body, 0o600); err != nil {
+	if err := forksafe.WriteFile(long, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// ⚠ Removed through the same prefix, or the directory cleanup meets the

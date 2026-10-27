@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // probeScripts is each adapter probe the fake guest was handed for name, in order.
@@ -168,7 +170,7 @@ func fakeHerdrDoor(t *testing.T) {
 		t.Fatal(err)
 	}
 	for path, body := range map[string]string{key: "a key", key + ".pub": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIClientKey wsl-toolkit herdr client\n"} {
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

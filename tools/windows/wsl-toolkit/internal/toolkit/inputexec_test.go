@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // TestAnExecutableInputArrivesRepairedAndRunnable is WSL-128: --input-exec
@@ -21,7 +23,7 @@ import (
 func TestAnExecutableInputArrivesRepairedAndRunnable(t *testing.T) {
 	raw := []byte("\xEF\xBB\xBF#!/bin/sh\r\necho hi\r\n")
 	f := filepath.Join(t.TempDir(), "run.sh")
-	if err := os.WriteFile(f, raw, 0o600); err != nil {
+	if err := forksafe.WriteFile(f, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	inputs := []JobInput{
@@ -95,7 +97,7 @@ func TestAnAttachedBaseExecPlacesAnExecutableInputRepaired(t *testing.T) {
 	g := newExecFakeGuest(t)
 	raw := "#!/bin/sh\r\necho hi\r\n"
 	f := filepath.Join(t.TempDir(), "run.sh")
-	if err := os.WriteFile(f, []byte(raw), 0o600); err != nil {
+	if err := forksafe.WriteFile(f, []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	res, err := RunBaseExec(context.Background(), g.wsl, BaseExec{
@@ -186,7 +188,7 @@ func TestAnInputIsNamedAsItWasTyped(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "run.sh")
 	script := []byte("#!/bin/sh\ntrue\n")
-	if err := os.WriteFile(f, script, 0o600); err != nil {
+	if err := forksafe.WriteFile(f, script, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	refused := map[string][]JobInput{
@@ -234,7 +236,7 @@ func TestAnInputIsNamedAsItWasTyped(t *testing.T) {
 // WSL-128.
 func TestAnInputMemberIsWrittenUnderItsArchivePathAndNamedWhereItIsSeen(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "raw.sh")
-	if err := os.WriteFile(p, []byte("0123456789"), 0o600); err != nil {
+	if err := forksafe.WriteFile(p, []byte("0123456789"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(p)

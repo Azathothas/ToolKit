@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-126: a stop reaches a whole session -----------------------------------
@@ -181,10 +183,10 @@ func TestASessionInAScopeIsReachedWholeInARealShell(t *testing.T) {
 			t.Fatal(err)
 		}
 		run := "#!/bin/sh\n" + body
-		if err := os.WriteFile(filepath.Join(dir, "systemd-run"), []byte(run), 0o755); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, "systemd-run"), []byte(run), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "systemctl"), []byte(fakeSystemctl), 0o755); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, "systemctl"), []byte(fakeSystemctl), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		return dir
@@ -212,7 +214,7 @@ func TestASessionInAScopeIsReachedWholeInARealShell(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "payload.sh"), []byte(payload), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, "payload.sh"), []byte(payload), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		out, stderr, code := run(bin, sessionLaunchScript(dir, "~", timeout, grace))

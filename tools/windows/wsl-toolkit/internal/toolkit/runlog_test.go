@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // fakeClock is the relay's clock in these cases, so a rendering is asserted
@@ -625,7 +627,7 @@ func TestFinishRecordsTheEndAndSaysWhatANonzeroExitCanMean(t *testing.T) {
 func TestASinkForACommandThatNeverStartsRemovesTheFileItCreatedAndTruncatesNothing(t *testing.T) {
 	dir := t.TempDir()
 	kept := filepath.Join(dir, "kept.log")
-	if err := os.WriteFile(kept, []byte("the previous run\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(kept, []byte("the previous run\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	created := filepath.Join(dir, "new", "events.jsonl")
@@ -647,7 +649,7 @@ func TestASinkForACommandThatNeverStartsRemovesTheFileItCreatedAndTruncatesNothi
 func TestASinkOpenFailureRemovesOnlyTheDirectoriesItCreated(t *testing.T) {
 	root := t.TempDir()
 	block := filepath.Join(root, "block")
-	if err := os.WriteFile(block, []byte("kept"), 0o600); err != nil {
+	if err := forksafe.WriteFile(block, []byte("kept"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	text := filepath.Join(root, "new", "deep", "run.log")
@@ -682,7 +684,7 @@ func TestASinkPathNamingAWindowsDeviceIsRefused(t *testing.T) {
 func writeEvents(t *testing.T, lines ...string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "events.jsonl")
-	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path

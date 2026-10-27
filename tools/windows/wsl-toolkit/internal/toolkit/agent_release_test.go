@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- a jq for the cases, because the Go image has none ------------------------------
@@ -245,7 +247,7 @@ func (r *agentRig) write(path, body string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		r.t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+	if err := forksafe.WriteFile(path, []byte(body), 0o755); err != nil {
 		r.t.Fatal(err)
 	}
 }
@@ -617,7 +619,7 @@ ln -s "$dir/cli.js" "$npm_config_prefix/bin/` + binName + `"
 
 func (r *releaseRig) serve(body []byte) string {
 	r.t.Helper()
-	if err := os.WriteFile(r.served, body, 0o644); err != nil {
+	if err := forksafe.WriteFile(r.served, body, 0o644); err != nil {
 		r.t.Fatal(err)
 	}
 	return fmt.Sprintf("%x", sha256.Sum256(body))

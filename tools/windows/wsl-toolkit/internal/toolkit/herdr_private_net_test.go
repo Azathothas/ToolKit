@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-159: herdr's server, and every agent it starts, in a namespace of its own ----
@@ -219,7 +221,7 @@ func stubDir(t *testing.T) (string, func(name, body string)) {
 	}
 	return bin, func(name, body string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -269,7 +271,7 @@ func TestThePrivateNetScriptWritesTheRulesAndLinksNothingElse(t *testing.T) {
 	if err := os.MkdirAll(netns, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(resolv, []byte("# WSL's\nnameserver 10.255.255.254\nnameserver 172.23.96.1\nsearch lan\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(resolv, []byte("# WSL's\nnameserver 10.255.255.254\nnameserver 172.23.96.1\nsearch lan\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	bin, write := stubDir(t)
@@ -362,7 +364,7 @@ exit 0
 	if code, out := runSh(t, script, bin, []string{"rules"}, env...); code == 0 {
 		t.Fatalf("rules wrote into a namespace that is not there:\n%s", out)
 	}
-	if err := os.WriteFile(filepath.Join(netns, "wsl-toolkit-herdr"), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(netns, "wsl-toolkit-herdr"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_ = os.Remove(asked)
@@ -463,7 +465,7 @@ exit 0
 		t.Fatal(err)
 	}
 	resolv := filepath.Join(root, "resolv.conf")
-	if err := os.WriteFile(resolv, []byte("nameserver 10.255.255.254\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(resolv, []byte("nameserver 10.255.255.254\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -585,11 +587,11 @@ func TestPrivateNetKeepsARunningNamespaceCurrent(t *testing.T) {
 		}
 	}
 	// ⚠ A NAMESPACE THE SERVER IS IN, as `ip netns add` leaves its name.
-	if err := os.WriteFile(filepath.Join(netns, "wsl-toolkit-herdr"), nil, 0o644); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(netns, "wsl-toolkit-herdr"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	resolv := filepath.Join(root, "resolv.conf")
-	if err := os.WriteFile(resolv, []byte("nameserver 10.255.255.254\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(resolv, []byte("nameserver 10.255.255.254\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	asked := filepath.Join(root, "asked")
@@ -713,7 +715,7 @@ esac
 			if err := os.MkdirAll(filepath.Dir(dropin), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(dropin, []byte(herdrFile(t, "private-net.conf")), 0o644); err != nil {
+			if err := forksafe.WriteFile(dropin, []byte(herdrFile(t, "private-net.conf")), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}

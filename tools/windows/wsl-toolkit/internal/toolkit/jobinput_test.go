@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-96: a device node, passed by the engine ------------------------------
@@ -104,7 +105,7 @@ func TestTheDeviceCheckRefusesInARealShell(t *testing.T) {
 		t.Skip("no sh on this host")
 	}
 	notADevice := filepath.Join(t.TempDir(), "plain")
-	if err := os.WriteFile(notADevice, nil, 0o600); err != nil {
+	if err := forksafe.WriteFile(notADevice, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	run := func(d JobDevice) (int, string) {
@@ -147,7 +148,7 @@ func TestAnInputNameIsAPlainPathUnderIn(t *testing.T) {
 func TestASetOfInputsThatCannotArriveAsNamedIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "f")
-	if err := os.WriteFile(file, []byte("0123456789"), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte("0123456789"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	limits := DefaultWorkspaceLimits()
@@ -210,7 +211,7 @@ func TestInputsTravelByteForByteWithTheirDirectories(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "job.sh")
 	body := []byte("#!/bin/sh\r\necho keep the CRLF\r\n")
-	if err := os.WriteFile(file, body, 0o600); err != nil {
+	if err := forksafe.WriteFile(file, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var archive bytes.Buffer

@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- WSL-158: herdr's detection rules for Muse ---------------------------------------
@@ -119,7 +121,7 @@ func museRulesHarness(t *testing.T) (run func() string, target, asked, herdr str
 		t.Fatal(err)
 	}
 	// An installed Muse, so the installer is never fetched.
-	if err := os.WriteFile(filepath.Join(home, ".local", "bin", "muse"), []byte("#!/bin/sh\necho \"Muse Code 9.9.9 (9.9.9-R1)\"\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, ".local", "bin", "muse"), []byte("#!/bin/sh\necho \"Muse Code 9.9.9 (9.9.9-R1)\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	bin, write := stubDir(t)
@@ -182,7 +184,7 @@ func TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(herdr), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(herdr, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(herdr, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	out := run()
@@ -201,7 +203,7 @@ func TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem(t *testing.T) {
 	}
 	// ⭐ A FILE OF THE OPERATOR'S OWN IS LEFT AS IT IS, and a hand edit of ours is not.
 	own := "id = \"muse\"\n# the operator's own rules\n"
-	if err := os.WriteFile(target, []byte(own), 0o644); err != nil {
+	if err := forksafe.WriteFile(target, []byte(own), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out = run()
@@ -209,7 +211,7 @@ func TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem(t *testing.T) {
 		t.Fatalf("the operator's own rules became %q:\n%s", got, out)
 	}
 	edited := strings.Replace(string(rules), "priority = 700", "priority = 701", 1)
-	if err := os.WriteFile(target, []byte(edited), 0o644); err != nil {
+	if err := forksafe.WriteFile(target, []byte(edited), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	run()
@@ -270,7 +272,7 @@ func TestTheMuseProbeSaysWhetherHerdrLoadsItsRules(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(launcher, []byte("#!/bin/sh\necho 'Muse Code 9.9.9 (9.9.9-R1)'\n"), 0o755); err != nil {
+	if err := forksafe.WriteFile(launcher, []byte("#!/bin/sh\necho 'Muse Code 9.9.9 (9.9.9-R1)'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	bin, write := stubDir(t)
@@ -348,7 +350,7 @@ exec "$@"
 	if st := read(nil); st.Facts["herdr_detection_rules"] != "absent" {
 		t.Fatalf("a base with no rules file was read as %q", st.Facts["herdr_detection_rules"])
 	}
-	if err := os.WriteFile(target, rules, 0o644); err != nil {
+	if err := forksafe.WriteFile(target, rules, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	st := read(override(nil))
@@ -374,7 +376,7 @@ exec "$@"
 	if st := read(nil); st.Facts["herdr_detection_rules"] != "installed" || st.Facts["herdr_detection_source"] != "" {
 		t.Fatalf("with no herdr server answering, the rules were read as %v", st.Facts)
 	}
-	if err := os.WriteFile(target, []byte("id = \"muse\"\n"), 0o644); err != nil {
+	if err := forksafe.WriteFile(target, []byte("id = \"muse\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if st := read(nil); st.Facts["herdr_detection_rules"] != "other" {
@@ -480,7 +482,7 @@ func TestTheMuseFootprintCountsHerdrsRules(t *testing.T) {
 	// /usr/local/bin/muse, which a base this tool built may hold.
 	footprint := func(body []byte) int64 {
 		t.Helper()
-		if err := os.WriteFile(target, body, 0o644); err != nil {
+		if err := forksafe.WriteFile(target, body, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		code, out := runSh(t, probe, bin, nil, "TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base", "TK_PROBE_FOOTPRINT=1", "STUB_HOME="+home)

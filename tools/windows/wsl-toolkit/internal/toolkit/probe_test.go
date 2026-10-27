@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // -- the fake guest: answers a case stages for the verifier, binfmt.sh, uname --
@@ -24,7 +26,7 @@ const fakeGuestFile = "guest"
 // binfmt=ok|refused.
 func (h *fakeHost) stageGuest(t *testing.T, answers ...string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(h.state, fakeGuestFile), []byte(strings.Join(answers, "\n")), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(h.state, fakeGuestFile), []byte(strings.Join(answers, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -141,7 +143,7 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 	// says it wrote the mirrors, and registry=same says nothing. The script is
 	// kept, so a case can read what it was handed. WSL-196.
 	case bytes.Contains(script, []byte("printf '%s\\n' 'registry-complete'")) && answers["registry"] != "":
-		_ = os.WriteFile(filepath.Join(state, "registry.script"), script, 0o600)
+		_ = forksafe.WriteFile(filepath.Join(state, "registry.script"), script, 0o600)
 		if answers["registry"] == "changed" && assigned(script, "TK_REGISTRY_MIRRORS_B64") != "" {
 			fmt.Println("registry mirrors: " + MirrorsDropIn)
 		}
@@ -809,7 +811,7 @@ func TestTheVerifierReadsRootsWatcherStateWhenSystemdIsSilent(t *testing.T) {
 		dir := t.TempDir()
 		record := filepath.Join(dir, "binfmt-watch")
 		if c.record != "" {
-			if err := os.WriteFile(record, []byte(c.record+"\n"), 0o644); err != nil {
+			if err := forksafe.WriteFile(record, []byte(c.record+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}

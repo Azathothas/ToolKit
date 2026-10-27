@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 // nightlyServer answers both halves a nightly is read from: the release list, a page at
@@ -253,7 +255,7 @@ func TestAnEnsureThatFindsItsClientStillPrunesTheOlderOnes(t *testing.T) {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(d, "herdr.exe"), []byte("planted"), 0o755); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(d, "herdr.exe"), []byte("planted"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -330,7 +332,7 @@ func TestTheNightlyChannelReachesInstallThroughTheHostHalf(t *testing.T) {
 	if err := os.MkdirAll(keyDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(keyDir, "id_ed25519.pub"), []byte("ssh-ed25519 AAAAC3Nza key\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(keyDir, "id_ed25519.pub"), []byte("ssh-ed25519 AAAAC3Nza key\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	asked := 0

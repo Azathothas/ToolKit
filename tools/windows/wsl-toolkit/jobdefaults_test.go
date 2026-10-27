@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -66,7 +67,7 @@ func TestAProjectsJobDefaultsYieldToTheCommandLine(t *testing.T) {
 func TestTheProjectsEnvironmentComesFirst(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "project.env")
-	if err := os.WriteFile(file, []byte("FROM_FILE=project\nSHARED=file\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(file, []byte("FROM_FILE=project\nSHARED=file\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg := toolkit.DefaultConfig()
@@ -100,11 +101,11 @@ func TestAProjectsEnvFileResolvesAgainstItsOwnFile(t *testing.T) {
 		if dir == tree {
 			body = `{"schema":"wsl-toolkit-config/1","jobs":{"env_file":"job.env"}}`
 		}
-		if err := os.WriteFile(filepath.Join(dir, file), []byte(body), 0o600); err != nil {
+		if err := forksafe.WriteFile(filepath.Join(dir, file), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(tree, "job.env"), []byte("FROM=project\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(tree, "job.env"), []byte("FROM=project\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	inner := filepath.Join(tree, "src")
@@ -154,7 +155,7 @@ func TestRunTakesItsImageFromTheProject(t *testing.T) {
 func TestAnExecutableInputIsReadAsNameThenFile(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "run.sh")
-	if err := os.WriteFile(f, []byte("#!/bin/sh\r\ntrue\r\n"), 0o600); err != nil {
+	if err := forksafe.WriteFile(f, []byte("#!/bin/sh\r\ntrue\r\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	j := testJobFlags()
@@ -288,11 +289,11 @@ func lendingInstance(t *testing.T, project string) string {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(`{"schema":"wsl-toolkit-config/1"}`), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(home, "config.json"), []byte(`{"schema":"wsl-toolkit-config/1"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(tree, toolkit.WorkingConfigName)
-	if err := os.WriteFile(path, []byte(project), 0o600); err != nil {
+	if err := forksafe.WriteFile(path, []byte(project), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("WSL_TOOLKIT_HOME", home)
@@ -406,7 +407,7 @@ func TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration(t *testing.T) 
 	t.Setenv(toolkit.InstanceEnv, "")
 	tree := t.TempDir()
 	body := `{"schema":"wsl-toolkit-config/1","requires":"999.0.0"}`
-	if err := os.WriteFile(filepath.Join(tree, toolkit.WorkingConfigName), []byte(body), 0o600); err != nil {
+	if err := forksafe.WriteFile(filepath.Join(tree, toolkit.WorkingConfigName), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	previous, err := os.Getwd()

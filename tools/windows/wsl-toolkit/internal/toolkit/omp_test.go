@@ -2,10 +2,11 @@ package toolkit
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/forksafe"
 )
 
 func ompConfig(sep bool) Config {
@@ -152,7 +153,7 @@ func TestSeparateAgentDirSurvivesAStoredConfiguration(t *testing.T) {
 		t.Fatalf("the setting does not survive being written out: %s", body)
 	}
 	path := filepath.Join(dir, "wsl-toolkit.json")
-	if err := os.WriteFile(path, body, 0o600); err != nil {
+	if err := forksafe.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("WSL_TOOLKIT_HOME", filepath.Join(dir, "state"))
