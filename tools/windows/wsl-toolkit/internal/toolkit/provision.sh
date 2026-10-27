@@ -159,8 +159,12 @@ engine_transaction() {
           slirp4netns ca-certificates iproute2 nftables >/dev/null
       ;;
     dnf)
+      # ⛔ util-linux SUPPLIES runuser AND su, AND PROVISIONING BECOMES THE ACCOUNT. Fedora's
+      # image carries util-linux-core, which has neither, and podman pulls in neither.
+      # Measured on a first build of the fedora preset: provisioning stopped at the
+      # account's XDG directories, and the build was removed. WSL-201.
       dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs \
-        slirp4netns shadow-utils iproute tar >/dev/null
+        slirp4netns shadow-utils iproute tar util-linux >/dev/null
       ;;
     tdnf)
       tdnf install -y podman shadow-utils tar iproute2 >/dev/null
@@ -419,15 +423,83 @@ login_said=$(apply_login_shell "$TK_USER") || login_said="the login shell of $TK
 say "$login_said"
 TK_HOME=$(getent passwd "$TK_USER" 2>/dev/null | cut -d: -f6) || TK_HOME=
 [ -n "$TK_HOME" ] || TK_HOME=/home/$TK_USER
+# ⭐ THE HOME ITSELF IS ROOT'S TO MAKE AND GIVE. Its parent is root's, so the account
+# cannot put a link in its place.
 [ -d "$TK_HOME" ] || { mkdir -p "$TK_HOME"; chown "$TK_USER" "$TK_HOME"; }
 TK_GROUP=$(id -gn "$TK_USER")
 chown "$TK_USER:$TK_GROUP" "$TK_HOME"
 chmod 0700 "$TK_HOME"
-for xdg_dir in "$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state"; do
-  mkdir -p "$xdg_dir"
-  chown "$TK_USER:$TK_GROUP" "$xdg_dir"
-  chmod 0700 "$xdg_dir"
+
+# >>> as the account: begin
+# as_account SCRIPT NAME ARG...: SCRIPT run by sh as the account. NAME is its $0,
+# and each ARG is one of its positional parameters. So a file in its home is
+# written by its owner, and not by root following whatever that directory holds.
+# It goes through runuser, or through su where there is no runuser.
+#
+# ⛔ NOT setpriv. BusyBox's has no --reuid, so every ensure on alpine printed its
+# usage, and root then removed the account's file itself. su is grants.sh's form,
+# its options before the account, and no ARG begins with a dash. WSL-188, WSL-199.
+as_account() {
+  aa_script=$1
+  shift
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u "$TK_USER" -- /bin/sh -c "$aa_script" "$@"
+  elif command -v su >/dev/null 2>&1; then
+    su -s /bin/sh -c "$aa_script" "$TK_USER" "$@"
+  else
+    return 127
+  fi
+}
+# <<< as the account: end
+
+# >>> the account's XDG directories: begin
+# ⛔ EVERYTHING INSIDE THE HOME IS THE ACCOUNT'S TO MAKE. A re-provisioning runs after
+# the account has run agents and jobs, and this script cannot tell it from a first
+# build. Root's mkdir, chown and chmod each followed a link the account left at one of
+# these paths, so a link at .config had root give a directory outside the home to the
+# account. WSL-201.
+#
+# ⚠ ROOT STILL GIVES BACK A DIRECTORY THAT IS NOT THE ACCOUNT'S, AND ONLY A DIRECTORY.
+# Root enters each with cd -P and reads it back with pwd -P. Where it stands is then the
+# directory at that path in the home, and root gives that directory, `.`. An older
+# release left .config/containers root's when its provisioning died before its chown -R,
+# and the account's own mktemp there then failed every run.
+#
+# ⛔ NEVER A NAME. chown -h on a name changed a hard link the account made there, and a
+# hard link is the file itself. So a hard link at .cache to a file of root's gave the
+# account that file. A directory cannot be hard-linked, and the one root changes is the
+# one it read back. WSL-201.
+# linksafe: root enters the home itself, and reads where it is
+tk_home_real=$(cd -P "$TK_HOME" && pwd -P) || die "the home $TK_HOME cannot be entered"
+for xdg_rel in .config .cache .local .local/share .local/state .config/containers .config/containers/containers.conf.d; do
+  (
+    # linksafe: cd -P resolves every link, and pwd -P reads back that this is the home's own
+    cd -P "$TK_HOME/$xdg_rel" 2>/dev/null || exit 0
+    [ "$(pwd -P)" = "$tk_home_real/$xdg_rel" ] || exit 0
+    chown "$TK_USER:$TK_GROUP" .
+  )
 done
+# ⛔ A NAME THAT IS NOT A DIRECTORY IS NAMED, AND LEFT AS IT IS. The verifier refuses
+# the base over it, and only the account may move a file of its home aside.
+xdg_code=0
+# shellcheck disable=SC2016  # the single quotes hold the account's own script
+xdg_said=$(as_account '
+  for d do
+    if [ -L "$d" ] || [ -e "$d" ]; then
+      [ -d "$d" ] || { printf "%s" "$d"; exit 2; }
+    fi
+    mkdir -p "$d" || exit 1
+    [ -L "$d" ] || chmod 0700 "$d" || exit 1
+  done' wtk-xdg \
+  "$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state") ||
+  xdg_code=$?
+case $xdg_code in
+  0) ;;
+  2) die "$xdg_said is not a directory, and $TK_USER's XDG directory belongs there. Move it aside as $TK_USER, then run base ensure again" ;;
+  127) die "neither runuser nor su is installed, so nothing can act as $TK_USER in its home" ;;
+  *) die "$TK_USER could not make its XDG directories in $TK_HOME, so the verifier would refuse the base" ;;
+esac
+# <<< the account's XDG directories: end
 say "account home: $TK_HOME; persistent XDG directories: ready"
 
 # -- optional agent privilege escalation -------------------------------------
@@ -506,23 +578,30 @@ done
 # operator's now. ⚠ The account's drop-in is 10-, so engines.sh's 50- switch to
 # the systemd manager still sorts after it and wins. WSL-188.
 # >>> the engine's settings: begin
+# ⛔ THE ACCOUNT WRITES ITS OWN SETTINGS. Root built them in a file of its own outside
+# the home, and the account reads, removes and writes in its home. Root's mkdir,
+# redirect and chown -R followed a link the account left there. WSL-201.
 CONF_DIR=$TK_HOME/.config/containers/containers.conf.d
-mkdir -p "$CONF_DIR"
 CONF_PATH=$CONF_DIR/10-wsl-toolkit.conf
 # ⚠ THE MAIN FILE AN EARLIER RELEASE WROTE IS THIS TOOL'S OWN, AND IT GOES, read
 # by its first line. Kept, its slirp4netns pin would outlast a pasta installed
 # since. A main file anyone else wrote is left as it is. WSL-188.
 OLD_CONF=$TK_HOME/.config/containers/containers.conf
-if [ -f "$OLD_CONF" ] && [ "$(head -n 1 "$OLD_CONF")" = '# Written by wsl-toolkit. cgroupfs works with either configured init.' ]; then
-  rm -f "$OLD_CONF"
+# shellcheck disable=SC2016  # the single quotes hold the account's own script
+old_conf=$(as_account '
+  if [ -f "$1" ] && [ "$(head -n 1 "$1")" = "$2" ]; then
+    rm -f "$1" && echo removed
+  fi' wtk-old-conf "$OLD_CONF" '# Written by wsl-toolkit. cgroupfs works with either configured init.') || old_conf=
+if [ "$old_conf" = removed ]; then
   say "removed the containers.conf an earlier release wrote; its settings are now $CONF_PATH"
 fi
+conf_tmp=$(mktemp) || die "no temporary file for $CONF_PATH"
 {
   echo '# Written by wsl-toolkit. cgroupfs works with either configured init.'
   echo '[engine]'
   echo 'cgroup_manager = "cgroupfs"'
   echo 'events_logger = "file"'
-} > "$CONF_PATH"
+} > "$conf_tmp"
 
 # ⛔ THE FALLBACK IS WRITTEN ONLY WHEN pasta IS REALLY ABSENT, and the test is
 # for the BINARY rather than for the package name. Pinning slirp4netns on a host
@@ -535,11 +614,27 @@ elif command -v slirp4netns >/dev/null 2>&1; then
   {
     echo '[network]'
     echo 'default_rootless_network_cmd = "slirp4netns"'
-  } >> "$CONF_PATH"
+  } >> "$conf_tmp"
   say "rootless networking: pasta is absent, pinned to slirp4netns"
 else
+  rm -f "$conf_tmp"
   die "neither pasta nor slirp4netns is installed, so a rootless container has no way to get a network"
 fi
+# ⭐ A FILE OF THE ACCOUNT'S OWN BESIDE IT TAKES THE BYTES AND IS RENAMED OVER IT, so a
+# link at that path is replaced and never written through.
+# shellcheck disable=SC2016  # the single quotes hold the account's own script
+if ! as_account '
+  mkdir -p "${1%/*}" || exit 1
+  t=$(mktemp "$1.XXXXXX") || exit 1
+  if cat > "$t" && chmod 0644 "$t" && mv -f "$t" "$1"; then
+    exit 0
+  fi
+  rm -f "$t"
+  exit 1' wtk-engine-conf "$CONF_PATH" < "$conf_tmp"; then
+  rm -f "$conf_tmp"
+  die "$TK_USER could not write its engine settings at $CONF_PATH"
+fi
+rm -f "$conf_tmp"
 
 # ⛔ SHORT NAMES ARE REFUSED INSIDE THE GUEST TOO. An unqualified reference is
 # resolved through the engine's own alias table, so the same string is two
@@ -562,7 +657,11 @@ CONF
 # this script. Written here, so the health probe's first pull takes them. A base
 # without the key gets neither file and no line. WSL-196.
 apply_registry_settings || die "base.registry's drop-ins could not be written"
-chown -R "$TK_USER" "$TK_HOME/.config"
+# ⛔ NO chown -R OVER THE ACCOUNT'S .config. It gave the account what root wrote above,
+# and the account writes that itself now. ⚠ BusyBox's changes a link in that tree
+# rather than what it names, measured on Alpine, and GNU's does too by default. A walk
+# by root through a tree the account owns can still meet a link swapped in while it
+# runs. WSL-201.
 # <<< the engine's settings: end
 
 # -- explicit Windows directory grants ---------------------------------------

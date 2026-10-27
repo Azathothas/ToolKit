@@ -418,6 +418,8 @@ func TestPrivateNetAddsADropInAndLeavesTheServersUnitAlone(t *testing.T) {
 	write("getent", "printf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n")
 	write("id", "echo herdr\n")
 	write("uname", "echo x86_64\n")
+	// ⭐ The account writes its own configuration, and here it is this process. WSL-201.
+	write("runuser", "[ \"$1\" = -u ] && [ \"$2\" = herdr ] && [ \"$3\" = -- ] || exit 9\nshift 3\nexec \"$@\"\n")
 	write("curl", "while [ $# -gt 0 ]; do if [ \"$1\" = --output ]; then printf 'a herdr the case serves\\n' > \"$2\"; shift; fi; shift; done\n")
 	// install makes directories and copies files, whatever owner it is asked for.
 	// ⚠ THE DOOR'S DIRECTORY IS WHERE THE CASE STOPS THE SCRIPT. Every unit is written
@@ -602,6 +604,8 @@ func TestPrivateNetKeepsARunningNamespaceCurrent(t *testing.T) {
 	write("getent", "printf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n")
 	write("id", "echo herdr\n")
 	write("uname", "echo x86_64\n")
+	// ⭐ The account writes its own configuration, and here it is this process. WSL-201.
+	write("runuser", "[ \"$1\" = -u ] && [ \"$2\" = herdr ] && [ \"$3\" = -- ] || exit 9\nshift 3\nexec \"$@\"\n")
 	write("curl", "while [ $# -gt 0 ]; do if [ \"$1\" = --output ]; then printf 'a herdr the case serves\\n' > \"$2\"; shift; fi; shift; done\n")
 	write("install", `case " $* " in *" /etc/wsl-toolkit "*) echo 'install: stopped here by the case' >&2; exit 7 ;; esac
 dir=; mode=

@@ -78,6 +78,51 @@ as_account() {
     SHELL=/bin/bash LANG=C.UTF-8 PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/bin "$@"
 }
 
+# >>> the account's own writes: begin
+# ⛔ ROOT WRITES NOTHING IN THE ACCOUNT'S HOME. This script runs as root, and chown,
+# install -d, cp and a redirect each follow a link the account placed there. Where
+# base.passwordless_sudo is off, or in a herdr pane under private_net, the account is
+# not root. Root's write through that link was one the account could not make. As the
+# account, a link reaches only what the account could already write. WSL-201.
+#
+# account_dirs MODE DIR... makes each DIR as the account and gives it MODE. ⚠ A DIR that
+# is a link keeps the mode of what it names, which is the account's own to set.
+account_dirs() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '
+    mode=$1
+    shift
+    for dir do
+      mkdir -p "$dir" || exit 1
+      [ -L "$dir" ] || chmod "$mode" "$dir" || exit 1
+    done' sh "$@"
+}
+
+# account_put DEST MODE writes its standard input to DEST as the account. ⭐ A file of
+# the account's own beside DEST takes the bytes and is renamed over it, so a link at
+# DEST is replaced and never written through. ⛔ A directory at DEST is refused.
+account_put() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '
+    [ ! -d "$1" ] || exit 1
+    tmp=$(mktemp "${1%/*}/.wsl-toolkit.XXXXXX") || exit 1
+    if cat > "$tmp" && chmod "$2" "$tmp" && mv -f "$tmp" "$1"; then
+      exit 0
+    fi
+    rm -f "$tmp"
+    exit 1' sh "$1" "$2"
+}
+
+# account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
+# bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
+# followed a link the account placed there, and a named pipe there held base ensure.
+account_same() {
+  as_src=$(sha256sum < "$1") || return 1
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
+}
+# <<< the account's own writes: end
+
 # muse_version answers what the launcher says it is, and "" when it says nothing.
 # ⚠ MUSE_NO_AUTO_UPDATE, so asking downloads nothing.
 muse_version() {
@@ -98,14 +143,6 @@ fi
 for want in bash curl sha256sum mktemp uname wc date runuser cmp; do
   command -v "$want" >/dev/null 2>&1 || die "$want is still absent after the package step"
 done
-
-# ⛔ A FUNCTION, NOT AN ASSIGNMENT, AND THAT IS THE WHOLE POINT. Two attempts got
-# this wrong in opposite directions: defined halfway down, an earlier section died
-# with `TK_GROUP: unbound variable`; moved to the top, `id -gn` ran against an
-# account that need not exist yet and exited 1 BEFORE the unapproved-installer
-# refusal, which is the one thing that must happen first. A function is evaluated
-# where it is used, so it cannot fail ahead of a guard that has not run.
-tk_group() { id -gn "$TK_USER"; }
 
 # -- Muse ------------------------------------------------------------------------------
 
@@ -303,7 +340,7 @@ fi
 # theirs stands, including a "no".
 if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
   trust_file=$TK_HOME/.config/muse/trust.json
-  install -d -o "$TK_USER" -g "$(tk_group)" -m 0700 "$TK_HOME/.config/muse"
+  account_dirs 0700 "$TK_HOME/.config/muse" || die "the account could not make $TK_HOME/.config/muse"
   # ⛔ THE STORE'S SHAPE IS MUSE'S, NOT THIS ADAPTER'S, AND IT WAS INVENTED ONCE.
   # A first version wrote `{"workspaces":{}}`: the key is `projects` and the file
   # carries `schema_version`, so Muse refused to start at all with
@@ -312,12 +349,15 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
   #
   # ⛔ SO: an existing store is EDITED and never replaced, and one that cannot be
   # parsed stops the adapter rather than being overwritten with a guess.
+  #
+  # ⛔ THE ACCOUNT READS AND WRITES IT. Root's jq read whatever a link there named, and
+  # root's redirect and chown followed it. WSL-201.
   if [ -f "$trust_file" ]; then
-    jq -e 'has("schema_version") and has("projects")' "$trust_file" >/dev/null 2>&1 ||
+    as_account jq -e 'has("schema_version") and has("projects")' "$trust_file" >/dev/null 2>&1 ||
       die "$trust_file is not a Muse trust store this adapter understands; it is left exactly as it is"
   else
-    printf '{\n  "schema_version": 1,\n  "projects": {}\n}\n' > "$trust_file"
-    chown "$TK_USER:$(tk_group)" "$trust_file"; chmod 0600 "$trust_file"
+    printf '{\n  "schema_version": 1,\n  "projects": {}\n}\n' | account_put "$trust_file" 0600 ||
+      die "the account could not write $trust_file"
   fi
   added=0
   OLDIFS=$IFS; IFS=:
@@ -325,16 +365,20 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
     IFS=$OLDIFS
     [ -n "$ws" ] || continue
     case $ws in '~') ws=$TK_HOME ;; esac
-    if jq -e --arg w "$ws" '.projects | has($w)' "$trust_file" >/dev/null 2>&1; then
+    # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
+    if as_account jq -e --arg w "$ws" '.projects | has($w)' "$trust_file" >/dev/null 2>&1; then
       IFS=:
       continue
     fi
-    tmp=$(mktemp "$TK_HOME/.config/muse/.trust.XXXXXX") || die "no temporary file for the trust store"
+    # ⚠ The edited copy is root's own, outside the home, until the account writes it.
+    tmp=$(mktemp) || die "no temporary file for the trust store"
     # ⭐ Only the one key is added. schema_version and every other project keep their
     # values, because the document is edited rather than rebuilt.
-    if jq --arg w "$ws" '.projects += {($w): {"decision":"trusted"}}' "$trust_file" > "$tmp" 2>/dev/null &&
-        jq -e 'has("schema_version") and has("projects")' "$tmp" >/dev/null 2>&1; then
-      chown "$TK_USER:$(tk_group)" "$tmp"; chmod 0600 "$tmp"; mv "$tmp" "$trust_file"
+    # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
+    if as_account jq --arg w "$ws" '.projects += {($w): {"decision":"trusted"}}' "$trust_file" > "$tmp" 2>/dev/null &&
+        jq -e 'has("schema_version") and has("projects")' "$tmp" >/dev/null 2>&1 &&
+        account_put "$trust_file" 0600 < "$tmp"; then
+      rm -f "$tmp"
       added=$((added + 1))
     else
       rm -f "$tmp"
@@ -343,7 +387,6 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
     IFS=:
   done
   IFS=$OLDIFS
-  chown "$TK_USER:$(tk_group)" "$trust_file"
   if [ "$added" -gt 0 ]; then
     say "pre-trusted $added workspace(s) Muse would otherwise block on: the account's home and its grants"
   else
@@ -384,12 +427,7 @@ fi
 if [ -n "$herdr_reporter_skip" ]; then
   say "no herdr reporter: $herdr_reporter_skip"
 else
-  # ⛔ RESOLVED HERE, NOT AT THE TOP OF THE FILE. An earlier draft set this beside
-  # TK_HOME, and under `set -e` an `id` for an account that does not exist then
-  # ended the script before ANY path below it - including the digest refusal, which
-  # a case drives with no such account. A variable a feature needs belongs inside
-  # the branch that has the feature.
-  install -d -o "$TK_USER" -g "$(tk_group)" -m 0755 "$HOOK_DIR"
+  account_dirs 0755 "$HOOK_DIR" || die "the account could not make $HOOK_DIR"
   hook_tmp=$(mktemp)
   hook_encoded=$(mktemp)
   printf '%s' "$TK_FILE_HERDR_AGENT_STATE_SH_B64" > "$hook_encoded"
@@ -401,10 +439,10 @@ else
     rm -f "$hook_tmp"
     die "the herdr reporter failed its own self-test in this base, so it was not installed"
   fi
-  if same_file "$hook_tmp" "$HOOK"; then
+  if account_same "$hook_tmp" "$HOOK"; then
     rm -f "$hook_tmp"
   else
-    install -o "$TK_USER" -g "$(tk_group)" -m 0755 "$hook_tmp" "$HOOK"
+    account_put "$HOOK" 0755 < "$hook_tmp" || { rm -f "$hook_tmp"; die "the account could not write $HOOK"; }
     rm -f "$hook_tmp"
     say "wrote $HOOK, and its self-test passed"
   fi
@@ -412,16 +450,19 @@ else
   # ⛔ MUSE'S settings.json IS MERGED, NEVER REPLACED. It is the operator's file and
   # carries their own settings. jq does the merge, so a value this adapter does not
   # name is preserved exactly.
-  install -d -o "$TK_USER" -g "$(tk_group)" -m 0700 "$MUSE_CONFIG_DIR"
+  account_dirs 0700 "$MUSE_CONFIG_DIR" || die "the account could not make $MUSE_CONFIG_DIR"
   # ⛔ A NEW FILE CARRIES schema_version 1, AND A FILE WITHOUT ONE IS REFUSED. Muse
   # refuses to start over a settings file with no schema_version, measured as
   # `malformed settings file ... missing field schema_version`, so the `{}` an earlier
   # draft wrote would have ended every Muse session in this base.
-  [ -f "$MUSE_SETTINGS" ] || as_account sh -c "printf '{\"schema_version\":1}\n' > '$MUSE_SETTINGS'"
+  if [ ! -f "$MUSE_SETTINGS" ]; then
+    printf '{"schema_version":1}\n' | account_put "$MUSE_SETTINGS" 0600 ||
+      die "the account could not write $MUSE_SETTINGS"
+  fi
   if ! as_account jq -e 'type == "object" and has("schema_version")' "$MUSE_SETTINGS" >/dev/null 2>&1; then
     die "$MUSE_SETTINGS is not a Muse settings document: Muse reads only a JSON object carrying schema_version, and refuses to start over any other. It was left untouched. Read it, then run base ensure again"
   fi
-  # ⛔ THE TEMPORARY FILE STAYS ROOT'S until install gives the result to the account.
+  # ⛔ THE TEMPORARY FILE STAYS ROOT'S until the account writes the result over its own.
   # systemd sets fs.protected_regular = 1, under which root's own redirect into a file
   # in sticky /tmp that another account owns is refused with Permission denied, and an
   # earlier draft chowned the file first. Measured in a base on 2026-09-15.
@@ -445,11 +486,12 @@ else
                           else . end))
                    + [{"matcher":"","hooks":[{"type":"command","command":$hook}]}])))
     ' "$MUSE_SETTINGS" > "$settings_tmp" 2>/dev/null && [ -s "$settings_tmp" ]; then
-    if same_file "$settings_tmp" "$MUSE_SETTINGS"; then
+    if account_same "$settings_tmp" "$MUSE_SETTINGS"; then
       rm -f "$settings_tmp"
       say "Muse already reports to herdr on $(printf '%s' "$HOOK_EVENTS" | wc -w) events"
     else
-      install -o "$TK_USER" -g "$(tk_group)" -m 0600 "$settings_tmp" "$MUSE_SETTINGS"
+      account_put "$MUSE_SETTINGS" 0600 < "$settings_tmp" ||
+        { rm -f "$settings_tmp"; die "the account could not write $MUSE_SETTINGS"; }
       rm -f "$settings_tmp"
       say "registered the herdr reporter in $MUSE_SETTINGS for: $HOOK_EVENTS"
     fi
@@ -476,27 +518,32 @@ HERDR_RULES_DIR=$TK_HOME/.config/herdr/agent-detection
 HERDR_RULES=$HERDR_RULES_DIR/muse.toml
 HERDR_RULES_MARK="from wsl-toolkit's muse adapter"
 herdr_rules_skip=
+# ⛔ THE ACCOUNT READS WHOSE FILE IT IS. Root's head followed a link the account placed
+# there. WSL-201.
+# shellcheck disable=SC2016  # the single quotes hold the account's own script
 if [ -z "${TK_FILE_HERDR_DETECTION_TOML_B64:-}" ]; then
   herdr_rules_skip='this adapter carries no rule file'
 elif ! herdr_present; then
   herdr_rules_skip='no herdr is installed in this base to read them. Add the herdr adapter to base.adapters'
-elif [ -f "$HERDR_RULES" ] && ! head -n 1 "$HERDR_RULES" | grep -q "$HERDR_RULES_MARK"; then
+elif [ -f "$HERDR_RULES" ] &&
+  ! as_account sh -c '[ -f "$1" ] && exec head -n 1 "$1"' sh "$HERDR_RULES" 2>/dev/null | grep -q "$HERDR_RULES_MARK"; then
   herdr_rules_skip="$HERDR_RULES is not this adapter's, so it is left as it is"
 fi
 if [ -n "$herdr_rules_skip" ]; then
   say "no herdr detection rules: $herdr_rules_skip"
 else
-  install -d -o "$TK_USER" -g "$(tk_group)" -m 0700 "$TK_HOME/.config" "$TK_HOME/.config/herdr" "$HERDR_RULES_DIR"
+  account_dirs 0700 "$TK_HOME/.config" "$TK_HOME/.config/herdr" "$HERDR_RULES_DIR" ||
+    die "the account could not make $HERDR_RULES_DIR"
   rules_tmp=$(mktemp)
   rules_encoded=$(mktemp)
   printf '%s' "$TK_FILE_HERDR_DETECTION_TOML_B64" > "$rules_encoded"
   base64 -d < "$rules_encoded" > "$rules_tmp" || die "herdr's detection rules for Muse did not decode"
   rm -f "$rules_encoded"
-  if same_file "$rules_tmp" "$HERDR_RULES"; then
+  if account_same "$rules_tmp" "$HERDR_RULES"; then
     rm -f "$rules_tmp"
     say "herdr's detection rules for Muse are in place at $HERDR_RULES"
   else
-    install -o "$TK_USER" -g "$(tk_group)" -m 0644 "$rules_tmp" "$HERDR_RULES"
+    account_put "$HERDR_RULES" 0644 < "$rules_tmp" || { rm -f "$rules_tmp"; die "the account could not write $HERDR_RULES"; }
     rm -f "$rules_tmp"
     # ⚠ A RUNNING SERVER LOADS RULES AT ITS START, so it is asked to reload them, which
     # ends no pane. A server that is not running reads them when it starts.

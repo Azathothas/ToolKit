@@ -213,6 +213,19 @@ func NormalizeBaseToolset(value string) (string, error) {
 }
 
 // normalizeBaseMountTarget confines explicit host mounts to one guest subtree.
+// nestedTargetsError refuses the first of targets, in their order, that sits inside
+// another. Each is a normalized target. WSL-202.
+func nestedTargetsError(targets []string) error {
+	for _, inner := range targets {
+		for _, outer := range targets {
+			if strings.HasPrefix(inner, outer+"/") {
+				return fmt.Errorf("base.mounts nests %q inside %q. The outer grant is a Windows directory where the account can make links, so a target inside it is refused. Grant it at another --target", inner, outer)
+			}
+		}
+	}
+	return nil
+}
+
 func normalizeBaseMountTarget(value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
 		return "", errors.New("base.mounts target cannot be empty")
@@ -760,6 +773,7 @@ func (c Config) Validate() error {
 		return errors.New(`base.shared_tmpfs "off" requires base.automount to be "off": closing the shared tmpfs while the Windows drives are mounted costs the resolver and seals nothing`)
 	}
 	seenTargets := map[string]bool{}
+	var targets []string
 	for i, mount := range c.Base.Mounts {
 		if strings.TrimSpace(mount.Source) == "" {
 			return fmt.Errorf("base.mounts[%d].source cannot be empty", i)
@@ -772,9 +786,17 @@ func (c Config) Validate() error {
 			return fmt.Errorf("base.mounts contains target %q more than once", target)
 		}
 		seenTargets[target] = true
+		targets = append(targets, target)
 		if _, err := NormalizeBaseMountMode(mount.Mode); err != nil {
 			return fmt.Errorf("base.mounts[%d]: %w", i, err)
 		}
+	}
+	// ⛔ NO TARGET SITS INSIDE ANOTHER. The outer grant is a Windows directory, where the
+	// account can make links, so root's mkdir, chmod and mount of the inner one followed
+	// a link the account put on the way. grants.sh refuses one nested in another
+	// configuration file's grant, through the ledger. WSL-202.
+	if err := nestedTargetsError(targets); err != nil {
+		return err
 	}
 	if err := validateAdapters(c); err != nil {
 		return err

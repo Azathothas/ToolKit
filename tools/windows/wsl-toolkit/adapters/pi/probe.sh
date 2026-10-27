@@ -28,6 +28,14 @@ as_account() {
     PATH="$PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin" "$@"
 }
 
+# first_lines N PATH prints the first N lines of PATH, read by the account, when it is a
+# file. ⛔ Root's head followed a path the account's login shell named, and a named
+# pipe there held the probe. WSL-201.
+first_lines() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
+}
+
 # ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk. `base status` asks it of
 # an adapter the configuration no longer names, which keeps its files until `base
 # recreate`. POSIX `du -sk`, so it answers on any userland. WSL-109.
@@ -56,8 +64,10 @@ printf 'installed %s\n' "$installed"
 if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
   # ⚠ npm's package is counted where the launcher points into it, or where a pi from npm
   # left it. A release asset a refusal kept is counted too. Each is the adapter's. WSL-138.
+  # linksafe: npm_package_dir reads where the launcher links with readlink, and opens nothing
   npm_dir=$(npm_package_dir "$PREFIX/bin/pi")
   [ -n "$npm_dir" ] || npm_dir=$PREFIX/lib/node_modules/@earendil-works/pi-coding-agent
+  # linksafe: footprint tests each path and reads its size with du, which follows no link
   printf 'footprint %s\n' "$(footprint "$WRAPPER" "$PREFIX/bin/pi" "$npm_dir" "$RELEASES" "$STAGE_DIR" "$TK_HOME/.pi")"
   exit 0
 fi
@@ -85,7 +95,7 @@ fi
 # its prefix last and rewrites that line. WSL-147. pi keeps its startup model and effort in its own settings file, so those survive; the account guard does not.
 # ⚠ A probe that only asked whether the name resolved called that base healthy.
 if [ -n "$pane_path" ]; then
-  if head -3 "$pane_path" 2>/dev/null | grep -q "wsl-toolkit's pi adapter"; then
+  if first_lines 3 "$pane_path" | grep -q "wsl-toolkit's pi adapter"; then
     printf 'wrapper_on_login_path yes\n'
   else
     printf 'wrapper_on_login_path no\n'
@@ -150,8 +160,10 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
     undeclared="pi's startup model is $want_provider/$want_model and its own catalogue does not list it, so every session starts on pi's built-in default instead. Declare the model under that provider in $TK_HOME/.pi/agent/models.json"
     listed=$(as_account pi --list-models 2>/dev/null | tr -d '\r')
     models=$TK_HOME/.pi/agent/models.json
+    # linksafe: awk compares the account's answers as words, and reads only its pipe
     if printf '%s\n' "$listed" | awk -v p="$want_provider" -v m="$want_model" '$1 == p && $2 == m { found = 1 } END { exit !found }'; then
       printf 'credential present\n' # pi's own catalogue resolves it, which takes a key
+    # linksafe: awk compares the account's answer as a word, and reads only its pipe
     elif [ -z "$want_provider" ] || printf '%s\n' "$listed" | awk -v p="$want_provider" '$1 == p { found = 1 } END { exit !found }'; then
       # ⛔ pi HOLDS A KEY FOR THIS PROVIDER AND STILL DOES NOT LIST THE MODEL. So it is not
       # declared, and every session starts on another model.

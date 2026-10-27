@@ -1440,6 +1440,16 @@ revoke of a target another file holds is refused, naming that file and its
 revoke. A target already mounted from another Windows directory is refused too. So
 is one mounted in the other mode that this configuration did not mount. `WSL-179`
 
+⛔ **A target inside another grant is refused.** The outer grant is a Windows
+directory, and the account can make links in it. Root's `mkdir`, `chmod` and `mount`
+of the inner target followed a link there. A configuration whose targets nest is
+refused where it is read. A target nested with another file's grant is refused through
+the ledger, while that grant is live or the block holds its line. `WSL-202`
+
+⛔ **A target is made only where it names.** A link on its way, or a live Windows mount
+above it, is refused before anything is made. Root gives mode 755 only to a directory
+it made. One already there keeps its mode, a grant's own mount too. `WSL-202`
+
 ⛔ **A mount the ledger does not give this file is not claimed.** A mount made
 before 7.0.2 has no ledger entry. A grant of that same directory at that target is
 refused rather than recorded as this file's. Grant it at another `--target`. A
@@ -1590,6 +1600,27 @@ because `muse`, `pi` and `omp` each set herdr up only where herdr is installed.
 [`adapters/README.md`](adapters/README.md) is the contract for writing one. ⭐ Every
 adapter is applied, and `base ensure` reports each one's problem rather than
 stopping at the first. `WSL-107`
+
+⛔ **Root writes nothing in the account's home.** `base ensure` runs each adapter as
+root, and the account writes every file and directory an adapter keeps in its home.
+Root's `chown`, `install -d` and redirects followed a link the account had placed
+there. Where `passwordless_sudo` is off, or in a herdr pane under `private_net`, that
+link made root write where the account could not. As the account, a link reaches only
+what the account could already write. `WSL-201`
+
+⭐ A link at a file an adapter writes whole is replaced by that file. A directory the
+account made a link keeps its own mode. ⛔ Root reads nothing in the home either. The
+account reads a file there to compare it, so a link or a named pipe there reaches no
+read of root's. ⚠ A path the account cannot write, such as a link to a directory of
+root's, stops that adapter, and `base ensure` names it.
+
+⛔ **Provisioning makes nothing in the home as root.** The account makes its XDG
+directories and writes the engine's settings. Root gives back a directory at one of
+those paths that is not the account's, such as one an older release left root's. It
+enters that directory with `cd -P`, reads the path back, and changes that directory
+alone. So it follows no link, and a hard link there gets nothing. ⚠ A name there that
+is not a directory stops provisioning, named, until the account moves it aside.
+`WSL-201`
 
 ```json
 "adapters": [{ "name": "herdr" }]
@@ -1908,6 +1939,9 @@ the digest is the one the adapter pins. `WSL-138`
   run`. The release program needs no Bun. ⚠ A Bun an earlier fallback installed
   stays, because it is the distribution's package.
 - ⚠ **A musl base takes npm.** No musl build is pinned.
+- ⚠ **omp and pi act as the account through `runuser`, and the alpine preset carries
+  none.** BusyBox supplies `su` alone, measured on a first build. Provisioning becomes
+  the account through `su` there, and these two adapters do not. `WSL-201`
 
 Each writes a wrapper at `/usr/local/bin/NAME`, because each installs into
 `~/.local/bin` and ⛔ **a herdr pane does not have that on `PATH`**. Each adapter reads

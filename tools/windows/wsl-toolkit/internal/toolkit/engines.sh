@@ -99,6 +99,7 @@ fi
 # The switch is a drop-in beside provision.sh's own, 10-wsl-toolkit.conf, which
 # keeps cgroupfs as the default this one overrides by sorting after it.
 DELEGATE=/etc/systemd/system/user@.service.d/50-wsl-toolkit-delegate.conf
+# >>> the account's engine drop-in: begin
 MANAGER_REL=.config/containers/containers.conf.d/50-wsl-toolkit-cgroup.conf
 
 # write_manager writes or removes the account's drop-in, as the account.
@@ -116,6 +117,7 @@ write_manager() {
     mv -f "$t" "$f"
   ' wtk-manager "$home" "$MANAGER_REL" "$1"
 }
+# <<< the account's engine drop-in: end
 
 if [ "$systemd_up" = true ]; then
   mkdir -p "${DELEGATE%/*}" || die "could not create ${DELEGATE%/*}"
@@ -145,13 +147,27 @@ if [ "$systemd_up" = true ]; then
   if [ -S "/run/user/$uid/bus" ] && systemctl is-active --quiet "user@$uid.service" && write_manager write; then
     say "cgroup delegation: ${delegated:-none read} to $TK_USER's user manager, which holds a cgroup per container"
   else
-    write_manager remove || :
-    say "⚠ cgroup delegation: $TK_USER's user manager has no session bus, so its engine keeps cgroupfs and a limit can go unenforced"
+    # >>> the account's drop-in without a session bus: begin
+    # ⛔ cgroupfs IS SAID ONLY ONCE THE DROP-IN IS GONE. A drop-in the account could not
+    # remove still names the systemd manager, and the line said the engine kept cgroupfs
+    # over it. One the account cannot remove is named, as without systemd. WSL-201.
+    if write_manager remove; then
+      say "⚠ cgroup delegation: $TK_USER's user manager has no session bus, so its engine keeps cgroupfs and a limit can go unenforced"
+    else
+      say "⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, which still names the systemd manager, and $TK_USER's user manager has no session bus to serve it"
+    fi
+    # <<< the account's drop-in without a session bus: end
   fi
 else
   # ⚠ A BASE THAT NO LONGER RUNS SYSTEMD keeps no drop-in pointing its engine at
   # a manager it does not have.
-  write_manager remove || rm -f "$home/$MANAGER_REL"
+  # >>> the account's drop-in without systemd: begin
+  # ⛔ AND ROOT NEVER REMOVES IT IN THE ACCOUNT'S PLACE. rm -f follows a link the account
+  # made of a directory above the file, so root's removal reached a file of that name
+  # outside the home. One the account cannot remove is named instead. WSL-201.
+  write_manager remove ||
+    say "⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, which still names a manager this base does not run"
+  # <<< the account's drop-in without systemd: end
   rm -f "$DELEGATE"
   say "cgroup delegation: none, because this base does not run systemd"
 fi

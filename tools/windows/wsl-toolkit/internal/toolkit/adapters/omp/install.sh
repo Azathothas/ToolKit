@@ -76,7 +76,6 @@ TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
 if [ -z "$TK_HOME" ] || [ ! -d "$TK_HOME" ]; then
   die "the account $TK_USER has no home directory"
 fi
-TK_GROUP=$(id -gn "$TK_USER")
 PREFIX=$TK_HOME/.local
 
 case $TK_DISTRO in
@@ -92,6 +91,51 @@ as_account() {
     npm_config_prefix="$PREFIX" \
     PATH="$PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin" "$@"
 }
+
+# >>> the account's own writes: begin
+# ⛔ ROOT WRITES NOTHING IN THE ACCOUNT'S HOME. This script runs as root, and chown,
+# install -d, cp and a redirect each follow a link the account placed there. Where
+# base.passwordless_sudo is off, or in a herdr pane under private_net, the account is
+# not root. Root's write through that link was one the account could not make. As the
+# account, a link reaches only what the account could already write. WSL-201.
+#
+# account_dirs MODE DIR... makes each DIR as the account and gives it MODE. ⚠ A DIR that
+# is a link keeps the mode of what it names, which is the account's own to set.
+account_dirs() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '
+    mode=$1
+    shift
+    for dir do
+      mkdir -p "$dir" || exit 1
+      [ -L "$dir" ] || chmod "$mode" "$dir" || exit 1
+    done' sh "$@"
+}
+
+# account_put DEST MODE writes its standard input to DEST as the account. ⭐ A file of
+# the account's own beside DEST takes the bytes and is renamed over it, so a link at
+# DEST is replaced and never written through. ⛔ A directory at DEST is refused.
+account_put() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '
+    [ ! -d "$1" ] || exit 1
+    tmp=$(mktemp "${1%/*}/.wsl-toolkit.XXXXXX") || exit 1
+    if cat > "$tmp" && chmod "$2" "$tmp" && mv -f "$tmp" "$1"; then
+      exit 0
+    fi
+    rm -f "$tmp"
+    exit 1' sh "$1" "$2"
+}
+
+# account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
+# bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
+# followed a link the account placed there, and a named pipe there held base ensure.
+account_same() {
+  as_src=$(sha256sum < "$1") || return 1
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
+}
+# <<< the account's own writes: end
 
 # -- the collision, refused before anything is installed -------------------------------
 # ⭐ RESOLVED EXACTLY AS herdr RESOLVES IT, from herdr's own integrations page:
@@ -411,9 +455,10 @@ if [ "$OMP_SEPARATED" = yes ]; then
     say "the omp wrapper is already in place, and $OMP_REAL is what it runs"
   else
     [ -f "$OMP_WRAPPER" ] || die "omp installed and there is no $OMP_WRAPPER to wrap, so it went somewhere this adapter does not know"
-    mv -f "$OMP_WRAPPER" "$OMP_REAL" || die "omp could not be moved aside to $OMP_REAL"
-    chown "$TK_USER:$TK_GROUP" "$OMP_REAL"
-    cat > "$OMP_WRAPPER" <<WRAPPER
+    # ⛔ THE ACCOUNT MOVES ITS OWN omp AND WRITES THE WRAPPER. Root's chown here followed
+    # the link the account could leave at that path. WSL-201.
+    as_account mv -f "$OMP_WRAPPER" "$OMP_REAL" || die "omp could not be moved aside to $OMP_REAL"
+    account_put "$OMP_WRAPPER" 0755 <<WRAPPER || die "the account could not write the wrapper at $OMP_WRAPPER"
 #!/bin/sh
 $OMP_MARK
 # Written because pi and omp resolved to one extension directory and this base set
@@ -427,8 +472,6 @@ PI_CODING_AGENT_DIR=$OMP_AGENT_DIR
 export PI_CODING_AGENT_DIR
 exec $OMP_REAL "\$@"
 WRAPPER
-    chown "$TK_USER:$TK_GROUP" "$OMP_WRAPPER"
-    chmod 0755 "$OMP_WRAPPER"
     say "moved omp to $OMP_REAL and wrote the wrapper, which gives omp alone $OMP_AGENT_DIR"
   fi
   # ⛔ AND THE SEPARATING WRAPPER HAS TO WIN WHERE npm PUT omp. ⚠ This is deliberately
@@ -483,7 +526,10 @@ fi
 # -- herdr's own OMP integration --------------------------------------------------------
 if command -v herdr >/dev/null 2>&1 || [ -x /usr/local/bin/herdr ]; then
   herdr_bin=$(command -v herdr 2>/dev/null || printf '/usr/local/bin/herdr')
-  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$(dirname "$OMP_AGENT_DIR")" "$OMP_AGENT_DIR"
+  # ⛔ AS THE ACCOUNT. PI_CONFIG_DIR is the account's to set, and it can name a directory
+  # outside the home, which root made and gave away. WSL-201.
+  account_dirs 0755 "$(dirname "$OMP_AGENT_DIR")" "$OMP_AGENT_DIR" ||
+    die "the account could not make $OMP_AGENT_DIR, where herdr installs its omp integration"
   # ⭐ THE INSTALL RUNS UNDER THE SAME OVERRIDE THE WRAPPER APPLIES, so install time
   # and run time resolve to one directory rather than two.
   #
@@ -494,6 +540,7 @@ if command -v herdr >/dev/null 2>&1 || [ -x /usr/local/bin/herdr ]; then
   # "herdr refused its omp integration" on a base with no collision at all, and the
   # same command by hand, without the override, exited 0.
   if [ "$OMP_SEPARATED" = yes ]; then
+    # linksafe: set -- builds the account's own command line, and as_account runs it
     set -- as_account env PI_CODING_AGENT_DIR="$OMP_AGENT_DIR" "$herdr_bin" integration install omp
   else
     set -- as_account "$herdr_bin" integration install omp
