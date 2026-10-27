@@ -11,6 +11,7 @@
 # TK_BOOT_B64 is the text of the script WSL runs at every start. WSL-178.
 # TK_REGISTRY_MIRRORS_B64 and TK_REGISTRY_PROXY_B64 are base.registry's two
 # drop-ins, which mirrors.sh writes. WSL-196.
+# TK_MOUNT_HELPER_B64 is mount-helper.sh's text, which this runs. WSL-198.
 #
 # ⭐ EVERY FILE HERE BELONGS TO ONE SETTING, and that setting turned off removes
 # it. The cgroup delegation and the run state's upkeep are the parts that are not
@@ -30,6 +31,7 @@ set -u
 : "${TK_RUN_PREFIX:?TK_RUN_PREFIX is required}"
 : "${TK_RUN_STATE_B64:?TK_RUN_STATE_B64 is required}"
 : "${TK_BOOT_B64:?TK_BOOT_B64 is required}"
+: "${TK_MOUNT_HELPER_B64:?TK_MOUNT_HELPER_B64 is required}"
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'engines: %s\n' "$*" >&2; exit 3; }
@@ -56,17 +58,27 @@ uid=$(id -u "$TK_USER" 2>/dev/null) || die "the account $TK_USER does not exist"
 home=$(getent passwd "$TK_USER" 2>/dev/null | cut -d: -f6) || home=
 [ -n "$home" ] || home=/home/$TK_USER
 
-# as_account runs a command as the account, so a file in its home is written by
-# its owner rather than by root following whatever that directory holds.
+# >>> as the account: begin
+# as_account SCRIPT NAME ARG...: SCRIPT run by sh as the account. NAME is its $0,
+# and each ARG is one of its positional parameters. So a file in its home is
+# written by its owner, and not by root following whatever that directory holds.
+# It goes through runuser, or through su where there is no runuser.
+#
+# ⛔ NOT setpriv. BusyBox's has no --reuid, so every ensure on alpine printed its
+# usage, and root then removed the account's file itself. su is grants.sh's form,
+# its options before the account, and no ARG begins with a dash. WSL-188, WSL-199.
 as_account() {
+  aa_script=$1
+  shift
   if command -v runuser >/dev/null 2>&1; then
-    runuser -u "$TK_USER" -- "$@"
-  elif command -v setpriv >/dev/null 2>&1; then
-    setpriv --reuid="$uid" --regid="$(id -g "$TK_USER")" --init-groups -- "$@"
+    runuser -u "$TK_USER" -- /bin/sh -c "$aa_script" "$@"
+  elif command -v su >/dev/null 2>&1; then
+    su -s /bin/sh -c "$aa_script" "$TK_USER" "$@"
   else
     return 127
   fi
 }
+# <<< as the account: end
 
 systemd_up=false
 if [ "$TK_SYSTEMD" = true ] && [ -d /run/systemd/system ]; then
@@ -93,7 +105,7 @@ MANAGER_REL=.config/containers/containers.conf.d/50-wsl-toolkit-cgroup.conf
 write_manager() {
   # $1 and $2 are expanded by the inner shell, which is the point.
   # shellcheck disable=SC2016
-  as_account /bin/sh -c '
+  as_account '
     set -eu
     f=$1/$2
     if [ "$3" = remove ]; then rm -f "$f"; exit 0; fi
@@ -279,6 +291,26 @@ fi
 # so a base that already works takes a changed base.registry here with no
 # rebuild. A base without the key gets neither file and no line.
 apply_registry_settings || die "base.registry's drop-ins could not be written"
+
+# -- WSL's mount helper, WSL-198 --------------------------------------------------
+# >>> the mount helper's install: begin
+# ⛔ EVERY ENSURE PUTS IT IN PLACE, where /bin/mount is BusyBox's. grants.sh does
+# too, but only when a grant changes. So an alpine base an earlier release granted
+# would go on mounting no grant at a start. mount-helper.sh says why.
+#
+# ⚠ IT NEVER FAILS THE ENSURE. A helper that could not be written is named, and a
+# restart without it mounts no grant, which the verifier then names.
+if mh_file=$(mktemp 2>/dev/null); then
+  if printf '%s' "$TK_MOUNT_HELPER_B64" | base64 -d > "$mh_file" 2>/dev/null; then
+    sh "$mh_file" || say "⚠ mount helper: its install exited $?"
+  else
+    say "⚠ mount helper: its payload could not be decoded, so it was not written"
+  fi
+  rm -f "$mh_file"
+else
+  say "⚠ mount helper: no temporary file for its install, so it was not written"
+fi
+# <<< the mount helper's install: end
 
 # -- root's engine, WSL-130 ------------------------------------------------------
 # ⛔ ROOT'S PODMAN WANTS THE SYSTEMD CGROUP MANAGER BY DEFAULT, AND THAT NEEDS A

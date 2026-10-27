@@ -17145,7 +17145,7 @@ Done. Under ruling 36 this host was made a stock one for the run: the operator's
 ## WSL-198. On Alpine a restart mounts no grant, and a read-only grant is refused
 
 **Source** the 8.0.0 builder of `WSL-188`, 2026-10-26, workflow wf_874f9bf0-e3a, from its drives on scratch instances
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -17177,13 +17177,34 @@ On a scratch Alpine instance, a grant survives `wsl --terminate`, and a read-onl
 
 ## Closing
 
-Open.
+Closed on r81/alpine at 1e7049a (3d74dc0, then the repair in 0de3dfc, 17b04a1, 4f7cdf4 and 1e7049a). The cause is in two parts. WSL runs /bin/mount -a with no PATH, and BusyBox's mount looks for mount.drvfs on PATH, which on musl has no /sbin. BusyBox also strips ro before it runs a helper. mount-helper.sh writes this tool's /usr/local/bin/mount.drvfs where /bin/mount is BusyBox's. It hands WSL's helper the ro of the target's fstab line, so a read-only grant is read-only from its mount, inside WSL's synchronous mount -a. It reads the mount back. One left writable gets a plain remount, then a bind remount; one that stays writable is unmounted (lazily if busy) and its mount fails with 32. grants.sh writes the helper before a block, and engines.sh at every owner's ensure.
+
+Decisions: the helper hands ro, because WSL's helper keeps it (measured), rather than a later remount that left a writable window. The boot-script grant step and the verifier wait are removed. A plain remount comes first, since a bind remount left an earlier bind writable (measured). ro is read from any drvfs line. A foreign file is left with a ⚠ line, and a link to WSL's helper is replaced.
+
+Prove, run with the 1e7049a binary on scratch alpine instance r81f:
+```
+wsl-toolkit --instance r81f base grant --source <dir>\grant-rw --target /workspaces/rw --mode rw   -> exit 0
+wsl-toolkit --instance r81f base grant --source <dir>\grant-ro --target /workspaces/ro --mode ro   -> exit 0, "* mounted /workspaces/ro ro"
+wsl --stop wsl-toolkit-r81f
+first command, as the account:
+ro write exit 1
+rw write exit 0
+/workspaces/rw 9p rw
+/workspaces/ro 9p ro
+touch: /workspaces/ro/.first: Read-only file system
+wsl-toolkit --instance r81f base ensure   -> exit 0
+```
+No `mount -a failed` line was printed. Under 8.0.0 the same stop left both grants unmounted and printed "wsl: Processing /etc/fstab with mount -a failed."
+
+linux-proof --rows-since 5001ccd: proved tree 8fff567ba9fa60a2a36e638a4f2697b06f65edf4 (commit 1e7049a), 29 of 29 guards. check-go exit 0. Gate: only the worktree's inherited hooks rule fails.
+
+Built on `r81/alpine`, then repaired after an adversarial review whose ten findings were all fixed (`1e7049a`); every new row red on Windows and on Linux.
 
 
 ## WSL-199. `engines.sh` calls `setpriv --reuid`, which BusyBox rejects
 
 **Source** the 8.0.0 builder of `WSL-188`, 2026-10-26, workflow wf_874f9bf0-e3a, from its drives on scratch instances
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -17215,7 +17236,16 @@ Exit 0, with a case where `as_account` takes the `su` form when `runuser` is mis
 
 ## Closing
 
-Open.
+Closed on r81/alpine at 1e7049a (introduced in 3d74dc0). as_account in engines.sh runs SCRIPT as the account through runuser. Where there is no runuser it uses `su -s /bin/sh -c SCRIPT ACCOUNT NAME ARG...`, with su's options before the account and no ARG starting with a dash, as grants.sh's read-back does. BusyBox's setpriv has no --reuid.
+
+Prove:
+```
+pwsh -NoProfile -File scripts/common/check-go.ps1
+  ok     go
+```
+Exit 0. TestEnginesShBecomesTheAccountThroughSuWhereThereIsNoRunuser holds the su form where runuser is missing, and its mutation row went red on Windows and Linux. Live ensures of the scratch alpine bases r81p and r81f printed no setpriv usage block.
+
+Built on `r81/alpine`, then repaired after an adversarial review whose ten findings were all fixed (`1e7049a`); every new row red on Windows and on Linux.
 
 ## WSL-200. `gc` cleans nothing on the host once the base is gone
 

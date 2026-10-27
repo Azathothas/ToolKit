@@ -375,14 +375,14 @@ func newBootScriptHost(t *testing.T) bootScriptHost {
 	} {
 		writeStandIn(t, h.bin, name, body)
 	}
-	if err := os.WriteFile(filepath.Join(d, "proc", "mounts"), []byte("none "+filepath.ToSlash(d)+"/mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(d, "proc", "mounts"), []byte("none "+shellPath(t, d)+"/mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return h
 }
 
 func (h bootScriptHost) script(seal string) string {
-	d := filepath.ToSlash(h.dir)
+	d := shellPath(h.t, h.dir)
 	s := "seal=" + seal + "\naccount=agent\n" + markedSection(h.t, bootScript, "the boot script")
 	for _, r := range [][2]string{
 		{"/run/", d + "/run/"},

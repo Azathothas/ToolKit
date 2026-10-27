@@ -69,6 +69,10 @@ func (b *Base) enginesRequest(out io.Writer) ExecRequest {
 			"TK_RUN_PREFIX":    guestRunRootPrefix,
 			"TK_RUN_STATE_B64": base64.StdEncoding.EncodeToString(staleRunStatePayload()),
 			"TK_BOOT_B64":      base64.StdEncoding.EncodeToString(bootScript),
+
+			// WSL-198: the helper WSL's mount -a needs on alpine, for a base an
+			// earlier release granted.
+			"TK_MOUNT_HELPER_B64": base64.StdEncoding.EncodeToString(mountHelperScript),
 		},
 		Timeout: 10 * time.Minute, Stdout: out, Stderr: out,
 	}

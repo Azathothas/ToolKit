@@ -39,7 +39,7 @@ func sharedResolverRun(t *testing.T, mounts string) (string, string) {
 	if err := os.WriteFile(filepath.Join(d, "mounts"), []byte(mounts), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	at := filepath.ToSlash(d)
+	at := shellPath(t, d)
 	section := strings.NewReplacer("/mnt/wsl/resolv.conf", at+"/mnt/wsl/resolv.conf", "/etc/resolv.conf", at+"/etc/resolv.conf",
 		"/proc/mounts", at+"/mounts").Replace(provisionerSection(t, "the shared resolver"))
 	script := "set -eu\nsay() { printf '%s\\n' \"$*\"; }\ndie() { printf 'die: %s\\n' \"$*\"; exit 3; }\n" +
@@ -88,7 +88,7 @@ func sealedBootRun(t *testing.T) (string, string) {
 		t.Skip("no POSIX shell on this host")
 	}
 	d := t.TempDir()
-	at := filepath.ToSlash(d)
+	at := shellPath(t, d)
 	for _, sub := range []string{"run", "mnt/wsl", "usr/local/lib/wsl-toolkit"} {
 		if err := os.MkdirAll(filepath.Join(d, filepath.FromSlash(sub)), 0o755); err != nil {
 			t.Fatal(err)
@@ -185,7 +185,7 @@ func TestASealedBaseThatCannotResolveIsNotJudged(t *testing.T) {
 		t.Skip("no POSIX shell on this host")
 	}
 	d := t.TempDir()
-	at := filepath.ToSlash(d)
+	at := shellPath(t, d)
 	if err := os.WriteFile(filepath.Join(d, "resolv.conf"), []byte("nameserver 192.0.2.53\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func sealSectionRun(t *testing.T, bootLog string) (int, string, int) {
 		t.Skip("no POSIX shell on this host")
 	}
 	d := t.TempDir()
-	at := filepath.ToSlash(d)
+	at := shellPath(t, d)
 	seedFile(t, d, "resolv.conf", "nameserver 192.0.2.53\n")
 	seedFile(t, d, "mounts", "none / ext4 rw 0 0\nnone /mnt/wsl tmpfs rw 0 0\n")
 	if bootLog != "" {

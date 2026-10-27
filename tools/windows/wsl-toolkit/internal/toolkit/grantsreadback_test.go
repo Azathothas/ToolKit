@@ -117,6 +117,11 @@ func TestTheReadBackProbeAnswersInARealShell(t *testing.T) {
 // grant there was refused, and its account could write in it until then. A
 // remount read-only holds, also measured. A read-write grant is left as it is.
 // WSL-188.
+//
+// ⛔ A PLAIN REMOUNT FIRST, so the filesystem goes read-only, and a second mount of
+// the grant made before the remount goes with it. A bind remount covers its own
+// mount point alone, measured on alpine, and is asked only where the plain one
+// fails. WSL-198.
 func TestAReadOnlyGrantThatCameUpWritableIsRemountedReadOnly(t *testing.T) {
 	grantsCase(t)
 	for _, mode := range []string{"ro", "rw"} {
@@ -124,17 +129,28 @@ func TestAReadOnlyGrantThatCameUpWritableIsRemountedReadOnly(t *testing.T) {
 		dir := t.TempDir()
 		read := grantsSeed(t, dir, "", "", "")
 		stage(t, dir, "mount.drops-ro")
+		stage(t, dir, "mount.second")
 		out, err := grantsDrive(t, dir, []BaseMount{mine}, b64(mine.Target))
 		if err != nil || !strings.Contains(out, "grant "+mode+" /workspaces/mine") {
 			t.Fatalf("a %s grant whose mount drops ro answered %v:\n%s", mode, err, out)
 		}
 		remounted := strings.Contains(read("log"), "mount -o remount,ro /workspaces/mine")
-		if remounted != (mode == "ro") {
-			t.Errorf("a %s grant whose mount drops ro was remounted read-only: %v\n%s", mode, remounted, read("log"))
+		if remounted != (mode == "ro") || strings.Contains(read("log"), "remount,bind") {
+			t.Errorf("a %s grant whose mount drops ro was remounted plain: %v\n%s", mode, remounted, read("log"))
 		}
-		if !strings.Contains(read("mounts"), " /workspaces/mine drvfs "+mode+",") {
-			t.Errorf("a %s grant whose mount drops ro is mounted as:\n%s", mode, read("mounts"))
+		if mounts := read("mounts"); !strings.Contains(mounts, " /workspaces/mine drvfs "+mode+",") || !strings.Contains(mounts, " /run/second drvfs "+mode+",") {
+			t.Errorf("a %s grant whose mount drops ro, and a second mount of it, are mounted as:\n%s", mode, mounts)
 		}
+	}
+	// ⚠ WHERE THE PLAIN ONE FAILS, a bind remount still makes the grant read-only.
+	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "ro"}
+	dir := t.TempDir()
+	read := grantsSeed(t, dir, "", "", "")
+	stage(t, dir, "mount.drops-ro")
+	stage(t, dir, "remount.plain.fail")
+	out, err := grantsDrive(t, dir, []BaseMount{mine}, b64(mine.Target))
+	if err != nil || !strings.Contains(read("log"), "mount -o remount,bind,ro /workspaces/mine") || !strings.Contains(read("mounts"), " /workspaces/mine drvfs ro,") {
+		t.Fatalf("a read-only grant whose plain remount failed answered %v, mounted as:\n%s\nlog:\n%s\n%s", err, read("mounts"), read("log"), out)
 	}
 }
 

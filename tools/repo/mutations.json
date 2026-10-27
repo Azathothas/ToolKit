@@ -2,6 +2,267 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the mount helper hands WSL's helper the ro of a read-only line",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "    set -- \"$@\" -o \"ro,$1\"\n",
+      "replace": "    set -- \"$@\" -o \"$1\"\n",
+      "run": "TestTheMountHelperHandsWSLsHelperTheROItsLineAsks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper hands ro where BusyBox hands no options",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "[ \"$mh_given\" = true ] || set -- \"$@\" -o ro\n",
+      "replace": ":\n",
+      "run": "TestTheMountHelperHandsROWhereBusyBoxHandsNoOptions",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper reads ro from the target's own line alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "    if [ \"$mh_at\" = \"$mh_target\" ] && [ \"$mh_type\" = drvfs ]; then\n",
+      "replace": "    if [ \"$mh_type\" = drvfs ]; then\n",
+      "run": "TestTheMountHelperHandsWSLsHelperTheROItsLineAsks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper reads ro from a drvfs line alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "    if [ \"$mh_at\" = \"$mh_target\" ] && [ \"$mh_type\" = drvfs ]; then\n",
+      "replace": "    if [ \"$mh_at\" = \"$mh_target\" ]; then\n",
+      "run": "TestTheMountHelperHandsROWhereBusyBoxHandsNoOptions",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper reads no ro from a comment",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "    case \"$mh_from\" in '#'*|'') continue ;; esac\n",
+      "replace": "",
+      "run": "TestTheMountHelperHandsWSLsHelperTheROItsLineAsks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper remounts nothing that came up as asked",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "mh_live\n[ \"$mh_mode\" = rw ] || exit 0\nmount -o remount,ro",
+      "replace": "mh_live\nmount -o remount,ro",
+      "run": "TestTheMountHelperHandsWSLsHelperTheROItsLineAsks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper remounts a writable grant plain first",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "mount -o remount,ro \"$mh_target\" 2>/dev/null || mount -o remount,bind,ro",
+      "replace": "mount -o remount,bind,ro \"$mh_target\" 2>/dev/null || mount -o remount,bind,ro",
+      "run": "TestTheMountHelperRemountsAGrantItsHelperLeftWritable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper asks a bind remount where the plain one fails",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "|| mount -o remount,bind,ro \"$mh_target\" 2>/dev/null || :\n",
+      "replace": "|| :\n",
+      "run": "TestTheMountHelperRemountsAGrantItsHelperLeftWritable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper unmounts a grant that stays writable",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "if umount \"$mh_target\" 2>/dev/null; then\n",
+      "replace": "if false; then\n",
+      "run": "TestTheMountHelperUnmountsAGrantThatStaysWritable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper detaches a busy grant that stays writable",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "elif umount -l \"$mh_target\" 2>/dev/null; then\n",
+      "replace": "elif false; then\n",
+      "run": "TestTheMountHelperUnmountsAGrantThatStaysWritable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper fails the mount of a grant that stays writable",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "exit 32\n",
+      "replace": "exit 0\n",
+      "run": "TestTheMountHelperUnmountsAGrantThatStaysWritable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper is written only where /bin/mount is BusyBox's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "  */busybox) ;;\n  *) exit 0 ;;\n",
+      "replace": "  *) ;;\n",
+      "run": "TestTheMountHelperIsWrittenWhereBusyBoxsMountLooks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper is written only where WSL's helper is",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "[ -e \"$HELPER\" ] || exit 0\n",
+      "replace": "",
+      "run": "TestTheMountHelperIsWrittenWhereBusyBoxsMountLooks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper is put in place",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "if chmod 0755 \"$tmp\" && mv -f \"$tmp\" \"$WRAPPER\"; then\n",
+      "replace": "if chmod 0755 \"$tmp\"; then\n",
+      "run": "TestTheMountHelperIsWrittenWhereBusyBoxsMountLooks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a mount helper already in place is not written again",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "if [ -f \"$WRAPPER\" ] && [ ! -L \"$WRAPPER\" ] && [ \"$(cat \"$tmp\")\" = \"$(cat \"$WRAPPER\")\" ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestTheMountHelperIsWrittenWhereBusyBoxsMountLooks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a mount helper this tool did not write is left",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "  if [ \"$mh_second\" != \"$MARK\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestTheMountHelperLeavesAFileItDidNotWrite",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a link to WSL's helper is replaced by the mount helper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "  if [ \"$(readlink \"$WRAPPER\" 2>/dev/null)\" != \"$HELPER\" ]; then\n",
+      "replace": "  if true; then\n",
+      "run": "TestTheMountHelperReplacesALinkToWSLsHelper",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mount helper's install never fails its runner",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mount-helper.sh",
+      "find": "  say \"⚠ mount helper: no temporary file beside $WRAPPER, so a restart mounts no grant until base ensure can write it\"\n  exit 0\n",
+      "replace": "  say \"⚠ mount helper: no temporary file beside $WRAPPER, so a restart mounts no grant until base ensure can write it\"\n  exit 1\n",
+      "run": "TestTheMountHelperNeverFailsItsRunner",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant writes WSL's mount helper before its block",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    sh \"$WORK/mount-helper.sh\" || say \"⚠ mount helper: its install exited $?\"\n",
+      "replace": "    :\n",
+      "run": "TestAGrantWritesWSLsMountHelperBeforeItsBlock",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the held step writes no mount helper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ \"$TK_GRANTS_MODE\" != held ] && [ -n \"$TK_MOUNT_HELPER_B64\" ]; then\n",
+      "replace": "if [ -n \"$TK_MOUNT_HELPER_B64\" ]; then\n",
+      "run": "TestAGrantWritesWSLsMountHelperBeforeItsBlock",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant whose mount helper fails is not refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    sh \"$WORK/mount-helper.sh\" || say \"⚠ mount helper: its install exited $?\"\n",
+      "replace": "    sh \"$WORK/mount-helper.sh\"\n",
+      "run": "TestAGrantWhoseMountHelperFailsIsNotRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant whose mount helper will not decode is not refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    say \"⚠ mount helper: its payload could not be decoded, so it was not written\"\n",
+      "replace": "    die \"the mount helper could not be decoded\"\n",
+      "run": "TestAGrantWhoseMountHelperFailsIsNotRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live read-only grant is remounted plain first",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "      { mount -o remount,ro \"$target\" || mount -o remount,bind,ro \"$target\"; } 2>\"$WORK/mount.err\" ||\n",
+      "replace": "      { mount -o remount,bind,ro \"$target\"; } 2>\"$WORK/mount.err\" ||\n",
+      "run": "TestAReadOnlyGrantThatCameUpWritableIsRemountedReadOnly",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live read-only grant takes a bind remount where the plain one fails",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "      { mount -o remount,ro \"$target\" || mount -o remount,bind,ro \"$target\"; } 2>\"$WORK/mount.err\" ||\n",
+      "replace": "      { mount -o remount,ro \"$target\"; } 2>\"$WORK/mount.err\" ||\n",
+      "run": "TestAReadOnlyGrantThatCameUpWritableIsRemountedReadOnly",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every ensure writes WSL's mount helper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.sh",
+      "find": "    sh \"$mh_file\" || say \"⚠ mount helper: its install exited $?\"\n",
+      "replace": "    :\n",
+      "run": "TestEnginesShWritesWSLsMountHelper",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ensure names a mount helper install that failed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.sh",
+      "find": "    sh \"$mh_file\" || say \"⚠ mount helper: its install exited $?\"\n",
+      "replace": "    sh \"$mh_file\"\n",
+      "run": "TestEnginesShWritesWSLsMountHelper",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: grants.sh is handed the mount helper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\t\"TK_MOUNT_HELPER_B64\": base64.StdEncoding.EncodeToString(mountHelperScript),\n",
+      "replace": "",
+      "run": "TestTheMountHelperIsHandedToBothItsRunners",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: engines.sh is handed the mount helper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.go",
+      "find": "\t\t\t\"TK_MOUNT_HELPER_B64\": base64.StdEncoding.EncodeToString(mountHelperScript),\n",
+      "replace": "",
+      "run": "TestTheMountHelperIsHandedToBothItsRunners",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: engines.sh becomes the account through su where there is no runuser",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.sh",
+      "find": "    su -s /bin/sh -c \"$aa_script\" \"$TK_USER\" \"$@\"\n",
+      "replace": "    setpriv --reuid=\"$uid\" --regid=\"$(id -g \"$TK_USER\")\" --init-groups -- /bin/sh -c \"$aa_script\" \"$@\"\n",
+      "run": "TestEnginesShBecomesTheAccountThroughSuWhereThereIsNoRunuser",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: gc that cannot ask WSL cleans up neither half",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/cleanup_host.go",

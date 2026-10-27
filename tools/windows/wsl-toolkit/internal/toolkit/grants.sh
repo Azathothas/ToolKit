@@ -10,7 +10,8 @@
 # It runs as root, delivered on stdin. TK_USER, TK_GRANTS_MODE, TK_FSTAB_B64,
 # TK_MOUNT_CHECKS, TK_GRANT_TARGET, TK_GRANT_SOURCE, TK_GRANT_OWNER and
 # TK_GRANT_OWNER_NAME arrive as exported variables, and every path in them is
-# base64 made by Go, so none of it becomes shell source.
+# base64 made by Go, so none of it becomes shell source. TK_MOUNT_HELPER_B64 is
+# mount-helper.sh's text, which this runs. WSL-198.
 #
 # The owners ledger, /var/lib/wsl-toolkit/grant-owners, says which configuration
 # file made each live grant: one line of target, owner key and owner name, the two
@@ -37,6 +38,7 @@ cd /
 : "${TK_GRANT_SOURCE:=}"
 : "${TK_GRANT_OWNER:=}"
 : "${TK_GRANT_OWNER_NAME:=}"
+: "${TK_MOUNT_HELPER_B64:=}"
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'grants: %s\n' "$*" >&2; exit 3; }
@@ -257,6 +259,21 @@ install_owners() {
   chmod 644 "$OWNERS.new"
   mv "$OWNERS.new" "$OWNERS"
 }
+
+# ⛔ WSL'S OWN mount -a FINDS ITS HELPER AND HANDS IT ro, or on alpine a restart
+# mounts no grant. mount-helper.sh says why, and writes the helper where /bin/mount
+# is BusyBox's. It runs before any block is written, so a new base's first start
+# has it. The held step changes nothing, the helper included. WSL-198.
+#
+# ⚠ A HELPER THAT COULD NOT BE WRITTEN IS NAMED, AND NOTHING IS REFUSED FOR IT. A
+# grant made now does not need it, and a take-back below must still run.
+if [ "$TK_GRANTS_MODE" != held ] && [ -n "$TK_MOUNT_HELPER_B64" ]; then
+  if printf '%s' "$TK_MOUNT_HELPER_B64" | base64 -d > "$WORK/mount-helper.sh" 2>/dev/null; then
+    sh "$WORK/mount-helper.sh" || say "⚠ mount helper: its install exited $?"
+  else
+    say "⚠ mount helper: its payload could not be decoded, so it was not written"
+  fi
+fi
 
 # ⛔ BLOCK, NOTHING LIVE IS TOUCHED. It takes back the block of a live change that
 # mounted and unmounted nothing, because its target was already as asked. A live
@@ -554,8 +571,14 @@ while read -r mode target; do
     # grant came up rw, the account could write in it, and the read-back refused
     # it. A remount read-only holds, also measured, so a read-only grant works
     # there. Elsewhere the mount is ro already and nothing is remounted. WSL-188.
+    # ⭐ So is it on alpine where mount-helper.sh wrote its helper. WSL-198.
+    #
+    # ⛔ A PLAIN REMOUNT FIRST. It makes the filesystem read-only, so a bind of the
+    # grant made since goes read-only too. A bind remount covers its own mount
+    # point alone, measured on alpine, so it is asked only where the plain one
+    # fails. WSL-188, WSL-198.
     if [ "$mode" = ro ] && [ "$(live_mode "$target")" = rw ]; then
-      mount -o remount,ro "$target" 2>"$WORK/mount.err" ||
+      { mount -o remount,ro "$target" || mount -o remount,bind,ro "$target"; } 2>"$WORK/mount.err" ||
         fail_back "$target came up writable and could not be remounted read-only: $(head -1 "$WORK/mount.err")"
       say "remounted $target ro, which its mount had dropped"
     fi

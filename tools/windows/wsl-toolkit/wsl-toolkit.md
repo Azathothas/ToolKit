@@ -1398,13 +1398,34 @@ refusal names the tool that ran and its exit. The mount names the account's own 
 and gid. `base ensure` verifies the uid, and the account owns the grant through it.
 `WSL-188`
 
-⭐ **On Alpine a read-only grant is remounted read-only.** BusyBox's `mount` drops `ro`
-for a Windows directory, so the mount comes up writable. The grant remounts it
-read-only at once, which holds. Both were measured on the alpine preset. `WSL-188`
+⭐ **On Alpine a grant survives a restart.** WSL runs `mount -a` with no `PATH` at a
+start, and BusyBox's `mount` looks for WSL's `mount.drvfs` on `PATH`. musl's default
+path has no `/sbin`, where WSL keeps it. So every grant failed with `No such device`,
+measured on WSL 3.0.3 with the alpine preset. The tool writes its own
+`/usr/local/bin/mount.drvfs`, where that default path looks first. WSL then mounts
+every grant itself, before the first command in the base runs. `WSL-198`
 
-⚠ **On Alpine a restart mounts no grant.** WSL's `mount -a` fails there, measured on
-WSL 3.0.3 with the alpine preset. `base ensure` then exits 2, because a granted
-directory is not mounted. A base with grants is best built from another preset.
+⭐ **On Alpine a read-only grant is read-only from its mount.** BusyBox's `mount`
+drops `ro` before it runs the helper, so a read-only grant came up writable. The
+tool's helper hands WSL's helper the `ro` of the target's line in `/etc/fstab`. WSL's
+helper keeps it. Measured on the alpine preset: once the distribution was stopped,
+its first command found the grant read-only, and the account's write was refused.
+A live grant mounts the same way. `WSL-188`, `WSL-198`
+
+⚠ **A mount the helper leaves writable is made read-only, or taken away.** The
+tool's helper reads its mount back. It remounts a writable one read-only, so the
+filesystem is read-only, and every mount of that grant with it. A bind remount
+covers one mount point alone, so it is asked only where that fails. One that
+stays writable is unmounted, and its mount fails. `base grant` remounts the same
+way. `WSL-198`
+
+⚠ **The helper is written only where `/bin/mount` is BusyBox's, and WSL's own helper
+is there.** The grants step writes it before it writes a block, and every owner's
+`base ensure` writes it again. So an Alpine base an earlier release granted mounts
+its grants from its next start after `base ensure`. A file of that name this tool
+did not write is left as it is, with a ⚠ line. A link to WSL's helper is replaced.
+WSL prints no `mount -a` failure there while every grant's Windows directory
+exists. `WSL-198`
 
 ⛔ **Each changes its own target alone.** A mount under `/workspaces` that this
 configuration does not name stays mounted, because another configuration may hold
