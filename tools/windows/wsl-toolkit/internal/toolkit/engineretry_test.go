@@ -5,12 +5,15 @@ package toolkit
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // stallingManager is a package manager stand-in that fails its first TK_FAILS
@@ -209,6 +212,93 @@ func TestTheRealTimeoutStopsAHungManager(t *testing.T) {
 	}
 	if !standInListHas(calls, "sleep 30") {
 		t.Errorf("the stopped attempts were not asked again: %v", calls)
+	}
+}
+
+// clockStandIn stands in for date, answering TK_NOW, so the run's deadline is
+// read against a clock that does not move.
+const clockStandIn = `echo "$TK_NOW"`
+
+// TestNoManagerCallOutlivesTheProvisioningRun runs the engine section with the
+// run's deadline close. ⛔ The executable stops provisioning after 30 minutes,
+// and three bounded tries of 900 seconds outlast that. A stalled alpine mirror's
+// second try was cut there with no name, and the base was rolled back. WSL-204.
+func TestNoManagerCallOutlivesTheProvisioningRun(t *testing.T) {
+	shell := posixShell(t)
+	section := provisionerSection(t, "engine packages")
+	run := func(withTimeout bool, deadline, fails string) (string, []string, int) {
+		t.Helper()
+		dir := t.TempDir()
+		for _, m := range engineManagers {
+			writeStandIn(t, dir, m, logStandIn)
+		}
+		writeStandIn(t, dir, "sleep", logStandIn)
+		writeStandIn(t, dir, "date", clockStandIn)
+		if withTimeout {
+			writeStandIn(t, dir, "timeout", stoppingTimeout)
+		}
+		return runEngineSection(t, shell, section, "apk", dir, "TK_FAILS="+fails, "TK_CODE=124", "TK_NOW=1000", "provision_deadline="+deadline)
+	}
+	ran := func(calls []string) bool {
+		for _, call := range calls {
+			if strings.HasPrefix(call, "apk ") || strings.HasPrefix(call, "timeout ") {
+				return true
+			}
+		}
+		return false
+	}
+
+	if said, calls, code := run(true, "1300", "0"); code != 0 || !standInListHas(calls, "timeout 300 apk update") {
+		t.Errorf("with 300s left, the bound was not cut to them: exit %d, %v: %s", code, calls, said)
+	}
+	if said, calls, code := run(true, "5000", "0"); code != 0 || !standInListHas(calls, "timeout 900 apk update") {
+		t.Errorf("with 4000s left, the bound was not its own 900s: exit %d, %v: %s", code, calls, said)
+	}
+	// ⛔ A stopped try with no time left for the pause is named, and no other try
+	// is waited for.
+	said, calls, code := run(true, "1010", "99")
+	if code != 3 || !strings.Contains(said, "no time left for attempt 2. The last one ended: apk ran past 10s and was stopped") {
+		t.Errorf("a try cut at the deadline: exit %d, %s", code, said)
+	}
+	if standInListHas(calls, "sleep 15") {
+		t.Errorf("a try the run had no time for was waited for: %v", calls)
+	}
+	// ⛔ A call the run has no time left for is not started, with timeout or without it.
+	for _, withTimeout := range []bool{true, false} {
+		said, calls, code := run(withTimeout, "1000", "0")
+		if code != 3 || !strings.Contains(said, "The last one ended: apk was not started: provisioning has no time left") || ran(calls) {
+			t.Errorf("timeout %v, no time left: exit %d, %v: %s", withTimeout, code, calls, said)
+		}
+	}
+}
+
+// TestTheRunDeadlineIsTheRunsLimitLessItsMargin runs the deadline section with a
+// clock that does not move, and without a limit. WSL-204.
+func TestTheRunDeadlineIsTheRunsLimitLessItsMargin(t *testing.T) {
+	shell := posixShell(t)
+	section := provisionerSection(t, "run deadline")
+	dir := t.TempDir()
+	writeStandIn(t, dir, "date", clockStandIn)
+	for _, c := range []struct{ limit, want string }{{"1800", "2680"}, {"", ""}} {
+		cmd := exec.Command(shell, "-c", "set -eu\n"+section+"printf '%s' \"$provision_deadline\"\n")
+		cmd.Env = []string{"PATH=" + dir, "TK_NOW=1000"}
+		if c.limit != "" {
+			cmd.Env = append(cmd.Env, "TK_PROVISION_SECONDS="+c.limit)
+		}
+		out, err := cmd.Output()
+		if err != nil || string(out) != c.want {
+			t.Errorf("a limit of %q: deadline %q, %v, want %q", c.limit, out, err, c.want)
+		}
+	}
+}
+
+// TestProvisioningHandsTheScriptItsOwnLimit holds the provisioning run's limit
+// and the one the script cuts its bounds to as one value. WSL-204.
+func TestProvisioningHandsTheScriptItsOwnLimit(t *testing.T) {
+	b := &Base{cfg: Config{Base: BaseConfig{Name: "wsl-toolkit-tbl", User: "agent"}}}
+	req := b.provisionRequest(AutomountOff, BaseInteropOff, BaseToolsetDeveloper, SharedTmpfsOn, io.Discard)
+	if req.Timeout <= 0 || req.Env["TK_PROVISION_SECONDS"] != strconv.Itoa(int(req.Timeout/time.Second)) {
+		t.Fatalf("the run stops after %v and hands the script TK_PROVISION_SECONDS=%q", req.Timeout, req.Env["TK_PROVISION_SECONDS"])
 	}
 }
 

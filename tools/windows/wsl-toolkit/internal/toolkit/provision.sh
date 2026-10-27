@@ -38,6 +38,19 @@ cd /
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 
+# >>> run deadline: begin
+# ⛔ NO MANAGER CALL OUTLIVES THE RUN. The executable stops provisioning after
+# TK_PROVISION_SECONDS. A stalled alpine mirror's second bounded try was cut
+# there with no name, and the new base was rolled back. Each bound below is cut
+# to the time the run has left, less PROVISION_MARGIN for the script to say why
+# it stopped. With no TK_PROVISION_SECONDS, nothing is cut. WSL-204.
+PROVISION_MARGIN=120
+provision_deadline=
+if [ -n "${TK_PROVISION_SECONDS:-}" ]; then
+  provision_deadline=$(($(date +%s) + TK_PROVISION_SECONDS - PROVISION_MARGIN))
+fi
+# <<< run deadline: end
+
 : "${TK_USER:?TK_USER is required}"
 : "${TK_UID:?TK_UID is required}"
 : "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
@@ -136,6 +149,10 @@ esac
 # ENGINE_STEP_SECONDS where the userland carries timeout, as coreutils and
 # BusyBox both do. GNU timeout answers 124; BusyBox's leaves the TERM the
 # command died of, 143. A stopped call then counts as a failed attempt. WSL-203.
+#
+# ⚠ THE BOUND IS CUT TO THE RUN'S DEADLINE, and a call the run has no time left
+# for is not started. Three tries of 900 seconds outlast the run's 30 minutes.
+# WSL-204.
 ENGINE_STEP_SECONDS=900
 engine_timeout=
 if command -v timeout >/dev/null 2>&1; then
@@ -143,10 +160,21 @@ if command -v timeout >/dev/null 2>&1; then
 fi
 bounded() {
   bounded_status=0
+  bounded_for=$ENGINE_STEP_SECONDS
+  if [ -n "${provision_deadline:-}" ]; then
+    bounded_left=$((provision_deadline - $(date +%s)))
+    if [ "$bounded_left" -lt "$bounded_for" ]; then
+      bounded_for=$bounded_left
+    fi
+    if [ "$bounded_for" -lt 1 ]; then
+      printf '%s was not started: provisioning has no time left\n' "$1" >&2
+      return 124
+    fi
+  fi
   if [ -n "$engine_timeout" ]; then
-    timeout "$ENGINE_STEP_SECONDS" "$@" || bounded_status=$?
+    timeout "$bounded_for" "$@" || bounded_status=$?
     case "$bounded_status" in
-      124|143) printf '%s ran past %ss and was stopped\n' "$1" "$ENGINE_STEP_SECONDS" >&2 ;;
+      124|143) printf '%s ran past %ss and was stopped\n' "$1" "$bounded_for" >&2 ;;
     esac
   else
     "$@" || bounded_status=$?
@@ -234,6 +262,10 @@ ENGINE_SAID
     die "the engine packages did not install through $FAMILY in $ENGINE_ATTEMPTS attempts. The last one ended: $engine_why"
   fi
   engine_pause=$((engine_attempt * 15))
+  # ⚠ A try the run has no time left for is not waited for. WSL-204.
+  if [ -n "${provision_deadline:-}" ] && [ $(($(date +%s) + engine_pause)) -ge "$provision_deadline" ]; then
+    die "the engine packages did not install through $FAMILY, and provisioning has no time left for attempt $((engine_attempt + 1)). The last one ended: $engine_why"
+  fi
   say "the engine packages did not install, attempt $engine_attempt of $ENGINE_ATTEMPTS: $engine_why. Trying again in ${engine_pause}s"
   sleep "$engine_pause"
   engine_attempt=$((engine_attempt + 1))

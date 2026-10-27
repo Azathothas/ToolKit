@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 261  open 1  blocked 0  done 260
+total 262  open 2  blocked 0  done 260
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 0 | 0 | 122 | 122 |
+| P2 | 1 | 0 | 122 | 123 |
 | P3 | 1 | 0 | 34 | 35 |
-| **all** | **1** | **0** | **260** | **261** |
+| **all** | **2** | **0** | **260** | **262** |
 
 ---
 
@@ -298,6 +298,7 @@ total 261  open 1  blocked 0  done 260
 | WSL-201 | P2 | M | done | An adapter's root write in the account's home follows a link the account placed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-202 | P2 | M | done | A root write outside the home follows a path the account made | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-203 | P2 | S | done | A package manager that hangs holds the build with no bound | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-204 | P2 | S | open | Provisioning's limit cuts a bounded package manager try short with no name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

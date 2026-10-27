@@ -1896,6 +1896,10 @@ func hasLine(out, line string) bool {
 	return false
 }
 
+// provisionTimeout is how long the one provisioning run may take. The script is
+// handed it, so no package manager's bound outlives the run. WSL-204.
+const provisionTimeout = 30 * time.Minute
+
 // provisionRequest is the one provisioning run: the payload, as root, with the
 // configuration's settings in its environment.
 func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string, out io.Writer) ExecRequest {
@@ -1914,8 +1918,10 @@ func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string,
 			"TK_SHARED_TMPFS":      sharedTmpfs,
 			// WSL-178: the boot script's text, which engines.sh is handed too.
 			"TK_BOOT_B64": base64.StdEncoding.EncodeToString(bootScript),
+			// WSL-204: the script cuts each manager's bound to what is left of this.
+			"TK_PROVISION_SECONDS": strconv.Itoa(int(provisionTimeout / time.Second)),
 		},
-		Timeout: 30 * time.Minute,
+		Timeout: provisionTimeout,
 		Stdout:  out,
 		Stderr:  out,
 	}

@@ -17476,3 +17476,40 @@ Exit 0, with a case where a stopped manager is named and asked again, one with t
 linux-proof --rows-since d7e519c: proved tree d9d10f4 (commit 12660fa), 10 of 10 rows red
 the first run found the developer section's own harness without bounded, fixed in 12660fa
 ```
+
+## WSL-204. Provisioning's limit cuts a bounded package manager try short with no name
+
+**Source** the `WSL-201` second repair's drive, where a stalled alpine mirror outlasted the provisioning run
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The executable stops provisioning after 30 minutes. The engine step gives the manager three tries of up to 900 seconds each, which is 45 minutes. A stalled mirror's second try was cut by the outer limit, with exit 124 and no name, and the new base was rolled back.
+
+## Premise
+
+Read at `2c2c614`: `provisionRequest` sets a 30 minute `Timeout` and hands the script no deadline. `bounded` in `provision.sh` gives every call `ENGINE_STEP_SECONDS`, and the engine loop pauses 15 and 30 seconds between tries.
+
+## Approach
+
+The executable hands the script its limit as `TK_PROVISION_SECONDS`. The script takes a deadline two minutes short of it. `bounded` cuts each call to what is left, and refuses to start one with nothing left. The engine loop dies by name rather than pause for a try that cannot fit.
+
+## Consumers
+
+None. A build that the limit cut now fails by name, before the executable stops it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases where a bound is cut to the deadline, a late try is refused by name, and the run hands the script its own limit.
+
+---
+
+## Closing
+
+Open.

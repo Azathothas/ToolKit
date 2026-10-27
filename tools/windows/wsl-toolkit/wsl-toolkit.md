@@ -2786,7 +2786,10 @@ manager's engine transaction three tries, 15 and then 30 seconds apart, and
 names the line that ended each one. `WSL-140` ⛔ Every manager call is stopped
 after 900 seconds where the userland carries `timeout`, and the stop is named
 as the manager that ran past its time. A hung mirror then costs a try, not the
-build. `WSL-203`
+build. `WSL-203` ⚠ No bound outlives provisioning's own 30 minutes. Each is
+cut to the time the run has left, less two minutes, and a try that would start
+too late is not made. The refusal names the try and the line that ended the
+last one. `WSL-204`
 
 ⭐ **A build stopped before its identity marker is still this tool's to remove.**
 The build records itself in the ledger before its import registers anything.

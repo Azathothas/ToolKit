@@ -7375,7 +7375,7 @@
     {
       "label": "wsl-toolkit: a package manager call runs under timeout",
       "file": "internal/toolkit/provision.sh",
-      "find": "    timeout \"$ENGINE_STEP_SECONDS\" \"$@\" || bounded_status=$?\n",
+      "find": "    timeout \"$bounded_for\" \"$@\" || bounded_status=$?\n",
       "replace": "    \"$@\" || bounded_status=$?\n",
       "run": "TestAManagerThatHangsIsStoppedAndNamed|TestTheRealTimeoutStopsAHungManager",
       "module": "tools/windows/wsl-toolkit",
@@ -7384,7 +7384,7 @@
     {
       "label": "wsl-toolkit: a manager call the timeout stopped is named",
       "file": "internal/toolkit/provision.sh",
-      "find": "      124|143) printf '%s ran past %ss and was stopped\\n' \"$1\" \"$ENGINE_STEP_SECONDS\" >&2 ;;",
+      "find": "      124|143) printf '%s ran past %ss and was stopped\\n' \"$1\" \"$bounded_for\" >&2 ;;",
       "replace": "      124|143) : ;;",
       "run": "TestAManagerThatHangsIsStoppedAndNamed|TestTheRealTimeoutStopsAHungManager",
       "module": "tools/windows/wsl-toolkit",
@@ -7459,6 +7459,60 @@
       "find": "      dnf)    bounded dnf -y --setopt=install_weak_deps=False install sudo",
       "replace": "      dnf)    dnf -y --setopt=install_weak_deps=False install sudo",
       "run": "TestEveryPackageManagerCallInTheProvisionerIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning hands the script its own limit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\t\"TK_PROVISION_SECONDS\": strconv.Itoa(int(provisionTimeout / time.Second)),\n",
+      "replace": "\t\t\t\"TK_PROVISION_SECONDS\": \"\",\n",
+      "run": "TestProvisioningHandsTheScriptItsOwnLimit",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the run's deadline is its limit less the margin",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  provision_deadline=$(($(date +%s) + TK_PROVISION_SECONDS - PROVISION_MARGIN))\n",
+      "replace": "  provision_deadline=$(($(date +%s) + TK_PROVISION_SECONDS))\n",
+      "run": "TestTheRunDeadlineIsTheRunsLimitLessItsMargin",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a manager's bound is cut to the run's deadline",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      bounded_for=$bounded_left\n",
+      "replace": "      :\n",
+      "run": "TestNoManagerCallOutlivesTheProvisioningRun",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a call the run has no time left for is not started",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      printf '%s was not started: provisioning has no time left\\n' \"$1\" >&2\n      return 124\n",
+      "replace": "      :\n",
+      "run": "TestNoManagerCallOutlivesTheProvisioningRun",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a try the run has no time left for is not waited for",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  if [ -n \"${provision_deadline:-}\" ] && [ $(($(date +%s) + engine_pause)) -ge \"$provision_deadline\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestNoManagerCallOutlivesTheProvisioningRun",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stopped call names the bound it was given",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      124|143) printf '%s ran past %ss and was stopped\\n' \"$1\" \"$bounded_for\" >&2 ;;",
+      "replace": "      124|143) printf '%s ran past %ss and was stopped\\n' \"$1\" \"$ENGINE_STEP_SECONDS\" >&2 ;;",
+      "run": "TestNoManagerCallOutlivesTheProvisioningRun",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
