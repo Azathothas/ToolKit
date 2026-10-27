@@ -236,6 +236,21 @@ func (r *agentRig) run(script []byte, env ...string) (int, string) {
 	return cmd.ProcessState.ExitCode(), string(out)
 }
 
+// scriptPin answers what an adapter script assigns NAME at the start of a line, as the
+// herdr pin case reads its pins, so a pin has one home: the script. ⛔ A digest it
+// answers is a SHA-256, or the case stops.
+func scriptPin(t *testing.T, script []byte, name string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^` + name + `=(\S+)$`).FindSubmatch(script)
+	if m == nil {
+		t.Fatalf("install.sh assigns no %s at the start of a line", name)
+	}
+	if strings.Contains(name, "SHA256") && !installerDigestRE.Match(m[1]) {
+		t.Fatalf("install.sh pins %s as %q, which is not a SHA-256", name, m[1])
+	}
+	return string(m[1])
+}
+
 // agentScriptsRun skips where an adapter's scripts cannot run at all.
 func agentScriptsRun(t *testing.T, tools ...string) {
 	t.Helper()
@@ -549,20 +564,21 @@ func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t
 	}
 
 	// ⛔ THE PINNED RELEASE, and bytes that are not it: refused, kept, never unpacked.
+	release := scriptPin(t, script, "PI_RELEASE")
 	for _, c := range []struct{ arch, asset, digest string }{
-		{"x86_64", "pi-linux-x64.tar.gz", "f2e4e4329603223d03260cdb8bd5033dbdc1f73ba58ab8939db2e56546e115d2"},
-		{"aarch64", "pi-linux-arm64.tar.gz", "fa5829c7ef83ffeaebba015715c8306220f89b2aa8a00154efbba98dd5440156"},
+		{"x86_64", "pi-linux-x64.tar.gz", scriptPin(t, script, "PI_X86_64_PINNED_SHA256")},
+		{"aarch64", "pi-linux-arm64.tar.gz", scriptPin(t, script, "PI_AARCH64_PINNED_SHA256")},
 	} {
 		r := newReleaseRig(t, "pi", "")
 		served := r.serve(asset)
 		code, out := r.run(script, env(r, "STUB_ARCH="+c.arch)...)
 		if code != 2 || !strings.Contains(out, "is not the one this adapter pins, so it was not unpacked and npm was not tried") ||
-			!strings.Contains(out, "pinned      pi 1.4.0, SHA-256 "+c.digest) ||
+			!strings.Contains(out, "pinned      pi "+release+", SHA-256 "+c.digest) ||
 			!strings.Contains(out, fmt.Sprintf("%d bytes, SHA-256 %s", len(asset), served)) ||
-			!strings.Contains(out, `add "version": "1.4.0", "sha256": {"`+c.arch+`": "`+served+`"} to the pi entry in base.adapters`) {
-			t.Fatalf("a %s asset that is not pi 1.4.0's answered exit %d:\n%s", c.arch, code, out)
+			!strings.Contains(out, `add "version": "`+release+`", "sha256": {"`+c.arch+`": "`+served+`"} to the pi entry in base.adapters`) {
+			t.Fatalf("a %s asset that is not pi %s's answered exit %d:\n%s", c.arch, release, code, out)
 		}
-		if got := strings.TrimSpace(r.read(r.fetches)); got != "https://github.com/earendil-works/pi/releases/download/v1.4.0/"+c.asset {
+		if got := strings.TrimSpace(r.read(r.fetches)); got != "https://github.com/earendil-works/pi/releases/download/v"+release+"/"+c.asset {
 			t.Fatalf("the pinned release on %s was fetched from %q", c.arch, got)
 		}
 		r.installerHasNotRunNpm("a refused asset", out)
@@ -637,19 +653,20 @@ func TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(
 		return append([]string{"TK_OMP_STAGE_DIR=" + r.stage, "TK_OMP_WRAPPER=" + filepath.Join(r.system, "omp")}, extra...)
 	}
 
+	release := scriptPin(t, script, "OMP_RELEASE")
 	for _, c := range []struct{ arch, asset, digest string }{
-		{"x86_64", "omp-linux-x64", "85d9daf3a05fc76e8cd425ae1904eb576af8d21cc85fcf4690742626e07ccfa4"},
-		{"aarch64", "omp-linux-arm64", "eee8e586274cef2e725c218b2b28b48ca9965d46dd58f60998cb347eca4ad0cf"},
+		{"x86_64", "omp-linux-x64", scriptPin(t, script, "OMP_X86_64_PINNED_SHA256")},
+		{"aarch64", "omp-linux-arm64", scriptPin(t, script, "OMP_AARCH64_PINNED_SHA256")},
 	} {
 		r := newReleaseRig(t, "omp", "omp/")
 		served := r.serve(binary)
 		code, out := r.run(script, env(r, "STUB_ARCH="+c.arch)...)
 		if code != 2 || !strings.Contains(out, "is not the one this adapter pins, so it was not installed and npm was not tried") ||
-			!strings.Contains(out, "pinned      omp 18.12.6, SHA-256 "+c.digest) ||
-			!strings.Contains(out, `add "version": "18.12.6", "sha256": {"`+c.arch+`": "`+served+`"} to the omp entry in base.adapters`) {
-			t.Fatalf("a %s binary that is not omp 18.12.6's answered exit %d:\n%s", c.arch, code, out)
+			!strings.Contains(out, "pinned      omp "+release+", SHA-256 "+c.digest) ||
+			!strings.Contains(out, `add "version": "`+release+`", "sha256": {"`+c.arch+`": "`+served+`"} to the omp entry in base.adapters`) {
+			t.Fatalf("a %s binary that is not omp %s's answered exit %d:\n%s", c.arch, release, code, out)
 		}
-		if got := strings.TrimSpace(r.read(r.fetches)); got != "https://github.com/can1357/oh-my-pi/releases/download/v18.12.6/"+c.asset {
+		if got := strings.TrimSpace(r.read(r.fetches)); got != "https://github.com/can1357/oh-my-pi/releases/download/v"+release+"/"+c.asset {
 			t.Fatalf("the pinned release on %s was fetched from %q", c.arch, got)
 		}
 		r.installerHasNotRunNpm("a refused binary", out)
