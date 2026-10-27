@@ -17354,7 +17354,7 @@ Built on `r81/hostkeys`, repaired after an adversarial review whose seven findin
 ## WSL-201. An adapter's root write in the account's home follows a link the account placed
 
 **Source** the WSL-138 repair's report, which found it in omp's separation code and did not file it
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -17386,12 +17386,17 @@ Exit 0, with a case per adapter where a link planted at each path it writes leav
 
 ## Closing
 
-Open.
+**Closed on main at `d7e519c` and `eeca2f9`, for 9.0.0.** Every adapter writes in the account's home as the account, through `as_account`, so a link there reaches only what the account could already write. Root gives an XDG directory back only from inside it, and reads nothing in the home. A scan refuses a root command handed a home path unless a reasoned waiver covers it. Fedora provisioning installs `util-linux`, and the second review's repair added it to the tdnf and xbps arms. That repair stops every account read after 30 seconds where the userland carries `timeout`. Provisioning names a file standing where the engine's settings go, and `engines.sh` says which step failed. The scan reads `runuser` and `su` by their user word. A `cd` into the home keeps its reach until the subshell closes.
+
+```text
+linux-proof --rows-since 5feb917: proved tree 4ae61be (commit 8406b35), 64 rows
+linux-proof --rows-since 12660fa: proved tree d319dd6 (commit 22a7ee1), 52 rows
+```
 
 ## WSL-202. A root write outside the home follows a path the account made
 
 **Source** the review of `WSL-201`, which swept every embedded script for root writes the account can steer
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -17423,7 +17428,12 @@ Exit 0, with a case where a nested target is refused, a target behind a link is 
 
 ## Closing
 
-Open.
+**Closed on main at `d7e519c` and `eeca2f9`, for 9.0.0.** A new grant target inside another, or around one, is refused, in one file and across files through the ledger. A configuration that already nests loads, so `base revoke --target INNER` runs. Its inner grant is marked, and no fstab block, live grant or ensure mounts it. `base status` and `base ensure` name its revoke, and `base grant` refuses beside it. `grants.sh` refuses a target with a link on its way. It writes no block whose lines nest, and names the revoke for each line it drops. `verify.sh` names such a block, so the next `base ensure` writes it again. muse's self-test makes its own directory, and its probe removes the account's scratch as the account. On a scratch alpine base, the block lost the inner line. A restart then mounted only the outer grant, and the revoke ran.
+
+```text
+linux-proof --rows-since 5feb917: proved tree 4ae61be (commit 8406b35), 64 rows
+linux-proof --rows-since 12660fa: proved tree d319dd6 (commit 22a7ee1), 52 rows
+```
 
 ## WSL-203. A package manager that hangs holds the build with no bound
 

@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z; it ends on wsl-toolkit-v8.0.0
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 8.0.0 published from 5e0bdcf, installed and driven
-entries         total 261  open 3  blocked 0  done 258
+entries         total 261  open 1  blocked 0  done 260
 this session    ruling 31, then rulings 32 to 35
 ```
 
