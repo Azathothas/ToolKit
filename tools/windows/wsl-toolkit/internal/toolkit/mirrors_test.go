@@ -47,7 +47,7 @@ func TestBaseRegistryIsHeldWhereItIsRead(t *testing.T) {
 		"a mirror named twice":       {RegistryConfig{Mirrors: map[string][]string{"docker.io": {"m.example", "m.example"}}}, "twice"},
 		"a path with no host":        {RegistryConfig{Mirrors: map[string][]string{"docker.io": {":5000/x"}}}, "names its host first"},
 		"a trailing slash":           {RegistryConfig{Mirrors: map[string][]string{"docker.io": {"m.example/"}}}, "optional path"},
-		"a proxy with a password":    {RegistryConfig{Proxy: "http://me:secret@proxy.example:3128"}, "user or a password"},
+		"a proxy with a password":    {RegistryConfig{Proxy: "http://me:pw@10.0.0.1:3128"}, "user or a password"},
 		"a proxy with no scheme":     {RegistryConfig{Proxy: "proxy.example:3128"}, "must start with"},
 		"a proxy with a path":        {RegistryConfig{Proxy: "http://proxy.example:3128/x"}, "path or a query"},
 		"a proxy with a quote":       {RegistryConfig{Proxy: `http://proxy.example:3128"`}, "a quote"},
@@ -62,7 +62,7 @@ func TestBaseRegistryIsHeldWhereItIsRead(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s answered %v; want a refusal naming %q", name, err, c.want)
 		}
-		if err != nil && strings.Contains(err.Error(), "secret") {
+		if err != nil && strings.Contains(err.Error(), ":pw@") {
 			t.Errorf("%s printed the proxy's password: %v", name, err)
 		}
 	}

@@ -194,7 +194,8 @@ func TestABuildThatRegisteredItsBaseKeepsItsRecord(t *testing.T) {
 	n := newNoBaseHome(t)
 	n.h.say(t, "registered", fakeBaseName)
 	plan := CleanupPlan{}
-	n.r.closeBuildRecords(context.Background(), &plan, []LedgerEntry{{Kind: baseBuildKind, ID: fakeBaseName, Distro: fakeBaseName}})
+	build := LedgerEntry{Kind: baseBuildKind, ID: fakeBaseName, Distro: fakeBaseName}
+	n.r.closeBuildRecords(context.Background(), &plan, []LedgerEntry{build})
 	if len(plan.Removed) != 0 || len(plan.Failed) != 0 {
 		t.Fatalf("a build whose base is registered answered removed %v, failed %v", plan.Removed, plan.Failed)
 	}
