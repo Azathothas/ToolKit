@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 265  open 0  blocked 0  done 265
+total 267  open 1  blocked 0  done 266
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 0 | 0 | 125 | 125 |
+| P2 | 1 | 0 | 126 | 127 |
 | P3 | 0 | 0 | 36 | 36 |
-| **all** | **0** | **0** | **265** | **265** |
+| **all** | **1** | **0** | **266** | **267** |
 
 ---
 
@@ -96,6 +96,7 @@ total 265  open 0  blocked 0  done 265
 | TOOL-38 | P3 | M | done | The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag | [`tooling.md`](tooling.md) |
 | TOOL-39 | P1 | L | done | CI takes 23 minutes and a push up to 44, and a mutation row can be proved by a sibling's failure | [`tooling.md`](tooling.md) |
 | TOOL-40 | P3 | L | done | Each mutation row's cost tracks the size of one 57k-line package and its serial tests | [`tooling.md`](tooling.md) |
+| TOOL-41 | P2 | S | open | One connection reset in herdr's build fails a whole release | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -302,6 +303,7 @@ total 265  open 0  blocked 0  done 265
 | WSL-204 | P2 | S | done | Provisioning's limit cuts a bounded package manager try short with no name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-205 | P2 | S | done | A stand-in a case wrote can be busy when it runs, so the go job fails by chance | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-206 | P2 | S | done | `base status` without `--probe` exits 1 and names nothing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-207 | P2 | S | done | The acceptance suite's profile probe reads the kernel's shared interop handler as the base's own | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

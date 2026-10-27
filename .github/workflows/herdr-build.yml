@@ -215,9 +215,21 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         working-directory: herdr
+        # ⚠ THREE TRIES. The build script's zig fetches libghostty-vt's dependencies, and
+        # one connection reset on deps.files.ghostty.org failed the 9.0.1 release. A later
+        # try reuses what the earlier one built. TOOL-41.
         run: |
           set -eu
-          cargo build --release --locked --target "$TARGET"
+          for try in 1 2 3; do
+            if cargo build --release --locked --target "$TARGET"; then
+              exit 0
+            fi
+            echo "cargo build failed on try $try of 3" >&2
+            if [ "$try" -lt 3 ]; then
+              sleep $((try * 30))
+            fi
+          done
+          exit 1
 
       # ⚠ UNDER POWERSHELL, as herdr's own release job builds it. Git Bash puts a coreutils
       # link.exe on PATH, and the build must reach the MSVC linker.
@@ -225,9 +237,15 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         working-directory: herdr
+        # ⚠ THREE TRIES, as the Linux build has. TOOL-41.
         run: |
-          & cargo build --release --locked --target $env:TARGET
-          if ($LASTEXITCODE -ne 0) { Write-Output "cargo build exited $LASTEXITCODE"; exit 1 }
+          foreach ($try in 1..3) {
+            & cargo build --release --locked --target $env:TARGET
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Output "cargo build exited $LASTEXITCODE on try $try of 3"
+            if ($try -lt 3) { Start-Sleep -Seconds (30 * $try) }
+          }
+          exit 1
 
       # ⛔ THE BINARY RUNS BEFORE IT IS PACKAGED. Each runner is the architecture it built
       # for, so a build that cannot start is caught here and not by the first person who

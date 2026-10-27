@@ -17600,3 +17600,45 @@ Exit 0, with a case where a status without `--probe` prints its problem and the 
 linux-proof --rows-since 395c1aa: proved tree 2453533 (commit 69244a8), 1 row red
 repo mutate on Windows: 1 of 1 guards proved
 ```
+
+## WSL-207. The acceptance suite's profile probe reads the kernel's shared interop handler as the base's own
+
+**Source** the full acceptance run on 9.0.1, where four profile cases failed on `interop=present`
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The profile cases' probe calls interop present when `/proc/sys/fs/binfmt_misc/WSLInterop` exists. That table belongs to the kernel of WSL's one VM, so any running distribution with interop on fills it for all. The runner's own base has interop on, so the full suite failed four cases over a base whose interop was off.
+
+## Premise
+
+Measured on this host: `wsl-toolkit-jobs`, with `[interop] enabled=false`, saw `WSLInterop` while the runner's base ran. A copy of `whoami.exe` in its grant did not run, even with `WSL_INTEROP` set to each `/run/WSL` socket, and exited 1 after 10 seconds. The manual already says the handler does not follow a base's setting. 8.0.0 ran the quick suite alone, which leaves these cases out.
+
+## Approach
+
+The probe's interop line is an attempt: `WSL_INTEROP` in the account's session, then running a copy of `whoami.exe` the runner puts in the granted checkout. With no grant there is no program to try, and the session variable answers alone.
+
+## Consumers
+
+None. The acceptance runner only.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary PATH -Instance NAME
+```
+
+Exit 0, 111 of 111, on a fresh instance with interop on beside the profile base.
+
+---
+
+## Closing
+
+**Closed on main after `wsl-toolkit-v9.0.1`.** The profile probe's interop line is an attempt now. It reads `WSL_INTEROP` in the account's session, then runs a copy of `whoami.exe` the runner puts in the granted checkout. A base with interop off refuses that program after about 10 seconds. The runner's own base kept interop on beside the profile base, and the four cases passed.
+
+```text
+acceptance.ps1 -Instance acc901, installed 9.0.1, fresh instance and home: 111 of 111 in 998 s
+the run before the fix: 107 of 111, the four profile cases on interop=present
+```

@@ -27,7 +27,15 @@ entry. A superseded one is amended in place with a dated note.
 
 **Record:** `WSL-206` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and `DOC-16` in
 [`TODO/docs.md`](TODO/docs.md). The 9.0.0 drive found both.
-**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v9.0.1` from this commit.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v9.0.1` from `2225272`, **22 assets** with a cosign
+bundle each and `SHA256SUMS`. All 19 release jobs green on the second attempt. Amended 2026-10-27T23:54:13Z:
+the first attempt lost the linux-aarch64 herdr build to a connection reset in zig's fetch, and
+`TOOL-41` gives each herdr build three tries.
+
+⭐ **Driven after the publish.** `selfupdate` put 9.0.1 on this host, its SHA-256 verified, and
+`text-tool` was replaced from the same release. On a fresh instance, the full acceptance suite
+passed **111 of 111** in 998 s. Its first run failed four profile cases on its own probe, which
+read WSL's kernel-wide interop handler as the profile base's, `WSL-207`.
 
 - ⭐ **`base status` without `--probe` names its problems, `WSL-206`.** It printed none while its
   exit code counted them, so a fresh alpine base answered 1 and said nothing. Each problem now

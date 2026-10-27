@@ -1575,15 +1575,22 @@ try {
         $script:ProfileBack = Join-Path $script:ProfileProject 'from-guest.txt'
         $noBom = [Text.UTF8Encoding]::new($false)
         [IO.File]::WriteAllText((Join-Path $script:ProfileProject 'sentinel.txt'), 'FROM-WINDOWS', $noBom)
+        # A Windows program in the checkout, so the interop line below is an attempt to
+        # run one. WSL-207.
+        Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\whoami.exe') -Destination (Join-Path $script:ProfileProject 'tk-win.exe')
         # Each line is one fact about what the account can reach. The DrvFS mounts
         # leave out WSL's own read-only /usr/lib/wsl/drivers, which is not a grant.
+        # The interop line is an attempt, never a reading of binfmt_misc. That table is
+        # the kernel's, shared by every distribution in WSL's VM, so this runner's own
+        # base with interop on filled it for the profile base too. The manual says the
+        # handler does not follow a base's setting. WSL-207.
         [IO.File]::WriteAllText($script:ProfileProbe, ((@(
                     'set -u'
                     'awk ''($3 == "9p" && $4 ~ /aname=drvfs/) || $3 == "drvfs" { printf "grant=%s %s\n", $2, substr($4, 1, 2) }'' /proc/mounts'
                     'for d in /mnt/?; do if [ -e "$d" ]; then printf ''drive=%s\n'' "$d"; fi; done'
                     'printf ''sentinel=%s\n'' "$(cat /workspaces/project/sentinel.txt 2>/dev/null)"'
                     'if ( printf FROM-GUEST > /workspaces/project/from-guest.txt ) 2>/dev/null; then echo wrote=yes; else echo wrote=no; fi'
-                    'if [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] || [ -e /proc/sys/fs/binfmt_misc/WSLInterop-late ] || [ -n "${WSL_INTEROP:-}" ]; then echo interop=present; else echo interop=absent; fi'
+                    'if [ -n "${WSL_INTEROP:-}" ]; then echo interop=present; elif [ -e /workspaces/project/tk-win.exe ] && timeout 30 /workspaces/project/tk-win.exe >/dev/null 2>&1; then echo interop=present; else echo interop=absent; fi'
                     'printf ''pid1=%s\n'' "$(cat /proc/1/comm)"'
                     'for t in bash cc c++ curl git jq make node npm rg ssh tmux unzip; do command -v "$t" >/dev/null 2>&1 || printf ''missing=%s\n'' "$t"; done'
                     'mkdir -p /tmp/tk-profile-c'

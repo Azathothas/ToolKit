@@ -3663,3 +3663,40 @@ The package's tests and a toolkit mutation row each take materially less time, w
 linux-proof --rows-since 5feb917: proved tree 3d2b71e (commit 3460e0d), 28 rows
 linux-proof --rows-since 3460e0d: proved tree 621c5b0 (commit 499e10c), 46 rows
 ```
+
+## TOOL-41. One connection reset in herdr's build fails a whole release
+
+**Source** the `wsl-toolkit-v9.0.1` release run, whose linux-aarch64 herdr build died in zig's dependency fetch
+**Category** tooling, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`herdr-build.yml` runs `cargo build` once. herdr's build script runs zig, which fetches libghostty-vt's dependencies from deps.files.ghostty.org. One connection reset there failed the build, so the publish and the smoke were skipped and the release waited on a re-run.
+
+## Premise
+
+Read at `2225272`: the Linux and Windows build steps each call `cargo build` with no retry. The log ends on `HTTP response read failure: ConnectionResetByPeer` from zig's fetch of zlib.
+
+## Approach
+
+Each build step tries three times, 30 and then 60 seconds apart, and names each failed try. A later try reuses what the earlier one compiled. The nightly herdr build runs the same file, so it exercises the change before the next release.
+
+## Consumers
+
+None. A build that fails three times fails as before.
+
+## Prove
+
+```bash
+gh workflow run herdr-nightly.yml
+```
+
+The nightly's four builds pass through the changed steps.
+
+---
+
+## Closing
+
+Open.
