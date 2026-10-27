@@ -17428,7 +17428,7 @@ Open.
 ## WSL-203. A package manager that hangs holds the build with no bound
 
 **Source** the `WSL-201` repair's drives, where `apk update` hung twice on a scratch alpine base
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -17460,4 +17460,9 @@ Exit 0, with a case where a stopped manager is named and asked again, one with t
 
 ## Closing
 
-Open.
+**Closed on main at `d6df308` and `12660fa`, for 9.0.0.** Every package manager call in `provision.sh` runs through `bounded`, which hands it to `timeout` for 900 seconds where the userland carries one. A stopped call is named as the manager that ran past its time, and it costs an engine attempt rather than the build. GNU's 124 and BusyBox's 143 both read as a stop. With no `timeout`, the manager runs as before. A static case refuses a manager call without the bound, and a case hands the section this host's own `timeout` and a manager that never answers.
+
+```text
+linux-proof --rows-since d7e519c: proved tree d9d10f4 (commit 12660fa), 10 of 10 rows red
+the first run found the developer section's own harness without bounded, fixed in 12660fa
+```

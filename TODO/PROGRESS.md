@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z; it ends on wsl-toolkit-v8.0.0
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 8.0.0 published from 5e0bdcf, installed and driven
-entries         total 261  open 4  blocked 0  done 257
+entries         total 261  open 3  blocked 0  done 258
 this session    ruling 31, then rulings 32 to 35
 ```
 
@@ -97,7 +97,7 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
 12. **Unblocked by ruling 36**: `WSL-134`, `WSL-135`, `WSL-138`, `WSL-158` and `WSL-159`.
     **Closed:** all five, merged for 9.0.0.
 13. **Next**: `WSL-197` on a stock host, then `WSL-198`, `WSL-199`, `WSL-196`, `WSL-200`
-    `TOOL-40`, `WSL-201` and `WSL-202`, released as `wsl-toolkit-v9.0.0` with the five above. `WSL-200` is a
+    `TOOL-40`, `WSL-201`, `WSL-202` and `WSL-203`, released as `wsl-toolkit-v9.0.0` with the five above. `WSL-200` is a
     break, so the release is a major one.
 
 ## Open questions for the operator

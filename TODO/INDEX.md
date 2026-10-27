@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 261  open 4  blocked 0  done 257
+total 261  open 3  blocked 0  done 258
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 3 | 0 | 119 | 122 |
+| P2 | 2 | 0 | 120 | 122 |
 | P3 | 1 | 0 | 34 | 35 |
-| **all** | **4** | **0** | **257** | **261** |
+| **all** | **3** | **0** | **258** | **261** |
 
 ---
 
@@ -297,7 +297,7 @@ total 261  open 4  blocked 0  done 257
 | WSL-200 | P2 | S | done | `gc` cleans nothing on the host once the base is gone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-201 | P2 | M | open | An adapter's root write in the account's home follows a link the account placed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-202 | P2 | M | open | A root write outside the home follows a path the account made | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-203 | P2 | S | open | A package manager that hangs holds the build with no bound | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-203 | P2 | S | done | A package manager that hangs holds the build with no bound | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 
