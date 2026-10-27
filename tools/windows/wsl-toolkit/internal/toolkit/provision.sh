@@ -130,13 +130,37 @@ case "$FAMILY" in
   apt) export DEBIAN_FRONTEND=noninteractive ;;
 esac
 
+# ⛔ A MANAGER THAT HANGS IS STOPPED, AND THE STOP IS NAMED. A first build of the
+# alpine preset hung twice in `apk update`, and nothing bounded it, so the build
+# waited until it was stopped by hand. Each manager call below gets
+# ENGINE_STEP_SECONDS where the userland carries timeout, as coreutils and
+# BusyBox both do. GNU timeout answers 124; BusyBox's leaves the TERM the
+# command died of, 143. A stopped call then counts as a failed attempt. WSL-203.
+ENGINE_STEP_SECONDS=900
+engine_timeout=
+if command -v timeout >/dev/null 2>&1; then
+  engine_timeout=timeout
+fi
+bounded() {
+  bounded_status=0
+  if [ -n "$engine_timeout" ]; then
+    timeout "$ENGINE_STEP_SECONDS" "$@" || bounded_status=$?
+    case "$bounded_status" in
+      124|143) printf '%s ran past %ss and was stopped\n' "$1" "$ENGINE_STEP_SECONDS" >&2 ;;
+    esac
+  else
+    "$@" || bounded_status=$?
+  fi
+  return "$bounded_status"
+}
+
 # engine_transaction is one attempt at the family's engine packages, the index
 # refresh included where the family has one.
 engine_transaction() {
   case "$FAMILY" in
     apk)
-      apk update >/dev/null &&
-        apk add --no-cache podman crun fuse-overlayfs slirp4netns shadow shadow-uidmap \
+      bounded apk update >/dev/null &&
+        bounded apk add --no-cache podman crun fuse-overlayfs slirp4netns shadow shadow-uidmap \
           iptables ip6tables ca-certificates tar iproute2 >/dev/null
       ;;
     pacman)
@@ -144,7 +168,7 @@ engine_transaction() {
       # with -Sy and installing into an older rootfs produced an unsatisfiable
       # dependency set on a fresh base on 2026-09-12. Upgrade the rootfs and
       # install from one synchronized transaction.
-      pacman -Syu --noconfirm --needed podman crun fuse-overlayfs slirp4netns shadow \
+      bounded pacman -Syu --noconfirm --needed podman crun fuse-overlayfs slirp4netns shadow \
         iptables-nft ca-certificates tar iproute2 >/dev/null
       ;;
     apt)
@@ -154,8 +178,8 @@ engine_transaction() {
       # `netavark: nftables error: unable to execute nft: No such file or
       # directory`, and the build rolled the distribution back. The apk arm carries
       # iptables and the pacman arm iptables-nft; this arm carried neither. WSL-86.
-      apt-get update -qq >/dev/null &&
-        apt-get install -y -qq --no-install-recommends podman uidmap fuse-overlayfs \
+      bounded apt-get update -qq >/dev/null &&
+        bounded apt-get install -y -qq --no-install-recommends podman uidmap fuse-overlayfs \
           slirp4netns ca-certificates iproute2 nftables >/dev/null
       ;;
     dnf)
@@ -163,14 +187,14 @@ engine_transaction() {
       # image carries util-linux-core, which has neither, and podman pulls in neither.
       # Measured on a first build of the fedora preset: provisioning stopped at the
       # account's XDG directories, and the build was removed. WSL-201.
-      dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs \
+      bounded dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs \
         slirp4netns shadow-utils iproute tar util-linux >/dev/null
       ;;
     tdnf)
-      tdnf install -y podman shadow-utils tar iproute2 >/dev/null
+      bounded tdnf install -y podman shadow-utils tar iproute2 >/dev/null
       ;;
     xbps)
-      xbps-install -Sy podman crun fuse-overlayfs slirp4netns shadow \
+      bounded xbps-install -Sy podman crun fuse-overlayfs slirp4netns shadow \
         iproute2 ca-certificates tar >/dev/null
       ;;
   esac
@@ -214,12 +238,12 @@ ENGINE_SAID
 done
 
 case "$FAMILY" in
-  apk)    apk add --no-cache passt >/dev/null 2>&1 || : ;;
-  pacman) pacman -S --noconfirm --needed passt >/dev/null 2>&1 || : ;;
-  apt)    apt-get install -y -qq --no-install-recommends passt >/dev/null 2>&1 || : ;;
-  dnf)    dnf -y --setopt=install_weak_deps=False install passt >/dev/null 2>&1 || : ;;
-  tdnf)   tdnf install -y passt >/dev/null 2>&1 || : ;;
-  xbps)   xbps-install -Sy passt >/dev/null 2>&1 || : ;;
+  apk)    bounded apk add --no-cache passt >/dev/null 2>&1 || : ;;
+  pacman) bounded pacman -S --noconfirm --needed passt >/dev/null 2>&1 || : ;;
+  apt)    bounded apt-get install -y -qq --no-install-recommends passt >/dev/null 2>&1 || : ;;
+  dnf)    bounded dnf -y --setopt=install_weak_deps=False install passt >/dev/null 2>&1 || : ;;
+  tdnf)   bounded tdnf install -y passt >/dev/null 2>&1 || : ;;
+  xbps)   bounded xbps-install -Sy passt >/dev/null 2>&1 || : ;;
 esac
 # <<< engine packages: end
 
@@ -233,16 +257,16 @@ if [ "$SYSTEMD_ENABLED" = true ]; then
       die "systemd was requested, and this userland does not package it as its init system"
       ;;
     pacman)
-      pacman -S --noconfirm --needed systemd >/dev/null
+      bounded pacman -S --noconfirm --needed systemd >/dev/null
       ;;
     apt)
-      apt-get install -y -qq --no-install-recommends systemd systemd-sysv >/dev/null
+      bounded apt-get install -y -qq --no-install-recommends systemd systemd-sysv >/dev/null
       ;;
     dnf)
-      dnf -y --setopt=install_weak_deps=False install systemd >/dev/null
+      bounded dnf -y --setopt=install_weak_deps=False install systemd >/dev/null
       ;;
     tdnf)
-      tdnf install -y systemd >/dev/null
+      bounded tdnf install -y systemd >/dev/null
       ;;
   esac
   command -v systemctl >/dev/null 2>&1 || die "systemd was requested and systemctl is still absent"
@@ -273,12 +297,12 @@ case "$TK_TOOLSET" in
     # The list is package names from the table, split on purpose.
     # shellcheck disable=SC2086
     case "$FAMILY" in
-      apk)    apk add --no-cache $developer_packages >/dev/null ;;
-      pacman) pacman -S --noconfirm --needed $developer_packages >/dev/null ;;
-      apt)    apt-get install -y -qq --no-install-recommends $developer_packages >/dev/null ;;
-      dnf)    dnf -y --setopt=install_weak_deps=False install $developer_packages >/dev/null ;;
-      tdnf)   tdnf install -y $developer_packages >/dev/null ;;
-      xbps)   xbps-install -Sy $developer_packages >/dev/null ;;
+      apk)    bounded apk add --no-cache $developer_packages >/dev/null ;;
+      pacman) bounded pacman -S --noconfirm --needed $developer_packages >/dev/null ;;
+      apt)    bounded apt-get install -y -qq --no-install-recommends $developer_packages >/dev/null ;;
+      dnf)    bounded dnf -y --setopt=install_weak_deps=False install $developer_packages >/dev/null ;;
+      tdnf)   bounded tdnf install -y $developer_packages >/dev/null ;;
+      xbps)   bounded xbps-install -Sy $developer_packages >/dev/null ;;
     esac
     # <<< developer packages: end
     for tool in bash cc c++ curl git jq make node npm rg ssh tmux unzip; do
@@ -332,12 +356,12 @@ case "$FAMILY" in
 esac
 if ! cap_tool getcap >/dev/null || ! cap_tool setcap >/dev/null; then
   case "$FAMILY" in
-    apk)    apk add --no-cache "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
-    pacman) pacman -S --noconfirm --needed "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
-    apt)    apt-get install -y -qq --no-install-recommends "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
-    dnf)    dnf -y --setopt=install_weak_deps=False install "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
-    tdnf)   tdnf install -y "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
-    xbps)   xbps-install -Sy "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    apk)    bounded apk add --no-cache "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    pacman) bounded pacman -S --noconfirm --needed "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    apt)    bounded apt-get install -y -qq --no-install-recommends "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    dnf)    bounded dnf -y --setopt=install_weak_deps=False install "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    tdnf)   bounded tdnf install -y "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    xbps)   bounded xbps-install -Sy "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
   esac
 fi
 GETCAP=$(cap_tool getcap) || GETCAP=''
@@ -510,12 +534,12 @@ sudoers_path=/etc/sudoers.d/wsl-toolkit-$TK_USER
 case "$TK_PASSWORDLESS_SUDO" in
   true)
     case "$FAMILY" in
-      apk)    apk add --no-cache sudo >/dev/null ;;
-      pacman) pacman -S --noconfirm --needed sudo >/dev/null ;;
-      apt)    apt-get install -y -qq --no-install-recommends sudo >/dev/null ;;
-      dnf)    dnf -y --setopt=install_weak_deps=False install sudo >/dev/null ;;
-      tdnf)   tdnf install -y sudo >/dev/null ;;
-      xbps)   xbps-install -Sy sudo >/dev/null ;;
+      apk)    bounded apk add --no-cache sudo >/dev/null ;;
+      pacman) bounded pacman -S --noconfirm --needed sudo >/dev/null ;;
+      apt)    bounded apt-get install -y -qq --no-install-recommends sudo >/dev/null ;;
+      dnf)    bounded dnf -y --setopt=install_weak_deps=False install sudo >/dev/null ;;
+      tdnf)   bounded tdnf install -y sudo >/dev/null ;;
+      xbps)   bounded xbps-install -Sy sudo >/dev/null ;;
     esac
     command -v sudo >/dev/null 2>&1 || die "passwordless sudo was requested and sudo is absent"
     command -v visudo >/dev/null 2>&1 || die "passwordless sudo was requested and visudo is absent"

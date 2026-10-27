@@ -2762,7 +2762,10 @@ the state directory that owns the base moves it. `WSL-143`
 
 ⭐ **A stalled package mirror is asked again.** Provisioning gives each package
 manager's engine transaction three tries, 15 and then 30 seconds apart, and
-names the line that ended each one. `WSL-140`
+names the line that ended each one. `WSL-140` ⛔ Every manager call is stopped
+after 900 seconds where the userland carries `timeout`, and the stop is named
+as the manager that ran past its time. A hung mirror then costs an attempt, not
+the build. `WSL-203`
 
 ⭐ **A build stopped before its identity marker is still this tool's to remove.**
 The build records itself in the ledger before its import registers anything.

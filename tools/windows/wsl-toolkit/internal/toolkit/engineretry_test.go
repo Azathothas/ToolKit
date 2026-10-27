@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -82,5 +83,157 @@ func TestTheEnginePackagesAreAskedAgainAndTheStallNamed(t *testing.T) {
 		if !standInListHas(calls, "sleep 30") {
 			t.Errorf("%s: the third attempt did not wait longer: %v", family, calls)
 		}
+	}
+}
+
+// stoppingTimeout stands in for timeout. It records its arguments, answers as a
+// timeout that stopped its command for the first TK_FAILS calls, with TK_CODE,
+// and runs the command after that.
+const stoppingTimeout = logStandIn + `
+n=0
+if [ -f "$TK_COUNT" ]; then read -r n < "$TK_COUNT"; fi
+n=$((n + 1))
+printf '%s\n' "$n" > "$TK_COUNT"
+if [ "$n" -le "$TK_FAILS" ]; then exit "$TK_CODE"; fi
+shift
+exec "$@"`
+
+// runEngineSection runs the engine section for one family over a stand-in PATH,
+// and answers what it said, the calls the stand-ins recorded and its exit.
+func runEngineSection(t *testing.T, shell, section, family, dir string, env ...string) (string, []string, int) {
+	t.Helper()
+	log := filepath.Join(dir, "calls.txt")
+	harness := "set -eu\n" +
+		"say() { printf 'say: %s\\n' \"$*\" >&2; }\n" +
+		"die() { printf 'die: %s\\n' \"$*\" >&2; exit 3; }\n" +
+		"FAMILY=" + family + "\n" + section
+	cmd := exec.Command(shell, "-c", harness)
+	cmd.Env = append([]string{"PATH=" + dir, "TK_LOG=" + log, "TK_COUNT=" + filepath.Join(dir, "count")}, env...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	code := 0
+	if err := cmd.Run(); err != nil {
+		var exited *exec.ExitError
+		if !errors.As(err, &exited) {
+			t.Fatalf("%s: %v", family, err)
+		}
+		code = exited.ExitCode()
+	}
+	b, _ := os.ReadFile(log)
+	return stderr.String(), strings.Split(strings.TrimSpace(string(b)), "\n"), code
+}
+
+// engineManagers maps each family to the program its transaction runs first.
+var engineManagers = map[string]string{
+	"apk": "apk", "pacman": "pacman", "apt": "apt-get", "dnf": "dnf", "tdnf": "tdnf", "xbps": "xbps-install",
+}
+
+// TestAManagerThatHangsIsStoppedAndNamed runs the engine section with a timeout
+// that stops the manager. ⛔ A first build of the alpine preset hung twice in
+// `apk update`, and nothing bounded it. GNU timeout answers 124, and BusyBox's
+// leaves the TERM, 143. WSL-203.
+func TestAManagerThatHangsIsStoppedAndNamed(t *testing.T) {
+	shell := posixShell(t)
+	section := provisionerSection(t, "engine packages")
+	for family, manager := range engineManagers {
+		for _, stopped := range []string{"124", "143"} {
+			dir := t.TempDir()
+			for _, m := range engineManagers {
+				writeStandIn(t, dir, m, logStandIn)
+			}
+			writeStandIn(t, dir, "sleep", logStandIn)
+			writeStandIn(t, dir, "timeout", stoppingTimeout)
+			said, calls, code := runEngineSection(t, shell, section, family, dir, "TK_FAILS=1", "TK_CODE="+stopped)
+			if code != 0 {
+				t.Errorf("%s, %s: one stopped call ended the build, exit %d: %s", family, stopped, code, said)
+				continue
+			}
+			named := "attempt 1 of 3: " + manager + " ran past 900s and was stopped. Trying again in 15s"
+			if !strings.Contains(said, named) {
+				t.Errorf("%s, %s: the stop was not named: %s", family, stopped, said)
+			}
+			// ⛔ Every manager call, passt's included, came through the bound: the
+			// line before each is timeout's own record of the same call.
+			seen := 0
+			for i, call := range calls {
+				if !strings.HasPrefix(call, manager+" ") {
+					continue
+				}
+				seen++
+				if i == 0 || calls[i-1] != "timeout 900 "+call {
+					t.Errorf("%s: %q ran without the bound: %v", family, call, calls)
+				}
+			}
+			if seen < 2 {
+				t.Errorf("%s: the manager ran %d times, want the transaction and passt: %v", family, seen, calls)
+			}
+		}
+		dir := t.TempDir()
+		for _, m := range engineManagers {
+			writeStandIn(t, dir, m, logStandIn)
+		}
+		writeStandIn(t, dir, "sleep", logStandIn)
+		writeStandIn(t, dir, "timeout", stoppingTimeout)
+		said, _, code := runEngineSection(t, shell, section, family, dir, "TK_FAILS=99", "TK_CODE=124")
+		if code != 3 || !strings.Contains(said, "in 3 attempts. The last one ended: "+manager+" ran past 900s and was stopped") {
+			t.Errorf("%s: a manager stopped every time: exit %d, %s", family, code, said)
+		}
+	}
+}
+
+// TestTheRealTimeoutStopsAHungManager hands the section this host's own timeout
+// and a manager that never answers, with the bound at one second, so the stop is
+// a real one and not a stand-in's answer.
+func TestTheRealTimeoutStopsAHungManager(t *testing.T) {
+	shell := posixShell(t)
+	realTimeout, err := exec.LookPath("timeout")
+	if err != nil {
+		t.Skip("this host carries no timeout")
+	}
+	realSleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("this host carries no sleep")
+	}
+	section := provisionerSection(t, "engine packages")
+	short := strings.Replace(section, "ENGINE_STEP_SECONDS=900\n", "ENGINE_STEP_SECONDS=1\n", 1)
+	if short == section {
+		t.Fatal("the engine section sets no ENGINE_STEP_SECONDS=900")
+	}
+	dir := t.TempDir()
+	writeStandIn(t, dir, "apk", logStandIn+"\nexec \""+realSleep+"\" 60")
+	writeStandIn(t, dir, "sleep", logStandIn)
+	writeStandIn(t, dir, "timeout", "exec \""+realTimeout+"\" \"$@\"")
+	said, calls, code := runEngineSection(t, shell, short, "apk", dir)
+	if code != 3 || !strings.Contains(said, "in 3 attempts. The last one ended: apk ran past 1s and was stopped") {
+		t.Errorf("a hung apk: exit %d, %s", code, said)
+	}
+	if !standInListHas(calls, "sleep 30") {
+		t.Errorf("the stopped attempts were not asked again: %v", calls)
+	}
+}
+
+// boundedManagerCall is a package manager's install or refresh, the calls that
+// reach a mirror.
+var boundedManagerCall = regexp.MustCompile(`\b(apk (add|update|upgrade)|pacman -S|apt-get (install|update|upgrade)|dnf -y|tdnf install|xbps-install)\b`)
+
+// TestEveryPackageManagerCallInTheProvisionerIsBounded reads provision.sh for a
+// manager call that reaches a mirror without bounded in front of it. WSL-203.
+func TestEveryPackageManagerCallInTheProvisionerIsBounded(t *testing.T) {
+	seen := 0
+	for i, line := range strings.Split(string(provisionScript), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		at := boundedManagerCall.FindStringIndex(line)
+		if at == nil {
+			continue
+		}
+		seen++
+		if !strings.HasSuffix(line[:at[0]], "bounded ") {
+			t.Errorf("provision.sh:%d calls a package manager without bounded: %s", i+1, strings.TrimSpace(line))
+		}
+	}
+	if seen < 30 {
+		t.Errorf("found %d package manager calls in provision.sh; the pattern no longer reads them", seen)
 	}
 }

@@ -17424,3 +17424,40 @@ Exit 0, with a case where a nested target is refused, a target behind a link is 
 ## Closing
 
 Open.
+
+## WSL-203. A package manager that hangs holds the build with no bound
+
+**Source** the `WSL-201` repair's drives, where `apk update` hung twice on a scratch alpine base
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Provisioning runs each package manager with no time limit. The engine step asks again only when a call ends. A mirror that holds its connection open holds `base ensure` until someone stops it by hand.
+
+## Premise
+
+Read at `d7e519c`: `provision.sh` runs the manager bare for the engine transaction, passt, systemd, the developer packages, the capability package and sudo. The repair's agent stopped a hung `apk update` twice so its retry ran.
+
+## Approach
+
+Each manager call runs through `bounded`, which hands it to `timeout` for 900 seconds where the userland carries one. A stopped call is named and counts as a failed attempt, so the engine step asks again. A check refuses a manager call without the bound.
+
+## Consumers
+
+None. A build that hung now fails after three bounded attempts, naming the manager that ran past its time.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where a stopped manager is named and asked again, one with this host's own timeout, and the check that every call is bounded.
+
+---
+
+## Closing
+
+Open.

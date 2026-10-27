@@ -283,9 +283,11 @@ func runRootlessCases(t *testing.T, shell, section string, cases []rootlessCase)
 		for _, manager := range []string{"apk", "pacman", "apt-get", "dnf", "tdnf", "xbps-install"} {
 			writeStandIn(t, dir, manager, "exit 0")
 		}
+		// bounded is the engine section's, and these managers never hang.
 		harness := "set -eu\n" +
 			"say() { printf 'say: %s\\n' \"$*\" >&2; }\n" +
 			"die() { printf 'die: %s\\n' \"$*\" >&2; exit 3; }\n" +
+			"bounded() { \"$@\"; }\n" +
 			"FAMILY=" + c.family + "\n" + section
 		cmd := exec.Command(shell, "-c", harness)
 		// ⛔ PATH IS THE STAND-IN DIRECTORY ALONE, or this host's own newuidmap

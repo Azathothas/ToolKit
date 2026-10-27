@@ -7076,6 +7076,96 @@
       "args": []
     },
     {
+      "label": "wsl-toolkit: a package manager call runs under timeout",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    timeout \"$ENGINE_STEP_SECONDS\" \"$@\" || bounded_status=$?\n",
+      "replace": "    \"$@\" || bounded_status=$?\n",
+      "run": "TestAManagerThatHangsIsStoppedAndNamed|TestTheRealTimeoutStopsAHungManager",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a manager call the timeout stopped is named",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      124|143) printf '%s ran past %ss and was stopped\\n' \"$1\" \"$ENGINE_STEP_SECONDS\" >&2 ;;",
+      "replace": "      124|143) : ;;",
+      "run": "TestAManagerThatHangsIsStoppedAndNamed|TestTheRealTimeoutStopsAHungManager",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: BusyBox's stop, 143, is read as a stop",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      124|143) printf",
+      "replace": "      124) printf",
+      "run": "TestAManagerThatHangsIsStoppedAndNamed|TestTheRealTimeoutStopsAHungManager",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the bound is used where the userland carries timeout",
+      "file": "internal/toolkit/provision.sh",
+      "find": "if command -v timeout >/dev/null 2>&1; then\n  engine_timeout=timeout\nfi",
+      "replace": "if false; then\n  engine_timeout=timeout\nfi",
+      "run": "TestAManagerThatHangsIsStoppedAndNamed|TestTheRealTimeoutStopsAHungManager",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: apk's index refresh is bounded",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      bounded apk update >/dev/null &&",
+      "replace": "      apk update >/dev/null &&",
+      "run": "TestAManagerThatHangsIsStoppedAndNamed|TestEveryPackageManagerCallInTheProvisionerIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the passt install is bounded",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  apt)    bounded apt-get install -y -qq --no-install-recommends passt",
+      "replace": "  apt)    apt-get install -y -qq --no-install-recommends passt",
+      "run": "TestAManagerThatHangsIsStoppedAndNamed|TestEveryPackageManagerCallInTheProvisionerIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the systemd install is bounded",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      bounded apt-get install -y -qq --no-install-recommends systemd systemd-sysv",
+      "replace": "      apt-get install -y -qq --no-install-recommends systemd systemd-sysv",
+      "run": "TestEveryPackageManagerCallInTheProvisionerIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the developer packages are bounded",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      pacman) bounded pacman -S --noconfirm --needed $developer_packages",
+      "replace": "      pacman) pacman -S --noconfirm --needed $developer_packages",
+      "run": "TestEveryPackageManagerCallInTheProvisionerIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the capability package is bounded",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    xbps)   bounded xbps-install -Sy \"$CAP_PACKAGE\"",
+      "replace": "    xbps)   xbps-install -Sy \"$CAP_PACKAGE\"",
+      "run": "TestEveryPackageManagerCallInTheProvisionerIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: sudo's install is bounded",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      dnf)    bounded dnf -y --setopt=install_weak_deps=False install sudo",
+      "replace": "      dnf)    dnf -y --setopt=install_weak_deps=False install sudo",
+      "run": "TestEveryPackageManagerCallInTheProvisionerIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the carried bootstrap puts its prefix after the system path",
       "file": "internal/toolkit/shipped/bootstrap.sh",
       "find": "  ip_line=\"export PATH=\\\"\\$PATH:$PREFIX/bin\\\"\"",
