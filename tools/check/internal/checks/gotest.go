@@ -3,11 +3,15 @@
 package checks
 
 import (
+	"encoding/json"
+	"go/token"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // ⭐ ONE PACKAGE'S CASES RUN IN SEVERAL PROCESSES AT ONCE. internal/toolkit holds
@@ -23,7 +27,9 @@ import (
 //
 // ⛔ EVERY CASE RUNS EXACTLY ONCE. The cases are listed from the package's own
 // binary, dealt to the processes as -run patterns, and each pattern is checked
-// against the list. A case no pattern or two patterns match is a finding.
+// against the list. A case no pattern or two patterns match is a finding. Each
+// process runs with -json. A listed case that did not start exactly once across
+// them is a finding too. So is a case that started and was not listed.
 
 // splitTests are the packages whose cases run in several processes, by their
 // directory under the repository root.
@@ -70,8 +76,7 @@ func goTestModule(root, goBin, m, dir string, split map[string]bool, k int) []st
 		if !ok {
 			continue
 		}
-		rel, err := filepath.Rel(root, at)
-		if err == nil && split[filepath.ToSlash(rel)] {
+		if rel, ok := relUnder(root, at); ok && split[rel] {
 			apart = append(apart, pkg)
 			continue
 		}
@@ -102,6 +107,26 @@ func goTestModule(root, goBin, m, dir string, split map[string]bool, k int) []st
 	return found
 }
 
+// relUnder is at's slash path under root, each spelled as the filesystem
+// spells it.
+//
+// ⛔ BOTH ARE RESOLVED FIRST. A root spelled short, as DOWNLO~1, or through a
+// link, would otherwise lie outside every directory go list names. The split
+// would then be off, and only the time would say so.
+func relUnder(root, at string) (string, bool) {
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	if a, err := filepath.EvalSymlinks(at); err == nil {
+		at = a
+	}
+	rel, err := filepath.Rel(root, at)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
+}
+
 // goTestSplit runs one package's cases in k processes at once.
 //
 // ⚠ THE LIST BUILDS THE BINARY FIRST, so the k runs find its compile in the
@@ -129,9 +154,17 @@ func goTestSplit(goBin, m, dir, pkg string, k int) []string {
 		return []string{sprintf("%s: go test: %s's cases were not dealt to its processes once each: %s", m, pkg, bad)}
 	}
 	runs := make([]string, len(patterns))
+	counts := make([]map[string]int, len(patterns))
 	each(len(patterns), func(i int) {
-		if out, err := runIn(dir, goBin, "test", "-count=1", "-run", patterns[i], pkg); err != nil {
-			runs[i] = sprintf("%s: go test: %s", m, testFailure(out))
+		cmd := exec.Command(goBin, "test", "-json", "-count=1", "-run", patterns[i], pkg)
+		cmd.Dir = dir
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		out, err := output(cmd)
+		ran, text := readTestEvents(string(out))
+		counts[i] = ran
+		if err != nil {
+			runs[i] = sprintf("%s: go test: %s", m, testFailure(text+stderr.String()))
 		}
 	})
 	var found []string
@@ -140,17 +173,115 @@ func goTestSplit(goBin, m, dir, pkg string, k int) []string {
 			found = append(found, f)
 		}
 	}
+	// ⛔ AND EACH LISTED CASE RAN ONCE, read from what the processes ran. A case
+	// added after the list, or a TestMain that runs nothing, passes every
+	// pattern's check and every process's exit code.
+	if len(found) == 0 {
+		if bad := unevenlyRun(names, counts); bad != "" {
+			found = append(found, sprintf("%s: go test: %s's cases did not run once each across its processes: %s", m, pkg, bad))
+		}
+	}
 	return found
 }
 
-var caseName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// testEvent is the part of one `go test -json` event this check reads.
+type testEvent struct {
+	Action string
+	Test   string
+	Output string
+}
+
+// readTestEvents reads `go test -json`: how many times each top-level case
+// started, and the output as the plain run would have printed it.
+//
+// ⚠ A CASE'S LINES COME AFTER ITS RESULT, as a plain run prints them. -json
+// gives them first, and testFailure reads the lines under `--- FAIL`.
+func readTestEvents(out string) (map[string]int, string) {
+	ran := map[string]int{}
+	held := map[string][]string{}
+	var text strings.Builder
+	for _, ln := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
+		var e testEvent
+		if !strings.HasPrefix(ln, "{") || json.Unmarshal([]byte(ln), &e) != nil || e.Action == "" {
+			text.WriteString(ln + "\n")
+			continue
+		}
+		switch {
+		case e.Test == "":
+			text.WriteString(e.Output)
+		case e.Action == "run":
+			if !strings.Contains(e.Test, "/") {
+				ran[e.Test]++
+			}
+		case e.Action == "output":
+			if line := strings.TrimSpace(e.Output); strings.HasPrefix(line, "--- ") {
+				held[e.Test] = append([]string{e.Output}, held[e.Test]...)
+			} else if !strings.HasPrefix(line, "=== ") {
+				held[e.Test] = append(held[e.Test], e.Output)
+			}
+		case e.Action == "pass" || e.Action == "fail" || e.Action == "skip":
+			for _, o := range held[e.Test] {
+				text.WriteString(o)
+			}
+			delete(held, e.Test)
+		}
+	}
+	return ran, text.String()
+}
+
+// unevenlyRun names the first listed case that did not start exactly once
+// across the processes, or a case that started and was not listed.
+//
+// ⚠ A BENCHMARK IS LISTED AND NEVER RUN, because -run starts no benchmark.
+func unevenlyRun(names []string, counts []map[string]int) string {
+	total := map[string]int{}
+	for _, c := range counts {
+		for name, n := range c {
+			total[name] += n
+		}
+	}
+	listed := map[string]bool{}
+	for _, n := range names {
+		listed[n] = true
+		if strings.HasPrefix(n, "Benchmark") {
+			continue
+		}
+		if total[n] != 1 {
+			return sprintf("%s started %d time(s)", n, total[n])
+		}
+	}
+	var extra []string
+	for name := range total {
+		if !listed[name] {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	if len(extra) > 0 {
+		return sprintf("%s started and was not listed", extra[0])
+	}
+	return ""
+}
+
+// caseKinds are the prefixes `go test -list` names a case by.
+var caseKinds = []string{"Test", "Benchmark", "Fuzz", "Example"}
 
 // listedCases reads `go test -list .`: one name a line, then the package's line.
+//
+// ⛔ ANY NAME GO ACCEPTS, NOT ASCII ALONE. A case named with another letter was
+// left out of the list, so no pattern was checked against it.
 func listedCases(out string) []string {
 	var names []string
 	for _, ln := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
-		if ln = strings.TrimSpace(ln); caseName.MatchString(ln) {
-			names = append(names, ln)
+		ln = strings.TrimSpace(ln)
+		if !token.IsIdentifier(ln) {
+			continue
+		}
+		for _, kind := range caseKinds {
+			if strings.HasPrefix(ln, kind) {
+				names = append(names, ln)
+				break
+			}
 		}
 	}
 	return names
@@ -188,7 +319,10 @@ func casePatterns(names []string, k int) []string {
 			}
 			alt := regexp.QuoteMeta(name) + "$"
 			if need < len(name) {
-				alt = regexp.QuoteMeta(name[:need+1])
+				// ⚠ A WHOLE LETTER MORE, never part of one. Half a letter is
+				// not UTF-8, and its pattern would not compile.
+				_, size := utf8.DecodeRuneInString(name[need:])
+				alt = regexp.QuoteMeta(name[:need+size])
 			}
 			if len(alts) == 0 || alts[len(alts)-1] != alt {
 				alts = append(alts, alt)

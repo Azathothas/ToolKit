@@ -30,6 +30,9 @@ func TestEveryCaseIsDealtToOneProcess(t *testing.T) {
 		{"TestA", "TestAB", "TestABC", "TestB"},
 		{"TestB", "TestA", "TestAB", "TestA"},
 		{"TestX", "TestXY", "TestXZ", "TestY", "TestYX", "ExampleX", "FuzzX", "BenchmarkX"},
+		// ⛔ LETTERS OF TWO BYTES THAT SHARE THEIR FIRST. A prefix cut between
+		// the two is not UTF-8, and its pattern does not compile.
+		{"Test\u00c4pfel", "Test\u00c4ra", "Test\u00d6l", "Test\u00d6lig", "Test\u00d5", "Test\u03a9", "Test\u03a9mega"},
 		long,
 	}
 	for si, names := range sets {
@@ -57,6 +60,83 @@ func TestEveryCaseIsDealtToOneProcess(t *testing.T) {
 	}
 	if unevenlyDealt([]string{"TestA", "TestAB"}, []string{"^(?:TestA)", "^(?:TestAB$)"}) == "" {
 		t.Error("a case two patterns match was not named")
+	}
+}
+
+// TestAListedCaseMayBeNamedInAnyLetter reads `go test -list` as Go names a
+// case.
+//
+// ⛔ A NAME THE READING DROPPED WAS DEALT TO NO PROCESS, and no check saw it.
+func TestAListedCaseMayBeNamedInAnyLetter(t *testing.T) {
+	out := "Test\u00c4pfel\r\nTestA\nExample\u00d6l\nBenchmarkX\nFuzzY\nhelper\nTest With Space\nok  \texample.test/p\t0.1s\n"
+	got := strings.Join(listedCases(out), " ")
+	if got != "Test\u00c4pfel TestA Example\u00d6l BenchmarkX FuzzY" {
+		t.Fatalf("listed %q", got)
+	}
+}
+
+// TestACaseThatDidNotStartOnceIsAFinding holds unevenlyRun to the rule: each
+// listed case started exactly once across the processes, and nothing else did.
+func TestACaseThatDidNotStartOnceIsAFinding(t *testing.T) {
+	names := []string{"TestA", "TestB", "BenchmarkC"}
+	cases := []struct {
+		counts []map[string]int
+		want   string
+	}{
+		{[]map[string]int{{"TestA": 1}, {"TestB": 1}}, ""},
+		{[]map[string]int{{"TestA": 1}, {"TestA": 1, "TestB": 1}}, "TestA started 2 time(s)"},
+		{[]map[string]int{{"TestA": 1}, {}}, "TestB started 0 time(s)"},
+		{[]map[string]int{{"TestA": 1}, {"TestB": 1, "TestD": 1}}, "TestD started and was not listed"},
+	}
+	for _, c := range cases {
+		if got := unevenlyRun(names, c.counts); got != c.want {
+			t.Errorf("%v: %q, want %q", c.counts, got, c.want)
+		}
+	}
+}
+
+// TestASplitPackageWhoseCasesNeverStartedIsAFinding: a TestMain lists the
+// cases and runs none, so every process exits 0.
+//
+// ⛔ READ FROM WHAT THE PROCESSES RAN, NOT FROM THEIR EXIT CODES. Every pattern
+// matched a listed case, and the step passed.
+func TestASplitPackageWhoseCasesNeverStartedIsAFinding(t *testing.T) {
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no Go toolchain on PATH")
+	}
+	root, ran := t.TempDir(), t.TempDir()
+	splitModule(t, root, ran, []string{"TestA", "TestB", "TestC"}, "")
+	main := "package p\n\nimport (\n\t\"flag\"\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) {\n" +
+		"\tflag.Parse()\n\tif flag.Lookup(\"test.list\").Value.String() != \"\" {\n\t\tos.Exit(m.Run())\n\t}\n\tos.Exit(0)\n}\n"
+	if err := os.WriteFile(filepath.Join(root, "mod", "p", "main_test.go"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	found := goTestModule(root, goBin, "mod", filepath.Join(root, "mod"), map[string]bool{"mod/p": true}, 2)
+	if len(found) != 1 || !strings.Contains(found[0], "did not run once each") || !strings.Contains(found[0], "started 0 time(s)") {
+		t.Fatalf("no case started, and the step found %q", found)
+	}
+}
+
+// TestAShortOrLinkedRootKeepsTheSplit: the gate's root is spelled another way
+// than go list spells a package's directory.
+//
+// ⛔ THE SPLIT WAS OFF, AND NOTHING SAID SO. On Windows a root spelled
+// DOWNLO~1 lay outside every directory, and elsewhere a root through a link.
+func TestAShortOrLinkedRootKeepsTheSplit(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "mod", "p"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	other := otherSpelling(t, root)
+	if rel, ok := relUnder(other, filepath.Join(root, "mod", "p")); !ok || rel != "mod/p" {
+		t.Errorf("under %s, the package is %q, %v", other, rel, ok)
+	}
+	if rel, ok := relUnder(root, filepath.Join(other, "mod", "p")); !ok || rel != "mod/p" {
+		t.Errorf("spelled from %s, the package is %q, %v", other, rel, ok)
+	}
+	if rel, ok := relUnder(filepath.Join(root, "mod"), t.TempDir()); ok {
+		t.Errorf("a directory outside the root was read as under it, at %q", rel)
 	}
 }
 
@@ -161,7 +241,7 @@ func TestASplitPackagesCasesRunOnceEachInSeveralProcesses(t *testing.T) {
 		t.Skip("no Go toolchain on PATH")
 	}
 	root, ran := t.TempDir(), t.TempDir()
-	cases := []string{"TestA", "TestAB", "TestB", "TestC", "TestCD", "TestD", "TestE", "TestF"}
+	cases := []string{"TestA", "TestAB", "TestB", "TestC", "TestCD", "TestD", "TestE", "TestF", "Test\u00c4", "Test\u00c4B"}
 	splitModule(t, root, ran, cases, "")
 	found := goTestModule(root, goBin, "mod", filepath.Join(root, "mod"), map[string]bool{"mod/p": true}, 3)
 	if len(found) != 0 {
