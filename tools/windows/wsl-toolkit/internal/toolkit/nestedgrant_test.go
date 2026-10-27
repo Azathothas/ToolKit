@@ -212,6 +212,31 @@ func TestAGrantNestedWithAnotherFilesGrantIsRefused(t *testing.T) {
 	if !strings.Contains(read("fstab"), " /workspaces/outer drvfs ") {
 		t.Fatalf("the write did not take its own target:\n%s", read("fstab"))
 	}
+	// ⭐ A live grant around a stale row goes on too: only a target being changed is
+	// refused around another file's grant, and only while that grant is there.
+	dir = t.TempDir()
+	grantsSeed(t, dir, "", "", "/workspaces/outer/inner "+b64(theirs)+" "+b64(theirs)+"\n")
+	if out, err = grantsDrive(t, dir, []BaseMount{outer}, b64(outer.Target)); err != nil || !strings.Contains(out, "grants-complete") {
+		t.Fatalf("a stale ledger row refused a live grant around it: %v\n%s", err, out)
+	}
+
+	// ⭐ AND A STALE ROW AROUND THIS ONE: a write keeps the inner line, and a live grant
+	// inside it goes on. Inside a grant that is there, both are left out or refused.
+	for _, mode := range []string{GrantsWrite, GrantsLive} {
+		dir = t.TempDir()
+		read = grantsSeed(t, dir, "", "", "/workspaces/outer "+b64(theirs)+" "+b64(theirs)+"\n")
+		changing := ""
+		if mode == GrantsLive {
+			changing = b64(inner.Target)
+		}
+		out, err = grantsDriveIn(t, dir, mode, []BaseMount{inner}, changing)
+		if err != nil || !strings.Contains(out, "grants-complete") {
+			t.Fatalf("%s: a stale ledger row around the grant refused it: %v\n%s", mode, err, out)
+		}
+		if mode == GrantsWrite && len(blockLinesAt(t, dir, inner.Target)) != 1 {
+			t.Fatalf("a stale ledger row around the grant left its line out:\n%s", read("fstab"))
+		}
+	}
 }
 
 // TestATargetInsideALiveWindowsMountIsRefused drives a grant whose target sits under a

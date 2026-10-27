@@ -3622,7 +3622,7 @@ A push that touches wsl-toolkit finishes CI in about 5 minutes with every row pr
 ## TOOL-40. Each mutation row's cost tracks the size of one 57k-line package and its serial tests
 
 **Source** the operator, 2026-10-25: "what is so wrong that ci takes this long ... yes please fix it all", after a read-only analysis of CI's step timings; step 8 of that plan, left for later
-**Category** tooling, **Priority** P3, **Effort** L, **Status** open
+**Category** tooling, **Priority** P3, **Effort** L, **Status** done
 
 ---
 
@@ -3654,4 +3654,12 @@ The package's tests and a toolkit mutation row each take materially less time, w
 
 ## Closing
 
-Open.
+**Closed on main at `7269e63`, for 9.0.0, after an adversarial review.** A row on a file `internal/toolkit` embeds runs on its baseline's binary through `internal/embedswap`. An ok, or a skip its baseline made too, is kept from a run that took the bytes. Any other verdict is the first of two runs, and a compile is the second, so a green hand-in beside a red compile is BROKEN. Only the process that runs the cases writes the receipt. A process that cannot take its row stops and leaves a missed mark, and the row compiles. Each run has its own bytes file, and the receipt goes only over the staged bytes. `internal/parallelread` reads go/types objects to any depth. `internal/toolkitsource` holds it, so the toolkit's test binary links no go/types. Each listed case must start exactly once across the `-json` processes. A root spelled `DOWNLO~1` keeps the split. The go check took 104 and 114 s, against 122 and 116 s at `3460e0d`, and 492 and 610 s before the split. A 35-row embedded sample took 64 and 63 s, against 111 and 70 s, with the same verdicts. On Linux, 82 of 132 rows since `3db9519` needed no compile.
+
+- ⚠ The package split was not made, so a `.go` row still compiles the package.
+- ⚠ `parallelread` does not see a write through a copy of a map, slice or pointer, or through what a call returned. Nor does it see another package's own setters, and the README names each.
+
+```text
+linux-proof --rows-since 5feb917: proved tree 3d2b71e (commit 3460e0d), 28 rows
+linux-proof --rows-since 3460e0d: proved tree 621c5b0 (commit 499e10c), 46 rows
+```
