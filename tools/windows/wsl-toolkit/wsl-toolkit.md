@@ -1473,9 +1473,11 @@ and is not a containment boundary.
 ### Adapters, and herdr
 
 A base's `adapters` list names the software `base ensure` installs for its agents,
-after provisioning and in order. [`adapters/README.md`](adapters/README.md) is the
-contract for writing one. ⭐ Every adapter is applied, and `base ensure` reports each
-one's problem rather than stopping at the first. `WSL-107`
+after provisioning. `herdr` goes first, and the rest follow in the list's order,
+because `muse`, `pi` and `omp` each set herdr up only where herdr is installed.
+[`adapters/README.md`](adapters/README.md) is the contract for writing one. ⭐ Every
+adapter is applied, and `base ensure` reports each one's problem rather than
+stopping at the first. `WSL-107`
 
 ```json
 "adapters": [{ "name": "herdr" }]
@@ -1576,32 +1578,48 @@ away. `WSL-90`
 
 ⭐ **`private_net` puts herdr's server in a network namespace of its own, and so every
 pane and agent it starts.** The internet stays reachable. An `nft` rule inside the
-namespace refuses the Windows host and the private ranges. It is off by default, and
-without it nothing changes. `WSL-159`
+namespace refuses the Windows host and the private ranges. It is off by default.
+Without it, the server's unit keeps its bytes and the probe answers no namespace
+fact. `WSL-159`
+
+⛔ **It confines the processes in herdr's panes, and nothing else.** Three routes stay
+in the shared namespace, measured with the key on and the server in its namespace:
+
+- ⛔ **Interop.** A pane runs any Windows program, `wsl.exe` among them, and `wsl.exe
+  -u root` starts a root shell in the shared namespace. `base doors` reports this as
+  `interop.exec-pe`, and no setting here closes it.
+- ⛔ **`base agent NAME`, and the `NAME.exe` launcher.** A command with no screen runs
+  through `base exec`, not through herdr.
+- ⚠ **A public IPv4 address the Windows host holds.** It is the internet. The rules
+  refuse `100.64.0.0/10` too, where Tailscale gives the host an address.
 
 ⛔ **It gives something up, and `base status` says what on its `herdr net` row.** That
-row prints only where the key is on, probed or not. Those agents give up two things:
+row prints where the configuration asks for the key, probed or not. It says what
+was asked, and `--probe` measures whether it holds. Those agents give up two things:
 
 - ⛔ **Rootless containers.** The account's engine and its user manager run in the
   shared namespace, so the server cannot reach either. Podman in a pane refuses with
   `newuidmap: Could not set caps`.
 - ⛔ **sudo, and every setuid program.** The server runs with `NoNewPrivileges`,
   because guest root can leave any namespace.
-- ✅ Muse's own sandbox still runs, because `bwrap` needs no privilege.
+
+Muse's own sandbox still runs, because `bwrap` needs no privilege.
 
 | measured in a herdr pane on one Arch base, both ways | without the key | with `private_net` |
 | --- | --- | --- |
-| the network namespace | the shared one | ⭐ its own |
+| the network namespace | the shared one | its own |
 | `ip -o link` | `lo`, `eth0` | `lo` and pasta's own `eth0` |
-| the Windows host, ICMP | answered | ⭐ **refused** |
+| the Windows host, ICMP | answered | refused |
 | the internet, `https://example.com` | `200` | `200` |
-| a service on the shared namespace's `127.0.0.1` | `200` | ⭐ **refused** |
+| a service on the shared namespace's `127.0.0.1` | `200` | refused |
 | `id -u` | the account's | the account's |
 | `nft flush ruleset` | `Operation not permitted` | `Operation not permitted`, so the rules hold |
-| `systemd-run --user`, with `XDG_RUNTIME_DIR` set | exit 0, a unit outside the pane | ⭐ **refused**, `Operation not permitted` |
-| `sudo -n true` | exit 0 | ⛔ refused, `no new privileges` |
-| `podman run` | exit 0 | ⛔ exit 125, `newuidmap` |
+| `systemd-run --user`, with `XDG_RUNTIME_DIR` set | exit 0, a unit outside the pane | refused, `Operation not permitted` |
+| `sudo -n true` | exit 0 | refused, `no new privileges` |
+| `podman run` | exit 0 | exit 125, `newuidmap` |
 | `bwrap --unshare-net` | exit 0 | exit 0 |
+| `/mnt/c/Windows/System32/wsl.exe -d BASE -u root` | uid 0, the shared namespace | uid 0, the shared namespace |
+| `base agent pi -p hello`, from Windows | the shared namespace | the shared namespace, outside the server's |
 
 ⭐ **Root makes this namespace, and not the account.** `base exec --private-net` runs
 pasta as the account, which makes the payload uid 0 in a user namespace. Every agent
@@ -1627,21 +1645,33 @@ agents keep the account's uid and hold no privilege over the rules.
 
 ⛔ **`base ensure` never restarts a running server, so the key waits for its next
 start.** `base status --probe` reports the server's own namespace as `server-netns`.
-A server outside the namespace the key asks for is a problem. Its remediation is
-`herdr-private-net-pending`, and its command ends every pane:
+A server outside the namespace the key asks for is a note, so `base ensure`, `ready`
+and a job all pass. Its advisory remediation is `herdr-private-net-pending`. The
+restart is yours to decide, because its command ends every pane:
 
 ```powershell
 wsl-toolkit base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'
 ```
 
-⚠ **Turning the key off removes the drop-in at once.** The namespace's own unit stays
-while the server is still in it, so that server keeps its way out. The first `base
-ensure` after the restart removes the rest. A namespace whose link failed earns
-`herdr-private-net-down`, whose command links it again and ends no pane.
+| the base, as `base status --probe` reads it | what it answers | what ends it |
+| --- | --- | --- |
+| the key in the configuration, and no drop-in yet | advisory `herdr-private-net-unapplied` | `base ensure`, which ends no pane |
+| the drop-in, and no key in the configuration | advisory `herdr-private-net-unapplied` | `base ensure`, which ends no pane |
+| the key, and the server in the shared namespace | a note, and advisory `herdr-private-net-pending` | the restart above |
+| the key, the server in its namespace, and no link | a problem, `herdr-private-net-down` | `base ensure` starts the link again, and ends no pane |
 
-⚠ **It confines the network of the processes in it, and nothing else.** A Windows
-program that interop starts runs on Windows, and `base doors` reports interop. ⛔ So
-the base is still not called a sandbox.
+- ⚠ **Turning the key off removes the drop-in at once.** systemd reads the units again
+  before anything stops, so the running server is left running. The namespace's own
+  unit stays while the server is still in it, so that server keeps its way out. The
+  first `base ensure` after the restart removes the rest.
+- ⭐ **A changed rule set reaches a running namespace at the next `base ensure`.** The
+  rules are written into it in place, and pasta keeps its link.
+- ⛔ **So the base is still not called a sandbox.** The routes above stay open.
+
+Measured on a scratch base with herdr 0.9.5. The key turned on under a running
+server, then off, left the server's process the same, and both ensures exited 0.
+Killing pasta under the server read `herdr-private-net-down`. The next ensure linked
+the namespace again, with the server's process unchanged.
 
 ⭐ **`muse` installs Muse Code for the base's account, and runs Meta's installer only
 while its digest is approved.** `base ensure` saves the installer Meta serves, prints
@@ -1679,8 +1709,8 @@ A local file wins over herdr's bundled and remote manifests. `WSL-158`
 
 | Muse Code 1.4.13 in a herdr pane | herdr's own rules | with the adapter's file |
 | --- | --- | --- |
-| the input prompt, `❯` | `rule: none`, idle by `default_known_agent_idle_fallback` | ⭐ `idle_prompt` |
-| a status line carrying `max` | `rule: none` | ⭐ `idle_status_fallback` |
+| the input prompt, `❯` | `rule: none`, idle by `default_known_agent_idle_fallback` | `idle_prompt` |
+| a status line carrying `max` | `rule: none` | `idle_status_fallback` |
 | a turn in progress, `esc to interrupt` | `working_esc_interrupt` | `working_esc_interrupt` |
 | `Do you trust this workspace?` | `workspace_trust_blocked` | `workspace_trust_blocked` |
 
@@ -1689,12 +1719,17 @@ A local file wins over herdr's bundled and remote manifests. `WSL-158`
 - ⚠ No approval screen was drawn, because the echo provider calls no tool. The
   reporter covers approval through `PreToolUse` and `PermissionRequest`, and it stays
   as the fallback.
-- ⚠ The file shadows a newer Muse manifest herdr publishes. `herdr agent explain` says
-  so as `local_override_shadowing_remote`.
+- ⚠ **The file shadows every Muse manifest herdr fetches**, so herdr cannot deliver a
+  fix for Muse's screen past it. The probe reads `local_override_shadowing_remote` and
+  `cached_remote_version` from herdr. It reports that version as
+  `herdr_detection_shadows`. A version other than `2026.08.26.1`, the one the rules
+  were measured against, is a note naming it.
 - ⭐ A running server is asked to reload the file, which ends no pane. A file of your
-  own at that path is left as it is.
+  own at that path is left as it is, and `base status` counts only the adapter's own.
 - `base status --probe` reports `herdr_detection_rules` and `herdr_detection_source`. A
   herdr that ignores the file is a note carrying herdr's own warning.
+- ⚠ **A base with both adapters gets the file unasked**, and herdr then reports Muse
+  panes from it. Remove `muse` or `herdr` from `base.adapters` to go without it.
 
 ⛔ **`base ensure` also asks Muse itself.** It runs one session of Muse's
 credential-free echo provider in a scratch directory under `/tmp`. It then looks for
@@ -2277,6 +2312,11 @@ namespace it is put in, so the confinement would be a claim rather than a fact.
 ⭐ **An agent herdr starts is not a command this flag reaches.** The herdr adapter's
 `private_net` puts herdr's whole server in a namespace of its own instead. The
 herdr adapter's section above says what that costs. `WSL-159`
+
+⚠ **The private ranges include `100.64.0.0/10`, in both rule sets.** No public network
+routes that shared address space. Tailscale gives the Windows host an address there,
+and the host answers on it through WSL's NAT. ⚠ A public IPv4 address the Windows
+host holds stays reachable, because it is the internet. `WSL-159`
 
 | | plain | `--private-net` |
 | --- | --- | --- |

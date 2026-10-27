@@ -42,6 +42,18 @@ MUSE_INSTALLER_PINNED_SHA256=5196d820127a241211c96cf38f0b2e30cff8506a82e9da9508c
 STAGE_DIR=${TK_MUSE_STAGE_DIR:-/var/lib/wsl-toolkit/muse}
 WRAPPER=${TK_MUSE_WRAPPER:-/usr/local/bin/muse}
 
+# herdr_present says whether a herdr is installed for the reporter and the rules to
+# serve. TK_HERDR_BIN is the one place it looks when set. A case in the suite points
+# it into a temporary directory, as the herdr adapter's own does, and nothing else
+# sets it. WSL-158.
+herdr_present() {
+  if [ -n "${TK_HERDR_BIN:-}" ]; then
+    [ -x "$TK_HERDR_BIN" ]
+    return
+  fi
+  command -v herdr >/dev/null 2>&1 || [ -x /usr/local/bin/herdr ]
+}
+
 # ⛔ MEASURED ON THE ARCH PRESET ONLY, AND ANYTHING ELSE IS REFUSED.
 command -v pacman >/dev/null 2>&1 ||
   die "this adapter is measured on the arch preset, and this base has no pacman. Build the base from the arch preset"
@@ -363,7 +375,7 @@ HOOK_EVENTS='SessionStart UserPromptSubmit PreToolUse PermissionRequest Stop Ses
 herdr_reporter_skip=
 if [ -z "${TK_FILE_HERDR_AGENT_STATE_SH_B64:-}" ]; then
   herdr_reporter_skip='this adapter carries no reporter file'
-elif ! command -v herdr >/dev/null 2>&1 && [ ! -x /usr/local/bin/herdr ]; then
+elif ! herdr_present; then
   herdr_reporter_skip='no herdr is installed in this base, so there is nothing to report to. Add the herdr adapter to base.adapters'
 elif ! command -v jq >/dev/null 2>&1; then
   herdr_reporter_skip='jq is not installed, and the reporter reads its payload with it. Set base.toolset to developer or later'
@@ -450,8 +462,11 @@ fi
 # -- herdr's detection rules for Muse ----------------------------------------------------
 # ⭐ herdr READS A LOCAL RULE FILE FOR AN AGENT, and a local one always wins over its
 # bundled and remote manifests: herdr's own docs, and the override_path of its source.
-# herdr's Muse manifest matches no rule on Muse Code 1.4.13's input screen, so this
+# herdr's Muse manifest matches no rule on Muse Code 1.4.13's input screen. So this
 # writes one that does, and the reporter above stays as the fallback. WSL-158.
+#
+# ⚠ SO IT ALSO SHADOWS A NEWER MUSE MANIFEST herdr FETCHES. The probe names that
+# version in a note, and a session then measures it again.
 #
 # ⛔ WRITTEN WHOLE ON EVERY ENSURE, like herdr's tracked configuration, so a hand edit
 # is replaced. The adapter's file says what it changes from herdr's own and why.
@@ -463,7 +478,7 @@ HERDR_RULES_MARK="from wsl-toolkit's muse adapter"
 herdr_rules_skip=
 if [ -z "${TK_FILE_HERDR_DETECTION_TOML_B64:-}" ]; then
   herdr_rules_skip='this adapter carries no rule file'
-elif ! command -v herdr >/dev/null 2>&1 && [ ! -x /usr/local/bin/herdr ]; then
+elif ! herdr_present; then
   herdr_rules_skip='no herdr is installed in this base to read them. Add the herdr adapter to base.adapters'
 elif [ -f "$HERDR_RULES" ] && ! head -n 1 "$HERDR_RULES" | grep -q "$HERDR_RULES_MARK"; then
   herdr_rules_skip="$HERDR_RULES is not this adapter's, so it is left as it is"

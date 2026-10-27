@@ -145,27 +145,63 @@ func TestTheConfiguredStateCarriesPrivateNet(t *testing.T) {
 
 // TestAHerdrServerOutsideItsNamespaceEarnsTheRestart: the probe's facts become the one
 // command that ends the condition, and a base that did not ask earns nothing.
+//
+// ⛔ THE RESTART IS ADVISORY. base ensure never restarts a running server. A
+// remediation `ready` names as the way forward would send a caller round a command
+// that ends every pane. The link that is down is not: base ensure starts it. WSL-159.
 func TestAHerdrServerOutsideItsNamespaceEarnsTheRestart(t *testing.T) {
 	read := func(facts map[string]string) (Remediation, bool) {
-		return herdrNetRemediation(AdapterState{Name: "herdr", Facts: facts})
+		return herdrNetRemediation(AdapterState{Name: "herdr", Facts: facts}, true)
 	}
 	r, ok := read(map[string]string{"private-net": "on", "server-netns": "shared"})
-	if !ok || r.ID != "herdr-private-net-pending" || r.Advisory || !strings.Contains(r.Command, "systemctl restart wsl-toolkit-herdr.service") {
+	if !ok || r.ID != "herdr-private-net-pending" || !strings.Contains(r.Command, "systemctl restart wsl-toolkit-herdr.service") {
 		t.Fatalf("a server in the shared namespace under the key earned %+v, %v", r, ok)
 	}
+	if !r.Advisory || !r.Repairable {
+		t.Fatalf("the restart that moves the server is not an advisory one: %+v", r)
+	}
 	r, ok = read(map[string]string{"private-net": "on", "server-netns": "private", "private-net-link": "failed"})
-	if !ok || r.ID != "herdr-private-net-down" || !strings.Contains(r.Command, "systemctl start wsl-toolkit-herdr-net.service") {
+	if !ok || r.ID != "herdr-private-net-down" || r.Advisory || !strings.Contains(r.Command, "systemctl start wsl-toolkit-herdr-net.service") {
 		t.Fatalf("a namespace with no link earned %+v, %v", r, ok)
 	}
 	for _, facts := range []map[string]string{
 		{"private-net": "on", "server-netns": "private", "private-net-link": "active"},
-		{"private-net": "off", "server-netns": "shared"},
-		{"private-net": "off", "server-netns": "private"},
 		{"private-net": "on", "server-netns": "unknown"},
 	} {
 		if r, ok := read(facts); ok {
 			t.Errorf("%v earned %+v, and it needs nothing run", facts, r)
 		}
+	}
+	// ⚠ A BASE THAT NEVER ASKED, and whose probe printed none of the namespace's facts.
+	for _, facts := range []map[string]string{{"server": "active"}, {"private-net": "off", "server-netns": "private"}} {
+		if r, ok := herdrNetRemediation(AdapterState{Name: "herdr", Facts: facts}, false); ok {
+			t.Errorf("%v without the key earned %+v, and it needs nothing run", facts, r)
+		}
+	}
+}
+
+// TestAPrivateNetKeyNotYetEnsuredEarnsTheEnsure: the probe's private-net is the drop-in
+// the base carries, and the configuration may say otherwise until base ensure runs.
+//
+// ⛔ THE CONFIGURATION WINS OVER THE DROP-IN. A key added and not ensured read as off,
+// and earned nothing while the panes reached the Windows host. A key removed and not
+// ensured earned a restart, which would put the server INTO the namespace. WSL-159.
+func TestAPrivateNetKeyNotYetEnsuredEarnsTheEnsure(t *testing.T) {
+	for _, c := range []struct {
+		configured bool
+		facts      map[string]string
+	}{
+		{true, map[string]string{"server": "active"}},
+		{false, map[string]string{"private-net": "on", "server-netns": "shared", "private-net-link": "inactive"}},
+	} {
+		r, ok := herdrNetRemediation(AdapterState{Name: "herdr", Facts: c.facts}, c.configured)
+		if !ok || r.ID != "herdr-private-net-unapplied" || !strings.HasSuffix(r.Command, "base ensure") || !r.Advisory {
+			t.Errorf("private_net %v in the configuration over %v earned %+v, %v; want base ensure", c.configured, c.facts, r, ok)
+		}
+	}
+	// ⚠ A PROBE THAT ANSWERED NOTHING IS NOT A BASE WITHOUT THE KEY.
+	if r, ok := herdrNetRemediation(AdapterState{Name: "herdr"}, true); ok {
+		t.Errorf("a probe that answered no fact earned %+v", r)
 	}
 }
 
@@ -235,8 +271,8 @@ func TestThePrivateNetScriptWritesTheRulesAndLinksNothingElse(t *testing.T) {
 	}
 	bin, write := stubDir(t)
 	write("nft", "exit 0\n")
-	// ip records every call, makes the namespace's name, hands nft's file to the case,
-	// and answers the shared namespace's default route and the pids STUB_PIDS names.
+	// ip records every call, makes the namespace's name, and hands nft's file to the
+	// case. It answers the shared namespace's default route and the pids STUB_PIDS names.
 	write("ip", `printf '%s\n' "$*" >> "$STUB_ASKED"
 case "$1 $2" in
   "netns add") : > "$STUB_NETNS/$3" ;;
@@ -271,7 +307,7 @@ exit 0
 		"ip daddr 10.255.255.254 tcp dport 53 accept\n",
 		"ip daddr 172.23.96.1 udp dport 53 accept\n",
 		"ip daddr 172.23.96.1 drop\n",
-		"ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } drop\n",
+		"ip daddr { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } drop\n",
 	}
 	at := 0
 	for _, want := range order {
@@ -316,6 +352,30 @@ exit 0
 	if _, err := os.Stat(filepath.Join(netns, "wsl-toolkit-herdr")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("a stop left an empty namespace behind")
 	}
+
+	// ⭐ rules WRITES THE RULES INTO A RUNNING NAMESPACE AND NOTHING ELSE: no pasta, and
+	// no new namespace. install.sh runs it when this script changes under a server.
+	// WSL-159.
+	if code, out := runSh(t, script, bin, []string{"rules"}, env...); code == 0 {
+		t.Fatalf("rules wrote into a namespace that is not there:\n%s", out)
+	}
+	if err := os.WriteFile(filepath.Join(netns, "wsl-toolkit-herdr"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(asked)
+	_ = os.Remove(rules)
+	if code, out := runSh(t, script, bin, []string{"rules"}, env...); code != 0 {
+		t.Fatalf("rules exited %d:\n%s", code, out)
+	}
+	calls, _ = os.ReadFile(asked)
+	if got, err := os.ReadFile(rules); err != nil || !strings.Contains(string(got), "100.64.0.0/10") {
+		t.Fatalf("rules wrote no rule set into the namespace (%v):\n%s", err, calls)
+	}
+	for _, unwanted := range []string{"pasta ", "netns add ", "sysctl"} {
+		if strings.Contains(string(calls), unwanted) {
+			t.Errorf("rules ran %q, and it touches nothing but the rules:\n%s", unwanted, calls)
+		}
+	}
 }
 
 // TestPrivateNetAddsADropInAndLeavesTheServersUnitAlone runs the herdr adapter's
@@ -357,9 +417,9 @@ func TestPrivateNetAddsADropInAndLeavesTheServersUnitAlone(t *testing.T) {
 	write("uname", "echo x86_64\n")
 	write("curl", "while [ $# -gt 0 ]; do if [ \"$1\" = --output ]; then printf 'a herdr the case serves\\n' > \"$2\"; shift; fi; shift; done\n")
 	// install makes directories and copies files, whatever owner it is asked for.
-	// ⚠ THE DOOR'S DIRECTORY IS WHERE THE CASE STOPS THE SCRIPT, after every unit is
-	// written and the server step has spoken, and before anything is written outside
-	// the case's directory.
+	// ⚠ THE DOOR'S DIRECTORY IS WHERE THE CASE STOPS THE SCRIPT. Every unit is written
+	// by then and the server step has spoken. Nothing is yet written outside the case's
+	// directory.
 	write("install", `case " $* " in *" /etc/wsl-toolkit "*) echo 'install: stopped here by the case' >&2; exit 7 ;; esac
 dir=; mode=
 while [ $# -gt 0 ]; do
@@ -374,19 +434,39 @@ done
 if [ -n "$dir" ]; then mkdir -p "$@"; exit; fi
 cp "$1" "$2" && { [ -z "$mode" ] || chmod "$mode" "$2"; }
 `)
+	// systemctl records every call, in order. The server's unit is active where
+	// STUB_ACTIVE says so, and the namespace's unit where STUB_NET_ACTIVE does.
 	write("systemctl", `printf 'systemctl %s\n' "$*" >> "$STUB_ASKED"
 case $1 in
-  is-active) [ "${STUB_ACTIVE:-}" = yes ]; exit ;;
+  is-active)
+    case " $* " in
+      *" wsl-toolkit-herdr-net.service "*) [ "${STUB_NET_ACTIVE:-}" = yes ] ;;
+      *) [ "${STUB_ACTIVE:-}" = yes ] ;;
+    esac
+    exit ;;
   is-enabled) echo masked ;;
 esac
 exit 0
 `)
-	write("ip", "if [ \"$1 $2\" = 'netns pids' ] && [ -n \"${STUB_PIDS:-}\" ]; then printf '%s\\n' \"$STUB_PIDS\"; fi\nexit 0\n")
+	// ip records every call but pids, and answers the pids STUB_PIDS names.
+	write("ip", `if [ "$1 $2" = 'netns pids' ]; then [ -z "${STUB_PIDS:-}" ] || printf '%s\n' "$STUB_PIDS"; exit 0; fi
+printf 'ip %s\n' "$*" >> "$STUB_ASKED"
+exit 0
+`)
+	netns := filepath.Join(root, "netns")
+	if err := os.MkdirAll(netns, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resolv := filepath.Join(root, "resolv.conf")
+	if err := os.WriteFile(resolv, []byte("nameserver 10.255.255.254\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	env := []string{"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base", "TK_SSH_CLIENT_KEY=ssh-ed25519 AAAA",
 		"TK_HERDR_BIN=" + filepath.Join(dest, "herdr"), "TK_HERDR_LIB_DIR=" + lib, "TK_HERDR_UNIT_DIR=" + units,
+		"TK_NETNS_DIR=" + netns, "TK_RESOLV_CONF=" + resolv,
 		"TK_ADAPTER_VERSION=0.10.1", "TK_ADAPTER_SHA256_X86_64=" + hex.EncodeToString(sum[:]),
-		"STUB_HOME=" + home, "STUB_ASKED=" + asked, "STUB_ACTIVE=yes"}
+		"STUB_HOME=" + home, "STUB_ASKED=" + asked, "STUB_ACTIVE=yes", "STUB_NET_ACTIVE=yes"}
 	for k, v := range files {
 		env = append(env, k+"="+v)
 	}
@@ -457,6 +537,137 @@ exit 0
 	}
 	if strings.Contains(out, "keeps the network namespace it started in") {
 		t.Errorf("an ensure that changed nothing about the server's namespace told it to restart:\n%s", out)
+	}
+
+	// ⛔ THE KEY GOES WHILE IT IS STILL PENDING: the server runs in the shared namespace,
+	// and no process is in the private one. systemd must read the units again before
+	// the namespace's unit stops. Until then the server still requires that unit, and
+	// the stop would stop the server and end every pane. WSL-159.
+	run("TK_ADAPTER_PRIVATE_NET=1")
+	out = run()
+	recorded, _ := os.ReadFile(asked)
+	calls := string(recorded)
+	reload, stop := strings.Index(calls, "systemctl daemon-reload\n"), strings.Index(calls, "systemctl stop wsl-toolkit-herdr-net.service\n")
+	if stop < 0 || reload < 0 || reload > stop {
+		t.Fatalf("the namespace's unit was stopped before systemd read the units without the drop-in:\n%s\n%s", calls, out)
+	}
+	if strings.Contains(calls, "systemctl start wsl-toolkit-herdr.service") || strings.Contains(calls, "systemctl restart") {
+		t.Fatalf("turning the key off started or restarted a running server:\n%s", calls)
+	}
+}
+
+// TestPrivateNetKeepsARunningNamespaceCurrent runs the herdr adapter's install.sh with
+// the key, over a namespace a process is in. WSL-159.
+//
+// ⭐ base ensure CURES WHAT IT CAN WITHOUT ENDING A PANE. A link that is down is started
+// again, and a changed rule set is written into the running namespace. Neither
+// restarts the server, and before this the rules waited for WSL's VM to restart.
+func TestPrivateNetKeepsARunningNamespaceCurrent(t *testing.T) {
+	needPosix(t, "cat", "cut", "mktemp", "sha256sum", "base64", "cp", "mkdir", "chmod", "mv", "rm", "rmdir", "sed")
+	script, err := adapterScript("herdr", "install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := adapterFileEnv("herdr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	home, lib, units, dest, netns := filepath.Join(root, "home"), filepath.Join(root, "lib"), filepath.Join(root, "units"), filepath.Join(root, "bin-herdr"), filepath.Join(root, "netns")
+	for _, dir := range []string{home, lib, units, dest, netns} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// ⚠ A NAMESPACE THE SERVER IS IN, as `ip netns add` leaves its name.
+	if err := os.WriteFile(filepath.Join(netns, "wsl-toolkit-herdr"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resolv := filepath.Join(root, "resolv.conf")
+	if err := os.WriteFile(resolv, []byte("nameserver 10.255.255.254\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asked := filepath.Join(root, "asked")
+	served := []byte("a herdr the case serves\n")
+	sum := sha256.Sum256(served)
+	bin, write := stubDir(t)
+	realCat, _ := exec.LookPath("cat")
+	for _, name := range []string{"pacman", "sshd", "ssh-keygen", "ss", "pasta", "nft", "chown"} {
+		write(name, "exit 0\n")
+	}
+	write("cat", "if [ \"$1\" = /proc/1/comm ]; then echo systemd; exit 0; fi\nexec "+realCat+" \"$@\"\n")
+	write("getent", "printf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n")
+	write("id", "echo herdr\n")
+	write("uname", "echo x86_64\n")
+	write("curl", "while [ $# -gt 0 ]; do if [ \"$1\" = --output ]; then printf 'a herdr the case serves\\n' > \"$2\"; shift; fi; shift; done\n")
+	write("install", `case " $* " in *" /etc/wsl-toolkit "*) echo 'install: stopped here by the case' >&2; exit 7 ;; esac
+dir=; mode=
+while [ $# -gt 0 ]; do
+  case $1 in
+    -d) dir=1 ;;
+    -o|-g) shift ;;
+    -m) shift; mode=$1 ;;
+    *) break ;;
+  esac
+  shift
+done
+if [ -n "$dir" ]; then mkdir -p "$@"; exit; fi
+cp "$1" "$2" && { [ -z "$mode" ] || chmod "$mode" "$2"; }
+`)
+	write("systemctl", `printf 'systemctl %s\n' "$*" >> "$STUB_ASKED"
+case $1 in
+  is-active)
+    case " $* " in
+      *" wsl-toolkit-herdr-net.service "*) [ "${STUB_NET_ACTIVE:-}" = yes ] ;;
+      *) exit 0 ;;
+    esac
+    exit ;;
+  is-enabled) echo masked ;;
+esac
+exit 0
+`)
+	write("ip", `if [ "$1 $2" = 'netns pids' ]; then printf '4242\n'; exit 0; fi
+printf 'ip %s\n' "$*" >> "$STUB_ASKED"
+exit 0
+`)
+	env := []string{"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base", "TK_SSH_CLIENT_KEY=ssh-ed25519 AAAA",
+		"TK_HERDR_BIN=" + filepath.Join(dest, "herdr"), "TK_HERDR_LIB_DIR=" + lib, "TK_HERDR_UNIT_DIR=" + units,
+		"TK_NETNS_DIR=" + netns, "TK_RESOLV_CONF=" + resolv, "TK_ADAPTER_PRIVATE_NET=1",
+		"TK_ADAPTER_VERSION=0.10.1", "TK_ADAPTER_SHA256_X86_64=" + hex.EncodeToString(sum[:]),
+		"STUB_HOME=" + home, "STUB_ASKED=" + asked}
+	for k, v := range files {
+		env = append(env, k+"="+v)
+	}
+	run := func(extra ...string) (string, string) {
+		t.Helper()
+		_ = os.Remove(asked)
+		code, out := runSh(t, script, bin, nil, append(append([]string(nil), env...), extra...)...)
+		if code != 7 || !strings.Contains(out, "stopped here by the case") {
+			t.Fatalf("install.sh exited %d, and the case stops it at the door's directory:\n%s", code, out)
+		}
+		calls, _ := os.ReadFile(asked)
+		return out, string(calls)
+	}
+
+	// The first ensure writes the script, with the link up: its rules go in in place.
+	out, calls := run("STUB_NET_ACTIVE=yes")
+	if !strings.Contains(calls, "ip netns exec wsl-toolkit-herdr nft -f ") || !strings.Contains(out, "wrote the changed rules into the running namespace") {
+		t.Fatalf("a changed script's rules did not reach the running namespace:\n%s\n%s", calls, out)
+	}
+	if strings.Contains(calls, "systemctl start wsl-toolkit-herdr-net.service") || strings.Contains(calls, "pasta") {
+		t.Fatalf("a namespace whose link is up was linked again:\n%s", calls)
+	}
+	// The same script again writes nothing into it.
+	if _, calls = run("STUB_NET_ACTIVE=yes"); strings.Contains(calls, "nft -f") {
+		t.Fatalf("an unchanged script rewrote the running namespace's rules:\n%s", calls)
+	}
+	// ⛔ A LINK THAT IS DOWN UNDER A SERVER IN THE NAMESPACE IS STARTED AGAIN.
+	out, calls = run()
+	if !strings.Contains(calls, "systemctl start wsl-toolkit-herdr-net.service\n") || !strings.Contains(out, "ends no pane") {
+		t.Fatalf("a namespace with a process in it and no link was left without one:\n%s\n%s", calls, out)
+	}
+	if strings.Contains(calls, "systemctl start wsl-toolkit-herdr.service") || strings.Contains(calls, "systemctl restart") {
+		t.Fatalf("relinking the namespace started or restarted the server:\n%s", calls)
 	}
 }
 
@@ -531,11 +742,26 @@ esac
 	if !noted(st, "rootless containers and sudo") {
 		t.Fatalf("a base under the key was not told what it gives up: %v", st.Notes)
 	}
-	st = read(true)
-	if st.Facts["server-netns"] != "shared" || len(about(st, "runs in the shared network namespace")) != 1 {
-		t.Fatalf("a server still in the shared namespace under the key was read as %v with %v", st.Facts, st.Problems)
+	// ⚠ AND THAT THE PANES ARE ALL IT CONFINES.
+	if !noted(st, "processes in herdr's panes") || !noted(st, "interop") || !noted(st, "base agent") {
+		t.Fatalf("a base under the key was told the confinement reaches past the panes: %v", st.Notes)
 	}
-	if r, ok := herdrNetRemediation(st); !ok || r.ID != "herdr-private-net-pending" {
+
+	// ⛔ A SERVER STILL IN THE SHARED NAMESPACE IS A NOTE, AND THE ENSURE PASSES. base
+	// ensure never restarts a running server, so it cannot cure this. As a problem it
+	// failed every ensure, ready and job until a restart ended every pane. WSL-181.
+	// ⚠ The stand-ins carry no herdr and no door, so every read has their problems.
+	// What counts is that the key adds none.
+	without := read(false)
+	st = read(true)
+	if st.Facts["server-netns"] != "shared" || len(about(st, "namespace")) != 0 || !noted(st, "still runs in the shared network namespace") {
+		t.Fatalf("a server still in the shared namespace under the key was read as %v with %v and %v", st.Facts, st.Problems, st.Notes)
+	}
+	if strings.Join(st.Problems, "\n") != strings.Join(without.Problems, "\n") {
+		t.Fatalf("a server base ensure never restarts added problems, which fail the ensure:\nwith the key\n%s\nwithout it\n%s",
+			strings.Join(st.Problems, "\n"), strings.Join(without.Problems, "\n"))
+	}
+	if r, ok := herdrNetRemediation(st, true); !ok || r.ID != "herdr-private-net-pending" || !r.Advisory {
 		t.Fatalf("that read earned %+v, %v", r, ok)
 	}
 	st = read(true, append(private, "STUB_LINK=failed")...)
@@ -546,8 +772,14 @@ esac
 	if st.Facts["private-net"] != "off" || len(about(st, "namespace")) != 0 || !noted(st, "keeps its private network namespace") {
 		t.Fatalf("a server still in the namespace after the key went was read as %v with %v and %v", st.Facts, st.Problems, st.Notes)
 	}
+	// ⭐ A BASE THAT NEVER ASKED ANSWERS WHAT IT ANSWERED BEFORE THE KEY EXISTED.
 	st = read(false)
-	if st.Facts["server-netns"] != "shared" || len(about(st, "namespace")) != 0 || noted(st, "namespace") {
+	for _, fact := range []string{"private-net", "server-netns", "private-net-link"} {
+		if v, ok := st.Facts[fact]; ok {
+			t.Errorf("a base that never asked answered the fact %s %s", fact, v)
+		}
+	}
+	if len(about(st, "namespace")) != 0 || noted(st, "namespace") {
 		t.Fatalf("a base that never asked was read as %v with %v and %v", st.Facts, st.Problems, st.Notes)
 	}
 }

@@ -253,6 +253,10 @@ func TestAnUnchangedBasesStatusPrintsNoNewRow(t *testing.T) {
 // TestAPrivateHerdrSaysWhatItGivesUpInItsStatus: herdr's private_net prints one row,
 // probed or not, and it carries the cost beside the gain. A base without the key
 // prints what it printed before. WSL-159, ruling 36.
+//
+// ⛔ THE ROW SAYS WHAT WAS ASKED, AND FOR THE PANES ALONE. It read the configuration and
+// said the agents reach no Windows host, while a server not yet restarted, base agent
+// and interop all reach it.
 func TestAPrivateHerdrSaysWhatItGivesUpInItsStatus(t *testing.T) {
 	st := toolkit.BaseState{Name: "wsl-toolkit"}
 	for _, probed := range []bool{false, true} {
@@ -263,8 +267,11 @@ func TestAPrivateHerdrSaysWhatItGivesUpInItsStatus(t *testing.T) {
 	st.Access.HerdrPrivateNet = true
 	for _, probed := range []bool{false, true} {
 		out := captureStderr(t, func() { renderBaseState(st, probed) })
-		if !strings.Contains(out, "  herdr net   private: ") || !strings.Contains(out, "give up rootless containers and sudo") {
+		if !strings.Contains(out, "  herdr net   private_net asked: ") || !strings.Contains(out, "give up rootless containers and sudo") {
 			t.Errorf("a base with private_net, probed %v, did not say what it gives up:\n%s", probed, out)
+		}
+		if !strings.Contains(out, "processes in herdr's panes") || !strings.Contains(out, "base agent and interop stay outside it") {
+			t.Errorf("a base with private_net, probed %v, claimed more than the panes:\n%s", probed, out)
 		}
 	}
 }

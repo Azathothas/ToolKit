@@ -225,8 +225,10 @@ host and the private ranges do not. `WSL-159`
 - ⛔ **An agent there runs no rootless container and no `sudo`.** Run those through
   `wsl-toolkit base exec` from Windows instead.
 - ⛔ **The key reaches the agents only when herdr's server restarts**, which ends
-  every pane. `base status --probe` names the command, and the restart is yours to
-  decide.
+  every pane. Until then `base ensure` passes and notes it, and `base status --probe`
+  names the command. The restart is yours to decide.
+- ⚠ **It confines the panes alone.** `base agent` runs outside the namespace, and a
+  pane can still run a Windows program through interop.
 - ⭐ `readlink /proc/self/ns/net` in a pane names another namespace than it does in
   `wsl-toolkit base shell`, and `ping` to the Windows host gets no answer.
 

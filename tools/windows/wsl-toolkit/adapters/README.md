@@ -35,8 +35,9 @@ ensure` and none on a read. A hook Muse stops running is a note naming its versi
 Muse that cannot run the session leaves it unmeasured. Measured with herdr 0.9.5 and
 Muse Code 1.4.11. `WSL-157`
 
-⭐ **`base ensure` installs every adapter it is given, in order, and one that fails
-does not stop the rest.** The ensure then answers one error naming each adapter that
+⭐ **`base ensure` installs every adapter it is given, herdr first and the rest in
+order, and one that fails does not stop the rest.** muse, pi and omp each set herdr up
+only where herdr is already installed. `WSL-158` The ensure then answers one error naming each adapter that
 did not finish. ⛔ **Each agent probe asks first whether its agent is in the base at
 all.** An agent that is not there answers one problem, `NAME is not installed in this
 base`. The checks that only mean something for an installed agent do not run.

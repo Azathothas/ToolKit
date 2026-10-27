@@ -90,6 +90,10 @@ UNIT=wsl-toolkit-herdr.service
 NET_UNIT=wsl-toolkit-herdr-net.service
 NET_SCRIPT=$LIB_DIR/herdr-private-net
 NET_DROPIN=$UNIT_DIR/$UNIT.d/private-net.conf
+# The namespace's name, and the directory `ip netns` keeps it in. A case in the suite
+# points the directory into a temporary one, and nothing else sets it.
+NETNS=wsl-toolkit-herdr
+NETNS_DIR=${TK_NETNS_DIR:-/run/netns}
 
 # ⛔ MEASURED ON THE ARCH PRESET ONLY, AND ANYTHING ELSE IS REFUSED. The package
 # that carries sshd, whether installing it starts a listener, and whether its sshd
@@ -220,18 +224,19 @@ fi
 # NETWORK NAMESPACE OF ITS OWN. The internet stays reachable, and the Windows host and
 # the private ranges are refused. private-net.sh says how root makes it. WSL-159.
 #
-# ⭐ WITHOUT THE KEY NOTHING CHANGES. The server's own unit above is the same bytes
-# either way: the key adds a drop-in beside it, a unit that links the namespace, and
-# the script that unit runs. A base without the key has none of the three, and one
-# whose key went has all three removed.
+# ⭐ THE SERVER'S OWN UNIT ABOVE IS THE SAME BYTES EITHER WAY. The key adds a drop-in
+# beside it, a unit that links the namespace, and the script that unit runs. A base
+# without the key has none of the three, and one whose key went has all three removed.
 #
-# ⛔ IT COSTS SOMETHING, AND EVERY READ SAYS WHAT: those agents give up rootless
+# ⛔ IT COSTS SOMETHING, AND EVERY READ SAYS WHAT. Those agents give up rootless
 # containers and sudo. base status prints it on a line of its own, and probe.sh as a
 # note.
 net_changed=
 # ⚠ THE DROP-IN ALONE DECIDES WHERE THE SERVER'S NEXT START IS, so only a change to it
 # is one the running server waits for.
 dropin_changed=
+# ⚠ A CHANGED SCRIPT CARRIES CHANGED RULES, and a running namespace takes them below.
+script_changed=
 # place_file NAME_B64 DEST MODE writes one carried file where it belongs, when its
 # bytes differ, and sets pf_placed when it wrote it. ⚠ It always answers 0, so set -e
 # stays in force inside it: a function called as a condition runs without it.
@@ -273,17 +278,21 @@ if [ "${TK_ADAPTER_PRIVATE_NET:-}" = 1 ]; then
     command -v "$tool" >/dev/null 2>&1 || die "$tool is still absent after the package step, and private_net needs it"
   done
   place_file "$TK_FILE_PRIVATE_NET_SH_B64" "$NET_SCRIPT" 0755
+  script_changed=$pf_placed
   place_file "$TK_FILE_WSL_TOOLKIT_HERDR_NET_SERVICE_B64" "$UNIT_DIR/$NET_UNIT" 0644
   place_file "$TK_FILE_PRIVATE_NET_CONF_B64" "$NET_DROPIN" 0644
   dropin_changed=$pf_placed
 else
   # ⭐ THE DROP-IN GOES FIRST AND ALWAYS, so the server's next start is in the shared
-  # namespace. ⛔ The namespace's own unit goes only once no process is left in it:
-  # stopping it under a running server would take that server's only way out.
+  # namespace. ⛔ The namespace's own unit goes only once no process is left in it.
+  # Stopping it under a running server would take that server's only way out.
   if [ -e "$NET_DROPIN" ]; then
     rm -f "$NET_DROPIN"
     rmdir "${NET_DROPIN%/*}" 2>/dev/null || :
-    net_changed=1
+    # ⛔ RELOADED AT ONCE, BEFORE THE STOP BELOW. Until systemd reads the units again,
+    # the running server still requires the namespace's unit. A stop of that unit then
+    # stops the server too, and ends every pane.
+    systemctl daemon-reload
     dropin_changed=1
     say "removed $NET_DROPIN, because private_net is off"
   fi
@@ -299,6 +308,27 @@ else
   fi
 fi
 [ -z "$net_changed" ] || systemctl daemon-reload
+
+# ⭐ A NAMESPACE A PROCESS IS IN IS KEPT CURRENT, AND NO PANE ENDS FOR IT. WSL-159.
+# - Its link is started again when it is down. The unit relinks the same namespace,
+#   and starting a unit the server requires does not restart the server.
+# - A changed script writes its rules into the namespace in place. pasta keeps its
+#   link, and the rules otherwise wait for WSL's VM to restart.
+if [ "${TK_ADAPTER_PRIVATE_NET:-}" = 1 ] && [ -e "$NETNS_DIR/$NETNS" ]; then
+  if [ -n "$(ip netns pids "$NETNS" 2>/dev/null || :)" ] && ! systemctl is-active --quiet "$NET_UNIT"; then
+    if systemctl start "$NET_UNIT"; then
+      say "started $NET_UNIT again, which links the herdr server's namespace and ends no pane"
+    else
+      say "$NET_UNIT did not start, so the herdr server's namespace has no way out"
+    fi
+  elif [ -n "$script_changed" ]; then
+    if "$NET_SCRIPT" rules; then
+      say "wrote the changed rules into the running namespace $NETNS"
+    else
+      say "the changed rules did not reach the running namespace $NETNS, which keeps the rules it had until it restarts"
+    fi
+  fi
+fi
 
 systemctl enable "$UNIT" >/dev/null 2>&1 || die "systemctl could not enable $UNIT"
 # ⛔ A RUNNING SERVER IS NEVER RESTARTED HERE. Stopping it ends every pane and every

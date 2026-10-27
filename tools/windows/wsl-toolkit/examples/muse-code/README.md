@@ -362,7 +362,7 @@ each value is written, and how to change it by hand.
 | `toolset: developer` | the commands the base installs as root, `jq` among them, which the adapters read their configuration with |
 | no standing grant | the base is built once and each project is granted when it is worked on. A base left running reaches no checkout at all |
 | `herdr` on `nightly` | `herdr --machine` needs a development build on both sides |
-| no `private_net` on `herdr` | the agents keep rootless containers and `sudo`. ⭐ `"private_net": true` trades both for a network that refuses the Windows host. `WSL-159` |
+| no `private_net` on `herdr` | the agents keep rootless containers and `sudo`. ⭐ `"private_net": true` trades both for panes whose network refuses the Windows host. `base agent` and interop stay outside it. `WSL-159` |
 
 ---
 

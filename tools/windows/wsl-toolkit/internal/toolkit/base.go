@@ -498,7 +498,9 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 		if r, ok := herdrStaleRemediation(a); ok {
 			st.Remediations = append(st.Remediations, r)
 		}
-		if r, ok := herdrNetRemediation(a); ok {
+		// ⚠ st.Access CARRIES WHAT THE CONFIGURATION ASKS, which the probe's
+		// private-net is compared with. WSL-159.
+		if r, ok := herdrNetRemediation(a, st.Access.HerdrPrivateNet); ok {
 			st.Remediations = append(st.Remediations, r)
 		}
 	}

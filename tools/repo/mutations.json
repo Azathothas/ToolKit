@@ -2,6 +2,186 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "herdr: a server outside the namespace is a note and fails no ensure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/probe.sh",
+      "find": "      printf 'note %s\\n' \"the herdr server still runs in the $server_ns network namespace",
+      "replace": "      problem \"the herdr server still runs in the $server_ns network namespace",
+      "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
+      "args": []
+    },
+    {
+      "label": "herdr: the restart that moves the server is advisory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\t\tAdvisory:   true,\n\t\t}, true\n\tcase ns == \"private\" \u0026\u0026 ",
+      "replace": "\t\t}, true\n\tcase ns == \"private\" \u0026\u0026 ",
+      "run": "TestAHerdrServerOutsideItsNamespaceEarnsTheRestart|TestAPendingPrivateNetPassesTheEnsure",
+      "args": []
+    },
+    {
+      "label": "herdr: a key not yet ensured earns base ensure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tcase configured \u0026\u0026 !carried:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAPrivateNetKeyNotYetEnsuredEarnsTheEnsure",
+      "args": []
+    },
+    {
+      "label": "herdr: a key removed and not yet ensured earns base ensure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tcase !configured \u0026\u0026 carried:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAPrivateNetKeyNotYetEnsuredEarnsTheEnsure",
+      "args": []
+    },
+    {
+      "label": "herdr: the status reads the configured private_net beside the probe",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "herdrNetRemediation(a, st.Access.HerdrPrivateNet)",
+      "replace": "herdrNetRemediation(a, true)",
+      "run": "TestAStaleHerdrServerIsAnAdvisoryWithItsRestart",
+      "args": []
+    },
+    {
+      "label": "herdr: the private_net row says what was asked",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\"private_net asked: processes in herdr's panes are to reach the internet",
+      "replace": "\"private: herdr's server and every agent it starts reach the internet",
+      "run": "TestAPrivateHerdrSaysWhatItGivesUpInItsStatus",
+      "args": []
+    },
+    {
+      "label": "herdr: the private_net row names base agent and interop",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "sudo. base agent and interop stay outside it\"\n",
+      "replace": "sudo\"\n",
+      "run": "TestAPrivateHerdrSaysWhatItGivesUpInItsStatus",
+      "args": []
+    },
+    {
+      "label": "herdr: the probe names base agent and interop as outside the namespace",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/probe.sh",
+      "find": ". base agent, and a Windows program run through interop, stay outside the namespace\"\n",
+      "replace": "\"\n",
+      "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
+      "args": []
+    },
+    {
+      "label": "herdr: a base that never asked answers no namespace fact",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/probe.sh",
+      "find": "if [ \"$private\" = on ] || [ \"$server_ns\" = private ]; then\n  printf 'private-net %s\\n'",
+      "replace": "if true; then\n  printf 'private-net %s\\n'",
+      "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
+      "args": []
+    },
+    {
+      "label": "herdr: systemd reads the units again before the namespace's unit stops",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "    systemctl daemon-reload\n    dropin_changed=1\n",
+      "replace": "    dropin_changed=1\n",
+      "run": "TestPrivateNetAddsADropInAndLeavesTheServersUnitAlone",
+      "args": []
+    },
+    {
+      "label": "herdr: a link that is down under a server in the namespace is started again",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "  if [ -n \"$(ip netns pids \"$NETNS\" 2\u003e/dev/null || :)\" ] \u0026\u0026 ! systemctl is-active --quiet \"$NET_UNIT\"; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestPrivateNetKeepsARunningNamespaceCurrent",
+      "args": []
+    },
+    {
+      "label": "herdr: a changed rule set reaches a running namespace",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "  elif [ -n \"$script_changed\" ]; then\n",
+      "replace": "  elif false; then\n",
+      "run": "TestPrivateNetKeepsARunningNamespaceCurrent",
+      "args": []
+    },
+    {
+      "label": "herdr: the namespace's rules step touches nothing but the rules",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.sh",
+      "find": "[ \"$mode\" = start ] || exit 0\n",
+      "replace": ":\n",
+      "run": "TestThePrivateNetScriptWritesTheRulesAndLinksNothingElse",
+      "args": []
+    },
+    {
+      "label": "herdr: the namespace refuses the shared address space",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.sh",
+      "find": "{ 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12",
+      "replace": "{ 10.0.0.0/8, 172.16.0.0/12",
+      "run": "TestBothPrivateRuleSetsDropTheSharedAddressSpace",
+      "args": []
+    },
+    {
+      "label": "base exec: --private-net refuses the shared address space",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/private-net.sh",
+      "find": "\"{ 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12",
+      "replace": "\"{ 10.0.0.0/8, 172.16.0.0/12",
+      "run": "TestBothPrivateRuleSetsDropTheSharedAddressSpace",
+      "args": []
+    },
+    {
+      "label": "herdr: installs before the agents that look for it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "applyEach(installOrder(b.cfg.Base.Adapters), ",
+      "replace": "applyEach(b.cfg.Base.Adapters, ",
+      "run": "TestHerdrInstallsBeforeTheAgentsThatLookForIt",
+      "args": []
+    },
+    {
+      "label": "muse: the herdr the suite names is the one install.sh looks for",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  if [ -n \"${TK_HERDR_BIN:-}\" ]; then\n    [ -x \"$TK_HERDR_BIN\" ]\n    return\n  fi\n",
+      "replace": "",
+      "run": "TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem",
+      "args": []
+    },
+    {
+      "label": "muse: the probe notes a newer manifest its rules shadow",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "        [ \"$remote\" = \"$HERDR_RULES_MEASURED\" ] ||\n",
+      "replace": "        true ||\n",
+      "run": "TestTheMuseProbeSaysWhetherHerdrLoadsItsRules",
+      "args": []
+    },
+    {
+      "label": "muse: the probe reads which remote manifest its rules shadow",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "\\(.cached_remote_version // \"\")",
+      "replace": "\\(.remote_version // \"\")",
+      "run": "TestTheMuseProbeSaysWhetherHerdrLoadsItsRules",
+      "args": []
+    },
+    {
+      "label": "muse: the footprint counts herdr's rules muse wrote",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": " /var/lib/wsl-toolkit/muse \"$rules\")\"\n",
+      "replace": " /var/lib/wsl-toolkit/muse)\"\n",
+      "run": "TestTheMuseFootprintCountsHerdrsRules",
+      "args": []
+    },
+    {
       "label": "muse: herdr rules of the operator's own are left as they are",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
@@ -77,8 +257,8 @@
       "label": "herdr: the private_net row says what it gives up",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters.go",
-      "find": " Those agents give up rootless containers and sudo\"\n",
-      "replace": "\"\n",
+      "find": "\"They give up rootless containers and sudo. base agent and interop stay outside it\"\n",
+      "replace": "\"base agent and interop stay outside it\"\n",
       "run": "TestAPrivateHerdrSaysWhatItGivesUpInItsStatus",
       "args": []
     },
@@ -209,7 +389,7 @@
       "args": []
     },
     {
-      "label": "herdr: a server outside the namespace private_net asks for is a problem",
+      "label": "herdr: a server outside the namespace private_net asks for is noted",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/herdr/probe.sh",
       "find": "    shared | other)\n",
@@ -230,8 +410,8 @@
       "label": "herdr: the probe says what private_net gives up",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/herdr/probe.sh",
-      "find": "  printf '%s\\n' \"note herdr's server and every agent it starts",
-      "replace": "  printf '%s\\n' \"said herdr's server and every agent it starts",
+      "find": "  printf '%s\\n' \"note under private_net, processes in herdr's panes",
+      "replace": "  printf '%s\\n' \"said under private_net, processes in herdr's panes",
       "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
       "args": []
     },
@@ -302,7 +482,7 @@
       "label": "muse: no rules are written without herdr",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "elif ! command -v herdr \u003e/dev/null 2\u003e\u00261 \u0026\u0026 [ ! -x /usr/local/bin/herdr ]; then\n  herdr_rules_skip=",
+      "find": "elif ! herdr_present; then\n  herdr_rules_skip=",
       "replace": "elif false; then\n  herdr_rules_skip=",
       "run": "TestTheMuseAdapterWritesNoHerdrRulesWithoutHerdr",
       "args": []

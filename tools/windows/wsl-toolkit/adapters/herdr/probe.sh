@@ -69,11 +69,12 @@ printf 'server-binary-stale %s\n' "${stale:-unknown}"
 
 # -- the private network namespace, read from the machine -------------------------------
 # ⭐ WHICH NAMESPACE THE SERVER IS IN, NOT WHICH ONE ITS UNIT ASKS FOR. base ensure never
-# restarts a running server, so a key turned on reaches the server only at its next
-# start, and until then the configuration says private while every agent is in the
-# shared namespace. WSL-159.
+# restarts a running server. So a key turned on reaches the server only at its next
+# start, and until then every agent is in the shared namespace. WSL-159.
+#
+# ⚠ private-net IS WHAT THE BASE CARRIES, the drop-in, and not what the configuration
+# asks. The executable compares the two, and names base ensure where they differ.
 if [ -e "$NET_DROPIN" ]; then private=on; else private=off; fi
-printf 'private-net %s\n' "$private"
 server_ns=unknown
 pid=$(systemctl show -p MainPID --value "$UNIT" 2>/dev/null || :)
 case $pid in
@@ -88,23 +89,34 @@ case $pid in
     fi
     ;;
 esac
-printf 'server-netns %s\n' "$server_ns"
+# ⚠ ONLY WHERE THE KEY IS OR WAS USED. A base with no drop-in, whose server is outside
+# the namespace, answers the facts it answered before the key existed.
+if [ "$private" = on ] || [ "$server_ns" = private ]; then
+  printf 'private-net %s\n' "$private"
+  printf 'server-netns %s\n' "$server_ns"
+fi
 if [ "$private" = on ]; then
   link=$(systemctl is-active "$NET_UNIT" 2>/dev/null || :)
   printf 'private-net-link %s\n' "${link:-unknown}"
-  # ⛔ A PROBLEM, NOT A NOTE: the operator turned the key on to keep the agents from
-  # the Windows host, and they can reach it.
   case $server_ns in
     private)
+      # ⛔ A PROBLEM: base ensure starts the link again when a process is in the
+      # namespace. So a link still down after it is a failure, and the agents reach
+      # nothing.
       [ "$link" = active ] ||
         problem "the herdr server's private network namespace has no way out, because $NET_UNIT is ${link:-unknown}. Run: base exec --root -c 'systemctl start $NET_UNIT'"
       ;;
     shared | other)
-      problem "the herdr server runs in the $server_ns network namespace, and private_net asks for its own. It moves when the server restarts, which ends every pane. When no pane is needed, run: base exec --root -c 'systemctl restart $UNIT'"
+      # ⚠ A NOTE AND NOT A PROBLEM, like a stale server binary above. base ensure never
+      # restarts a running server, so it cannot cure this. As a problem it failed every
+      # ensure, every ready and every job, until a restart ended every pane. WSL-181.
+      printf 'note %s\n' "the herdr server still runs in the $server_ns network namespace, so its panes reach the Windows host. It moves when the server restarts, which ends every pane. When no pane is needed, run: base exec --root -c 'systemctl restart $UNIT'"
       ;;
   esac
   # ⛔ THE COST, ON EVERY READ OF A BASE THAT CARRIES THE KEY. Ruling 36.
-  printf '%s\n' "note herdr's server and every agent it starts reach the internet, and not the Windows host or the private ranges. Those agents give up rootless containers and sudo"
+  # ⚠ AND ONLY FOR THE PANES. base agent runs through base exec, and interop runs a
+  # Windows program outside the namespace.
+  printf '%s\n' "note under private_net, processes in herdr's panes reach the internet, and not the Windows host or the private ranges. They give up rootless containers and sudo. base agent, and a Windows program run through interop, stay outside the namespace"
 elif [ "$server_ns" = private ]; then
   printf 'note private_net is off, and the running herdr server keeps its private network namespace until it restarts\n'
 fi

@@ -57,7 +57,10 @@ base64 -d "$WORK/payload.b64" > "$WORK/payload.sh" || die "the payload could not
   if [ -n "$TK_HOSTADDR" ]; then
     printf 'nft add rule inet wsl_toolkit_private out ip daddr %s drop || exit 3\n' "$TK_HOSTADDR"
   fi
-  printf 'nft add rule inet wsl_toolkit_private out ip daddr "{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 }" drop || exit 3\n'
+  # ⛔ 100.64.0.0/10 GOES WITH THE PRIVATE RANGES. No public network routes that shared
+  # address space. Tailscale gives the Windows host an address there, and the host
+  # answers on it through WSL's NAT. WSL-159.
+  printf 'nft add rule inet wsl_toolkit_private out ip daddr "{ 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 }" drop || exit 3\n'
   # ⭐ THE RULESET IS PRINTED WHEN ASKED, so what refused a connection is readable
   # rather than inferred from a timeout.
   #

@@ -370,9 +370,10 @@ command its own network namespace, with the Windows host refused. It is refused
 beside `--root`, and ⛔ **no container runs inside that namespace**.
 
 ⚠ **`"private_net": true` on the `herdr` adapter does the same for herdr's server**,
-and so for every agent it starts. Those agents give up rootless containers and
-`sudo`, and `base status` says so. It reaches a running server only at its restart,
-which ends every pane, so ask the user first.
+and so for every process in its panes. Those processes give up rootless containers
+and `sudo`, and `base status` says so. It reaches a running server only at its
+restart, which ends every pane, so ask the user first. `base agent` and interop stay
+outside the namespace.
 
 ---
 
