@@ -975,6 +975,7 @@ func TestAConfigWithADotIdIsRefusedWhenItIsRead(t *testing.T) {
 // and reads with allLocked, so its read and its write cannot be separated. That is
 // checkable by reading nine lines, and it is what a reviewer should check.
 func TestLedgerSurvivesConcurrentUse(t *testing.T) {
+	parallelCase(t)
 	dir := t.TempDir()
 	l := &Ledger{path: filepath.Join(dir, "ledger.jsonl")}
 
@@ -1462,6 +1463,7 @@ func TestABuildAheadOfTheReleaseIsNotAnUpdate(t *testing.T) {
 // per-process. What it does not cover is a killed writer, which is the case the
 // helper was originally written for and which still holds.
 func TestWriteFileAtomicSurvivesConcurrentWriters(t *testing.T) {
+	parallelCase(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 

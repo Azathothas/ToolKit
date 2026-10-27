@@ -228,6 +228,7 @@ func TestAKindChangeIsReplacedOnlyWhereItMayBe(t *testing.T) {
 // nearest second, so the guest's copy of a file written at .7 of a second holds
 // the next second, and comparing the host's own would send it every time.
 func TestAFileTimeIsComparedAsTheArchiveCarriesIt(t *testing.T) {
+	parallelCase(t)
 	root, _, _ := syncHostTree(t, map[string]string{"f.txt": "x"})
 	at := time.Date(2026, 1, 2, 3, 4, 5, 700_000_000, time.UTC)
 	if err := os.Chtimes(filepath.Join(root, "f.txt"), at, at); err != nil {
@@ -265,6 +266,7 @@ func TestAFileTravelsWhenOnlyItsExecutableBitChanged(t *testing.T) {
 // TestGitDecidesWhatDeleteKeeps asks real git, where this host has it, about
 // paths the host does not hold, in the checkout and in a repository nested in it.
 func TestGitDecidesWhatDeleteKeeps(t *testing.T) {
+	parallelCase(t)
 	git, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("no git on this host")

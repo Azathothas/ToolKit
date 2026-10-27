@@ -216,6 +216,7 @@ func TestAStallWatchStopsCleanlyAndOnlyOnce(t *testing.T) {
 // TestDriveAStallAgainstARealProcess runs a real child that produces one line
 // and then goes silent for ever, and asserts the stall deadline ends it.
 func TestDriveAStallAgainstARealProcess(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no sh on this host")

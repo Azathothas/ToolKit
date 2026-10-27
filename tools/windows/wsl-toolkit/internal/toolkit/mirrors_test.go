@@ -192,6 +192,7 @@ func listTree(t *testing.T, dir string) map[string]string {
 // a real shell, mirrors.sh's functions first, as the payload carries them.
 // WSL-196.
 func TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey(t *testing.T) {
+	parallelCase(t)
 	without := t.TempDir()
 	out := engineSettingsRun(t, without)
 	files := listTree(t, without)
@@ -288,6 +289,7 @@ func TestEnginesShWritesTheRegistryDropInsAndTakesThemAway(t *testing.T) {
 // match, so a base without sha256sum would keep a stale drop-in and say nothing.
 // Run in a real shell, with sha256sum refused. WSL-196.
 func TestARegistryDropInIsWrittenWhereNoSumCanBeTaken(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")

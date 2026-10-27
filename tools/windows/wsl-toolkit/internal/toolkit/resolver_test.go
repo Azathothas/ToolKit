@@ -56,6 +56,7 @@ func sharedResolverRun(t *testing.T, mounts string) (string, string) {
 // as a distribution starts, and read once it was empty, so a sealed base kept the
 // resolver it had.
 func TestProvisioningWaitsForTheSharedResolver(t *testing.T) {
+	parallelCase(t)
 	out, got := sharedResolverRun(t, "none / ext4 rw 0 0\nnone /mnt/wsl tmpfs rw 0 0\n")
 	if got != "nameserver 192.0.2.7\n" || !strings.Contains(out, "/etc/resolv.conf, 1 nameserver(s)") {
 		t.Fatalf("a shared resolver WSL wrote a moment late was not taken: /etc/resolv.conf %q\n%s", got, out)
@@ -66,6 +67,7 @@ func TestProvisioningWaitsForTheSharedResolver(t *testing.T) {
 // closed it at its last start, so nothing can write the file, and the wait cost
 // every re-provisioning ten seconds. The base keeps the resolver it has. WSL-188.
 func TestAReProvisionedSealedBaseDoesNotWaitForAClosedResolver(t *testing.T) {
+	parallelCase(t)
 	out, got := sharedResolverRun(t, "none / ext4 rw 0 0\n")
 	// ⚠ The resolver's path in the line is the case's own, which stands in for it.
 	if got != "nameserver 198.51.100.1\n" || !strings.Contains(out, "/etc/resolv.conf this base already had") {
@@ -108,6 +110,7 @@ func sealedBootRun(t *testing.T) (string, string) {
 
 // ⛔ AND SO DOES EVERY START OF A SEALED BASE, before it unmounts the directory.
 func TestTheBootScriptWaitsForTheSharedResolver(t *testing.T) {
+	parallelCase(t)
 	bootLog, got := sealedBootRun(t)
 	if !strings.Contains(bootLog, "resolver refreshed") || got != "nameserver 192.0.2.7\n" {
 		t.Fatalf("a start before WSL wrote the shared resolver kept /etc/resolv.conf %q, log %q", got, bootLog)
@@ -180,6 +183,7 @@ func TestASealedResolverThatStillDoesNotAnswerIsRefusedByName(t *testing.T) {
 // line, which kept the base from the restart too. The name asked is the probe
 // image's registry, not github.com.
 func TestASealedBaseThatCannotResolveIsNotJudged(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")
@@ -276,6 +280,7 @@ func sealSectionRun(t *testing.T, bootLog string) (int, string, int) {
 // resolver first, so a verifier that read the mount table at once refused a base
 // about to seal, and ensure re-provisioned it. WSL-188.
 func TestTheVerifierWaitsForTheBootScriptsUnmount(t *testing.T) {
+	parallelCase(t)
 	if code, stderr, slept := sealSectionRun(t, ""); code != 0 || slept != 1 {
 		t.Fatalf("a sealed base whose boot script unmounted a moment late answered exit %d after %d wait(s): %s", code, slept, stderr)
 	}

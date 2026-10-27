@@ -18,6 +18,7 @@ import (
 const testJobID = "0123456789abcdef"
 
 func TestAJobHasOneOwnerAndASecondClaimIsRefused(t *testing.T) {
+	parallelCase(t)
 	home := t.TempDir()
 	owner, err := ClaimJob(home, testJobID)
 	if err != nil {
@@ -230,6 +231,7 @@ func appendFile(t *testing.T, path, text string) {
 }
 
 func TestFollowingATranscriptReadsUntilTheOwnerLetsGo(t *testing.T) {
+	parallelCase(t)
 	home := t.TempDir()
 	owner, err := ClaimJob(home, testJobID)
 	if err != nil {
@@ -299,6 +301,7 @@ func TestFollowingAJobItsOwnerLetGoReadsWhatIsLeft(t *testing.T) {
 }
 
 func TestFollowingFromTheTailStartsAtTheLastLines(t *testing.T) {
+	parallelCase(t)
 	home := t.TempDir()
 	owner, err := ClaimJob(home, testJobID)
 	if err != nil {

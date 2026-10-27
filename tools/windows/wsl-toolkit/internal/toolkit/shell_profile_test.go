@@ -92,6 +92,7 @@ func profilePATH(t *testing.T, in string, off bool, interactive bool) string {
 // does not change. ⛔ And an empty element is dropped, because `PATH=/bin:` searches the
 // current directory for every command typed.
 func TestTheProfileDeduplicatesAnInteractiveShellsPath(t *testing.T) {
+	parallelCase(t)
 	cases := []struct{ in, want string }{
 		{"/a:/b:/a:/c:/b", "/a:/b:/c"},
 		{"/a::/b:", "/a:/b"},
@@ -117,6 +118,7 @@ func TestTheProfileLeavesANonInteractiveShellAlone(t *testing.T) {
 
 // ⭐ ONE NAMED SWITCH TURNS ALL OF IT OFF.
 func TestTheProfileSwitchTurnsEverythingOff(t *testing.T) {
+	parallelCase(t)
 	const in = "/a:/b:/a"
 	if got := profilePATH(t, in, true, true); got != in {
 		t.Fatalf("with WSL_TOOLKIT_NO_PROFILE set, PATH became %q, want %q", got, in)
@@ -133,6 +135,7 @@ func TestTheProfileSwitchTurnsEverythingOff(t *testing.T) {
 // reports the host's noise as this file's defect, which it did the first time this case
 // ran.
 func TestTheProfileAddsNothingToStderr(t *testing.T) {
+	parallelCase(t)
 	_, without := profileUnderSh(t, `exit 0`)
 	_, with := profileUnderSh(t, `unset WSL_TOOLKIT_PROFILE; . "$TK_PROFILE"; exit 0`)
 	if with != without {

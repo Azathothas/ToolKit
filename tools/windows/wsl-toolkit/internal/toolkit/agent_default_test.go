@@ -190,6 +190,7 @@ func museWrapperFile(t *testing.T, model, effort, subcommands string) (shell, pa
 // with `cannot be used multiple times`. So the wrapper reads the line before it adds
 // anything, and these are the shapes it has to get right.
 func TestTheMuseWrapperPlacesTheDefaultsWhereMuseTakesThem(t *testing.T) {
+	parallelCase(t)
 	const subs = "resume exec config export trace skills plugins sandbox schema serve session-message mcp auth login logout init "
 	sh, wrapper := museWrapperFile(t, "muse-spark-1.3-contributor", "max", subs)
 
@@ -237,6 +238,7 @@ func TestTheMuseWrapperPlacesTheDefaultsWhereMuseTakesThem(t *testing.T) {
 // `muse login` the first time Muse renamed a command, and signing in is the operator's
 // only door.
 func TestTheMuseWrapperAddsNothingWhenItKnowsNoSubcommands(t *testing.T) {
+	parallelCase(t)
 	sh, wrapper := museWrapperFile(t, "", "", "")
 	for _, args := range [][]string{{"login"}, {"exec", "hello"}, nil} {
 		out, err := exec.Command(sh, append([]string{wrapper}, args...)...).Output()

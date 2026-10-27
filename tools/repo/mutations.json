@@ -2,6 +2,33 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a parallel case that sets the environment is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/parallel_test.go",
+      "find": "\t\t\t\tcase \"Setenv\", \"Unsetenv\", \"Clearenv\", \"Chdir\":",
+      "replace": "\t\t\t\tcase \"Unsetenv\", \"Clearenv\", \"Chdir\":",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that sets a package variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/parallel_test.go",
+      "find": "\t\tif id, ok := e.(*ast.Ident); ok && vars[id.Name] && !locals[id.Name] && !allowed[id.Name] {",
+      "replace": "\t\tif id, ok := e.(*ast.Ident); ok && vars[id.Name] && !locals[id.Name] && !allowed[id.Name] && false {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a case that calls a parallel helper is read as parallel",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/parallel_test.go",
+      "find": "\t\t\t\tif helper.parallel && !strings.HasPrefix(c, \".\") {",
+      "replace": "\t\t\t\tif helper.parallel && strings.HasPrefix(c, \".\") {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a mutation row's bytes reach the variable that embeds the file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/mutate_embed_test.go",

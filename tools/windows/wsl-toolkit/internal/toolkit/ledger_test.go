@@ -358,6 +358,7 @@ func TestACompactionWaitsForTheLedgerLockAnotherProcessHolds(t *testing.T) {
 }
 
 func TestTwoProcessesCompactingLoseNoRecordAnotherAppends(t *testing.T) {
+	parallelCase(t)
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

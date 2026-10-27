@@ -72,6 +72,7 @@ func tarNames(t *testing.T, archive []byte) []string {
 // ⭐ git decides, so a directory git ignores at the root does not take a tracked
 // one of the same name elsewhere, which a glob in a shell string did.
 func TestGitignoreLeavesOutWhatGitIgnoresAndNothingElse(t *testing.T) {
+	parallelCase(t)
 	root := gitWorkTree(t)
 	var buf bytes.Buffer
 	up, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), WorkspaceFilter{Gitignore: true, Excludes: []string{".git"}})
@@ -98,6 +99,7 @@ func TestGitignoreLeavesOutWhatGitIgnoresAndNothingElse(t *testing.T) {
 // tree does not look inside, so sub/secrets.env travelled although sub's own
 // .gitignore names it. A safety review found it.
 func TestGitignoreAppliesANestedRepositorysOwnRules(t *testing.T) {
+	parallelCase(t)
 	root := gitWorkTree(t)
 	git, _ := exec.LookPath("git")
 	sub := filepath.Join(root, "vendor", "sub")
@@ -143,6 +145,7 @@ func TestGitignoreOutsideAGitWorkTreeIsRefused(t *testing.T) {
 }
 
 func TestGitignoreOnAWorkspaceItsRepositoryIgnoresIsRefused(t *testing.T) {
+	parallelCase(t)
 	root := gitWorkTree(t)
 	ws := filepath.Join(root, "target", "debug")
 	var buf bytes.Buffer

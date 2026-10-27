@@ -50,6 +50,7 @@ func plantedHook(t *testing.T) (root, marker string) {
 // that wrote /out/.git, or a sandboxed client that uploaded one, ran a program on
 // this machine through the helper's copy. A safety review found it.
 func TestGitIsNotRunInATreeAContainerOrAClientWrote(t *testing.T) {
+	parallelCase(t)
 	root, marker := plantedHook(t)
 	var buf bytes.Buffer
 	if _, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), WorkspaceFilter{Untrusted: true, Exec: map[string]bool{"run.sh": true}}); err != nil {

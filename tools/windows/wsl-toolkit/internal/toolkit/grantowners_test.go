@@ -183,6 +183,7 @@ func TestTheLedgerSaysWhichFileMadeEachGrant(t *testing.T) {
 // named and left, and a mount nobody's ledger names, or this file's own, is still
 // refused. WSL-179.
 func TestTheVerifierLeavesAMountTheLedgerGivesAnotherFile(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")

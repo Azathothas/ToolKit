@@ -822,6 +822,7 @@ func TestAMarkerReadThatCouldNotAskIsNotAnAbsence(t *testing.T) {
 // canonical name `wsl-toolkit-jobs` matched the instance glob, and the adapter
 // printed `--instance jobs`, which is reserved and refused.
 func TestAdaptersNameTheDefaultBaseWithNoInstance(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no sh to run the adapters' case with")

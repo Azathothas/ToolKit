@@ -142,6 +142,7 @@ func TestEachOfTwoGoneGrantsCanBeRevoked(t *testing.T) {
 // verifier is told of it, allows it and checks nothing in it, and still refuses
 // any other Windows mount it was not told of. A correctness review found it.
 func TestTheVerifierAllowsAGoneGrantsMountAndNoOther(t *testing.T) {
+	parallelCase(t)
 	cfg, _, _ := goneGrantConfig(t)
 	gone, err := goneGrantTargets(cfg)
 	if err != nil {
