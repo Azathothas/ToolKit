@@ -17,6 +17,10 @@ TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
 PREFIX=$TK_HOME/.local
 # Where install.sh unpacks each pi release it takes from pi's own GitHub release. WSL-138.
 RELEASES=$TK_HOME/.local/share/wsl-toolkit/pi
+# The two paths install.sh writes outside the account's home. A case in the suite points
+# both into a temporary directory, and nothing else sets them.
+STAGE_DIR=${TK_PI_STAGE_DIR:-/var/lib/wsl-toolkit/pi}
+WRAPPER=${TK_PI_WRAPPER:-/usr/local/bin/pi}
 
 as_account() {
   runuser -u "$TK_USER" -- env -i HOME="$TK_HOME" USER="$TK_USER" LOGNAME="$TK_USER" \
@@ -47,10 +51,14 @@ npm_package_dir() {
 # because an adapter before it stopped `base ensure`, read as "installed and a login
 # shell cannot find it", beside problems that only mean something for a pi that is
 # there. WSL-107, issue 37.
-if [ -e /usr/local/bin/pi ] || [ -e "$PREFIX/bin/pi" ]; then installed=yes; else installed=no; fi
+if [ -e "$WRAPPER" ] || [ -e "$PREFIX/bin/pi" ]; then installed=yes; else installed=no; fi
 printf 'installed %s\n' "$installed"
 if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
-  printf 'footprint %s\n' "$(footprint /usr/local/bin/pi "$PREFIX/bin/pi" "$(npm_package_dir "$PREFIX/bin/pi")" "$RELEASES" "$TK_HOME/.pi")"
+  # ⚠ npm's package is counted where the launcher points into it, or where a pi from npm
+  # left it. A release asset a refusal kept is counted too. Each is the adapter's. WSL-138.
+  npm_dir=$(npm_package_dir "$PREFIX/bin/pi")
+  [ -n "$npm_dir" ] || npm_dir=$PREFIX/lib/node_modules/@earendil-works/pi-coding-agent
+  printf 'footprint %s\n' "$(footprint "$WRAPPER" "$PREFIX/bin/pi" "$npm_dir" "$RELEASES" "$STAGE_DIR" "$TK_HOME/.pi")"
   exit 0
 fi
 if [ "$installed" = no ]; then
@@ -94,9 +102,9 @@ else
   problem "pi answers no version for $TK_USER, so it is not usable by that account"
 fi
 
-# ⭐ WHERE THE ACCOUNT'S pi CAME FROM. install.sh takes pi's own release and takes npm only
-# when that release could not be fetched, so `npm` here says the official route did not
-# run. A base built before WSL-138 reads `npm` too, until its next base ensure.
+# ⭐ WHERE THE ACCOUNT'S pi CAME FROM. install.sh takes pi's own release, and npm only when
+# that release could not be fetched. So `npm` here says the official route did not run. A
+# base built before WSL-138 reads `npm` too, until its next base ensure.
 pi_real=$(as_account readlink -f "$PREFIX/bin/pi" 2>/dev/null || :)
 releases_real=$(as_account readlink -f "$RELEASES" 2>/dev/null || :)
 if [ -n "$pi_real" ] && [ -n "$releases_real" ] && [ "${pi_real#"$releases_real"/}" != "$pi_real" ]; then
@@ -145,31 +153,39 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
     if printf '%s\n' "$listed" | awk -v p="$want_provider" -v m="$want_model" '$1 == p && $2 == m { found = 1 } END { exit !found }'; then
       printf 'credential present\n' # pi's own catalogue resolves it, which takes a key
     elif [ -z "$want_provider" ] || printf '%s\n' "$listed" | awk -v p="$want_provider" '$1 == p { found = 1 } END { exit !found }'; then
-      # ⛔ pi HOLDS A KEY FOR THIS PROVIDER AND STILL DOES NOT LIST THE MODEL, so it is not
+      # ⛔ pi HOLDS A KEY FOR THIS PROVIDER AND STILL DOES NOT LIST THE MODEL. So it is not
       # declared, and every session starts on another model.
       [ -z "$want_provider" ] || printf 'credential present\n'
       problem "$undeclared"
     else
       printf 'credential absent\n'
+      # ⭐ THE CHECK THIS PROBE TRUSTS IS THE ONE ITS NOTES NAME. pi 1.4.0 answers
+      # --provider with not_ready for any name, a provider it does not know included.
+      check="pi auth check --model $want_provider/$want_model"
       # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
       if [ -f "$models" ] && as_account jq -e --arg p "$want_provider" --arg m "$want_model" \
           '(.providers[$p].models // []) | any(.id == $m)' "$models" >/dev/null 2>&1; then
         # ⭐ DECLARED, AND ITS KEY IS THE OPERATOR'S TO STORE. True, and it stops nothing.
-        printf "note pi's startup model %s/%s is declared in %s, and pi holds no key for %s yet, so pi lists none of its models. Store the key, and pi auth check --provider %s answers ready\n" \
-          "$want_provider" "$want_model" "$models" "$want_provider" "$want_provider"
+        printf "note pi's startup model %s/%s is declared in %s, and pi holds no key for %s yet, so pi lists none of its models. Store the key, and %s answers ready\n" \
+          "$want_provider" "$want_model" "$models" "$want_provider" "$check"
       elif [ -f "$models" ] && as_account jq -e --arg p "$want_provider" '.providers | has($p)' "$models" >/dev/null 2>&1; then
         # ⛔ THE PROVIDER IS DECLARED AND THE MODEL IS NOT, so no key would make pi list it.
         problem "$undeclared"
       else
         # ⚠ A PROVIDER pi CARRIES ITSELF IS ONE models.json DOES NOT NAME. Measured with pi
         # 1.4.0 and no key: `pi auth check --model` answers not_ready for anthropic's
-        # models and invalid for a provider pi does not know. ⛔ NOT --provider, which
-        # answers not_ready for any name at all. The models of a provider pi carries
-        # cannot be listed without the key, so the startup model waits for it.
+        # models. It answers invalid for a provider pi does not know. The models of a
+        # provider pi carries cannot be listed without the key, so the model waits for it.
         verdict=$(as_account pi auth check --model "$want_provider/$want_model" 2>/dev/null | tr -d '\r' | head -1)
         if [ "$verdict" = not_ready ]; then
-          printf "note pi holds no key for %s, a provider pi carries itself, so its startup model %s/%s is not checked until the key is stored. Store the key, and pi auth check --provider %s answers ready\n" \
-            "$want_provider" "$want_provider" "$want_model" "$want_provider"
+          printf "note pi holds no key for %s, a provider pi carries itself, so its startup model %s/%s is not checked until the key is stored. Store the key, and %s answers ready\n" \
+            "$want_provider" "$want_provider" "$want_model" "$check"
+        elif [ "$verdict" = invalid ] && [ ! -e "$models" ] && [ ! -L "$models" ]; then
+          # ⭐ NOTHING IS DECLARED YET. That is every new base whose profile names a provider
+          # of its own, until its models.json is written. A note, so base ensure exits 0
+          # there. A models.json that exists and lacks the provider stays a problem. WSL-135.
+          printf "note pi's startup model %s/%s names a provider pi does not carry, and %s does not exist yet. Declare the provider and the model there, as step 5 of the muse-code guide does\n" \
+            "$want_provider" "$want_model" "$models"
         else
           problem "pi answers ${verdict:-nothing} for its startup model $want_provider/$want_model, so it knows no such provider. Declare the provider and the model in $models"
         fi

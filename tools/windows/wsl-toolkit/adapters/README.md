@@ -160,8 +160,13 @@ is approved:** the one the adapter pins, which the operator approved, or the
 the operator to read, never run, and the adapter exits non-zero naming its digest.
 
 ⛔ **A provider's own release asset is kept the same way when its digest is not the
-pinned one.** `pi` and `omp` save it, exit 2, and print the `version` and `sha256`
-that would approve it. Neither falls back to npm over a changed digest. `WSL-138`
+pinned one.** `pi` and `omp` save it, exit 2, and name the release's own checksum
+list. Neither falls back to npm over a changed digest. `WSL-138`
+
+⭐ **A release asset is pinned by whoever reads the refusal.** Where the
+saved file agrees with the release's own list, the `version` and `sha256` the refusal
+prints pin it. Where they disagree, nothing is pinned, and the file is not the
+provider's. ⚠ Muse's installer has no such list, so its approval stays as above.
 
 ## The copy the executable carries
 

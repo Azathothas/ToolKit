@@ -92,6 +92,26 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+### ⛔ What pi and omp from their own releases break, and what a caller does
+
+`WSL-138` and `WSL-135`. In `wsl-toolkit-v9.0.0`. A break by the table above,
+because two exit meanings change. A configuration that names pi and omp with no
+`version` keeps working, and its next `base ensure` moves each to its release.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| pi and omp install from each provider's own GitHub release, at the version and digests each adapter's `install.sh` pins. An unpinned pi or omp that npm installed moves to that release at the owner's next `base ensure`. It was left at its version | relies on a pi or omp from npm that is newer than the pin | sets `version` and `sha256` on that entry, from the release's own checksum list |
+| `sha256` beside `version` on a pi or omp entry is checked against the release file. It was accepted and never read. A digest that is not the release file's stops `base ensure` with exit 2 | wrote a digest that is not the release file's, such as npm's integrity value | writes each architecture's line from the release's `SHA256SUMS` or `SHA256SUMS.txt` |
+| once the release is in use, npm's package for that agent under `~/.local/lib/node_modules` is removed | runs npm's copy by its path in that package | runs `pi` or `omp` by name |
+| a declared pi model whose provider holds no key reads `healthy` with a note. It was a problem: `base ensure` exited 2 and `base status --probe` exited 1 there. Both exit 0 | read either exit as "pi holds no key yet" | reads `facts.credential` in `base status --probe --json` |
+| a pi model reads `healthy` with a note while `~/.pi/agent/models.json` does not exist. A new base built from the muse-code profile exited 2 there | read that exit as "the provider is not declared yet" | reads the note |
+| the pi and omp probes add the facts `source` and `credential`, and notes. A dropped adapter's footprint counts a release file a refusal kept, and npm's package | | reads them, or nothing |
+
+⚠ **The rows it reaches, from the register.** No consumer in the register configures
+a pi or omp adapter. podbox runs `base status --probe` and `base ensure --probe`, and
+pg-toolkit runs `base ensure`. Their exits change only on a base whose configuration
+names pi.
+
 ### ⛔ What the canonical default base name breaks, and what a caller does
 
 `WSL-167`, ruling 33. In `wsl-toolkit-v8.0.0`. A break by the table above, so the release

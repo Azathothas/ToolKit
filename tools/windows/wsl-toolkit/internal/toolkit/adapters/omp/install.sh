@@ -1,8 +1,8 @@
 #!/bin/sh
-# omp adapter, install: Oh My Pi for the base's account, from omp's own release while
-# its digest is the one pinned here, from npm only when that release cannot be
-# fetched, and herdr's own OMP integration so herdr has lifecycle authority over its
-# panes.
+# omp adapter, install: Oh My Pi for the base's account, and herdr's own OMP
+# integration so herdr has lifecycle authority over its panes. omp comes from its own
+# release while that digest is the one pinned here. npm is taken only when the release
+# cannot be fetched.
 #
 # THE DEFECT IT EXISTS TO REMOVE: the same as the pi adapter's, and one more that
 # only appears when both are installed.
@@ -33,20 +33,21 @@ die() { printf 'omp adapter: %s\n' "$*" >&2; exit 3; }
 # GitHub carries that binary per platform, beside a SHA256SUMS.txt that covers it.
 # WSL-138.
 #
-# ⛔ THE BINARY IS INSTALLED ONLY WHILE ITS DIGEST IS THE ONE PINNED HERE, the route ruling
-# 4 set for Muse: download, save, print the length and SHA-256, and install the saved
-# file. Each digest is the line omp v18.12.6's own SHA256SUMS.txt carries. The x86_64 one
-# was also measured on download: 256,702,432 bytes, and it answered `omp/18.12.6` on a
-# machine with no Bun. ⛔ Any other digest stops the ensure with exit 2, keeps the file to
-# be read, and says how to approve it. It never takes npm.
+# ⛔ THE BINARY IS INSTALLED ONLY WHILE ITS DIGEST IS THE ONE PINNED HERE. That is the
+# route ruling 4 set for Muse: download, save, print the length and SHA-256, and install
+# the saved file. Each digest is the line omp v18.13.1's own SHA256SUMS.txt carries, and
+# GitHub's own asset digest agrees. Both files were measured on download. The x86_64 one
+# is 275,986,608 bytes, and the aarch64 one is 237,423,608 bytes. The x86_64 one answered
+# `omp/18.13.1` once a scratch base installed it. ⛔ Any other digest
+# stops the ensure with exit 2 and keeps the file to be read. It never takes npm.
 #
 # ⚠ NOT omp.sh/install, BECAUSE OF WHAT A DIGEST ON IT WOULD PIN. It is served from the
 # main branch, so its digest moves with every commit to that script. It asks a third
 # service, build.stencil.so, for the newest build at run time, and with a Bun present it
 # installs from npm instead.
-OMP_RELEASE=18.12.6
-OMP_X86_64_PINNED_SHA256=85d9daf3a05fc76e8cd425ae1904eb576af8d21cc85fcf4690742626e07ccfa4
-OMP_AARCH64_PINNED_SHA256=eee8e586274cef2e725c218b2b28b48ca9965d46dd58f60998cb347eca4ad0cf
+OMP_RELEASE=18.13.1
+OMP_X86_64_PINNED_SHA256=ee2961c7da02e514a2475ee958c2fd85dbabf4d0907949ba5022edb2951f84b5
+OMP_AARCH64_PINNED_SHA256=803db725f9e5bd177ce5274f7718081481f367829f773d984a0a9611f4713244
 OMP_URL_BASE=https://github.com/can1357/oh-my-pi/releases/download
 
 # ⭐ A NEWER RELEASE IS A CONFIGURATION CHANGE, NOT AN EDIT TO THIS FILE, as herdr's is.
@@ -64,10 +65,12 @@ TK_ADAPTER_SEPARATE_AGENT_DIR=${TK_ADAPTER_SEPARATE_AGENT_DIR:-}
 OMP_SEPARATED=no
 OMP_BIN=omp
 
-# The two paths this writes outside the account's home. A case in the suite points both
-# into a temporary directory, and nothing else sets them.
+# The two paths this writes outside the account's home, and the file that marks a musl
+# base. A case in the suite points each into a temporary directory, and nothing else
+# sets them.
 STAGE_DIR=${TK_OMP_STAGE_DIR:-/var/lib/wsl-toolkit/omp}
 WRAPPER=${TK_OMP_WRAPPER:-/usr/local/bin/omp}
+MUSL_MARK=${TK_OMP_MUSL_MARK:-/etc/alpine-release}
 
 TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
 if [ -z "$TK_HOME" ] || [ ! -d "$TK_HOME" ]; then
@@ -159,7 +162,7 @@ case "$(uname -m)" in
   *) OMP_ASSET=''; OMP_WANT='' ;;
 esac
 # ⚠ A musl BASE TAKES ANOTHER BUILD, and none is pinned here, so it takes npm.
-if [ -f /etc/alpine-release ]; then
+if [ -f "$MUSL_MARK" ]; then
   OMP_ASSET=''
   OMP_WANT=''
 fi
@@ -169,12 +172,21 @@ if [ -n "$OMP_ASSET" ] && [ -z "$OMP_WANT" ]; then
   die "base.adapters moves omp to $OMP_RELEASE and names no sha256 for $(uname -m). Add it, or remove the version to use the one this adapter pins"
 fi
 
-# ⭐ THE FILE THAT IS omp ITSELF. On a base that took separate_agent_dir the account's omp
-# is the wrapper further down, and the program it runs is beside it, so a new release goes
+# is_omp_wrapper PATH is true when PATH is the separating wrapper further down. ⛔ The
+# account reads it, and only once it is a regular file. Root reading a FIFO the account
+# planted there would hold base ensure until its timeout.
+is_omp_wrapper() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '[ -f "$1" ] && head -3 "$1"' sh "$1" 2>/dev/null |
+    grep -qF "# wsl-toolkit omp adapter wrapper"
+}
+
+# ⭐ THE FILE THAT IS omp ITSELF. On a base that took separate_agent_dir, the account's
+# omp is the wrapper further down. The program it runs is beside it, so a new release goes
 # there and the wrapper stays.
 OMP_LAUNCHER=$PREFIX/bin/omp
 OMP_TARGET=$OMP_LAUNCHER
-if head -3 "$OMP_LAUNCHER" 2>/dev/null | grep -qF "# wsl-toolkit omp adapter wrapper"; then
+if is_omp_wrapper "$OMP_LAUNCHER"; then
   OMP_TARGET=$PREFIX/bin/omp-npm
 fi
 
@@ -202,7 +214,13 @@ omp_release_install() {
   saved=$STAGE_DIR/$OMP_ASSET
   url=$OMP_URL_BASE/v$OMP_RELEASE/$OMP_ASSET
   fetched=$(mktemp "$STAGE_DIR/$OMP_ASSET.XXXXXX") || die "no temporary file in $STAGE_DIR"
-  trap 'rm -f "$fetched"' 0 1 2 15
+  # ⛔ A SIGNAL ENDS THE RUN, and the exit takes the partial file with it. A handler that
+  # only removed the file let the run go on. The killed fetch then read as a fetch failure,
+  # and that is the one case npm is taken for.
+  trap 'rm -f "$fetched"' 0
+  trap 'exit 129' 1
+  trap 'exit 130' 2
+  trap 'exit 143' 15
   if ! fetch_error=$(curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --max-redirs 5 \
       "$url" --output "$fetched" 2>&1); then
     rm -f "$fetched"
@@ -217,16 +235,18 @@ omp_release_install() {
   length=$(wc -c < "$saved" | tr -d ' ')
   digest=$(sha256sum "$saved" | cut -d' ' -f1)
   say "saved omp's release binary at $saved: $length bytes, SHA-256 $digest"
-  # ⛔ A FILE WHOSE DIGEST IS NOT THE PINNED ONE IS KEPT TO BE READ AND NEVER RUN, and npm
-  # is NOT taken in its place: a release that changed under its own name is a question
-  # for the operator, not a download failure.
+  # ⛔ A FILE WHOSE DIGEST IS NOT THE PINNED ONE IS KEPT TO BE READ AND NEVER RUN. npm is
+  # NOT taken in its place, because a changed digest is not a download failure. Whoever
+  # reads the refusal compares the file with the release's own list. Where they agree,
+  # they pin it. Ruling 36.
   if [ "$digest" != "$OMP_WANT" ]; then
     printf "omp adapter: omp's release binary is not the one this adapter pins, so it was not installed and npm was not tried.\n" >&2
     printf '  saved at    %s, %s bytes, SHA-256 %s\n' "$saved" "$length" "$digest" >&2
     printf '  pinned      omp %s, SHA-256 %s\n' "$OMP_RELEASE" "$OMP_WANT" >&2
     printf "  compare it  with the release's own list, %s\n" "$OMP_URL_BASE/v$OMP_RELEASE/SHA256SUMS.txt" >&2
-    printf '  approve it  add "version": "%s", "sha256": {"%s": "%s"} to the omp entry in base.adapters, then run base ensure again\n' \
+    printf '  pin it      where they agree, add "version": "%s", "sha256": {"%s": "%s"} to the omp entry in base.adapters, then run base ensure again\n' \
       "$OMP_RELEASE" "$(uname -m)" "$digest" >&2
+    printf '  stop        where they disagree. The file is not the one omp published\n' >&2
     exit 2
   fi
   # ⭐ COPIED BY THE ACCOUNT, beside the file it replaces, and moved over it in one step.
@@ -241,13 +261,36 @@ omp_release_install() {
   return 0
 }
 
+# drop_npm_package removes the package npm put omp in, once omp's release is in use. A
+# base built before WSL-138 holds one, and nothing reads it after that. ⚠ As the account,
+# whose files they are.
+drop_npm_package() {
+  case $OMP_PACKAGE in
+    '' | /* | *..*) return 0 ;;
+  esac
+  npm_dir=$PREFIX/lib/node_modules/$OMP_PACKAGE
+  if [ ! -e "$npm_dir" ] && [ ! -L "$npm_dir" ]; then
+    return 0
+  fi
+  if as_account rm -rf "$npm_dir"; then
+    # ⚠ AND ITS SCOPE, once nothing else is in it. A scratch base kept an empty @oh-my-pi.
+    case $OMP_PACKAGE in
+      @*/*) as_account rmdir "${npm_dir%/*}" 2>/dev/null || : ;;
+    esac
+    say "removed $npm_dir, npm's omp, which the release in use does not read"
+  else
+    say "could not remove $npm_dir, npm's omp, which the release in use does not read"
+  fi
+  return 0
+}
+
 omp_from=npm
 installed=$(omp_version || :)
 if omp_from_release; then
   omp_from=release
   say "omp ${installed#omp/} is installed for $TK_USER from its release, whose digest this adapter pins"
   # ⚠ A BINARY A REFUSAL KEPT IS MOOT ONCE THE ONE IN USE IS THE PINNED ONE, and it is
-  # 256 MB. pi's adapter met the same leftover on a scratch base.
+  # 276 MB. pi's adapter met the same leftover on a scratch base.
   if [ -e "$STAGE_DIR/$OMP_ASSET" ]; then
     rm -f "$STAGE_DIR/$OMP_ASSET"
     say "removed $STAGE_DIR/$OMP_ASSET, which an earlier refusal kept and the omp in use does not need"
@@ -260,6 +303,9 @@ elif [ -n "$OMP_ASSET" ] && omp_release_install; then
   say "installed omp ${installed#omp/} for $TK_USER from its release binary, digest verified"
 else
   [ -n "$OMP_ASSET" ] || say "omp's releases carry no build this adapter pins for this machine"
+fi
+if [ "$omp_from" = release ]; then
+  drop_npm_package
 fi
 
 # -- the fallback: omp from npm is a Bun program, and a base built as documented has Node --
@@ -319,8 +365,8 @@ if [ "$omp_from" = npm ]; then
   if [ -n "$installed" ] && [ "${installed#omp/}" = "$OMP_RELEASE" ]; then
     say "omp ${installed#omp/} from npm is installed for $TK_USER, at the version this adapter pins"
   else
-    # ⚠ npm WILL NOT REPLACE A LAUNCHER IT DID NOT MAKE, so a release's binary or the
-    # wrapper is moved aside first, and comes back when npm fails.
+    # ⚠ npm WILL NOT REPLACE A LAUNCHER IT DID NOT MAKE. So a release's binary or the
+    # wrapper is moved aside first, and it comes back when npm fails.
     aside=
     if [ -e "$OMP_LAUNCHER" ] || [ -L "$OMP_LAUNCHER" ]; then
       case $(as_account readlink -f "$OMP_LAUNCHER" 2>/dev/null || :) in
@@ -360,7 +406,7 @@ if [ "$OMP_SEPARATED" = yes ]; then
   # $HOME/.local, so npm's shim and any wrapper want the same filename and a guard
   # that read the PATH alone called the real shim a wrapper and refused. Measured
   # 2026-09-17: `this adapter will not wrap a wrapper`, over npm's shim.
-  if [ -f "$OMP_WRAPPER" ] && head -3 "$OMP_WRAPPER" 2>/dev/null | grep -qF "$OMP_MARK"; then
+  if is_omp_wrapper "$OMP_WRAPPER"; then
     [ -x "$OMP_REAL" ] || die "the wrapper at $OMP_WRAPPER is in place and $OMP_REAL is gone, so omp has nothing to run"
     say "the omp wrapper is already in place, and $OMP_REAL is what it runs"
   else

@@ -1638,22 +1638,31 @@ and take herdr's own integration.** They keep Muse's rule. `base ensure` saves t
 release's file and prints its length and SHA-256. It installs that file only while
 the digest is the one the adapter pins. `WSL-138`
 
-| adapter | the release file | pinned |
+| adapter | the release file | where it goes |
 | --- | --- | --- |
-| `pi` | `pi-linux-x64.tar.gz` or `pi-linux-arm64.tar.gz`, unpacked by the account under `~/.local/share/wsl-toolkit/pi` | pi 1.4.0 |
-| `omp` | `omp-linux-x64` or `omp-linux-arm64`, one program with its own runtime, at `~/.local/bin/omp` | omp 18.12.6 |
+| `pi` | `pi-linux-x64.tar.gz` or `pi-linux-arm64.tar.gz` | unpacked by the account under `~/.local/share/wsl-toolkit/pi`, and linked from `~/.local/bin/pi` |
+| `omp` | `omp-linux-x64` or `omp-linux-arm64`, one program with its own runtime | `~/.local/bin/omp` |
+
+⭐ **The version and the digests have one home: each adapter's `install.sh`.**
+`PI_RELEASE` and `OMP_RELEASE` name the release, beside one digest per architecture.
 
 - ⛔ **Any other digest stops the ensure with exit 2, and npm is not tried.** The file
   stays under `/var/lib/wsl-toolkit/NAME` until the pinned release is in use again.
   The refusal names the release's own checksum list to compare it with.
-- ⭐ `version` and `sha256` on the entry move the release, as they move herdr's. A
-  version with no digest for this machine is refused.
+- ⭐ **Where the file agrees with that list, pin it.** `version` and `sha256` on the
+  entry move the release, as they move herdr's. Where they disagree, stop. The file
+  is not the one the provider published. A version with no digest for this machine
+  is refused.
 - ⚠ **npm is the fallback, and only when the release cannot be fetched.** It installs
   the same version with `--ignore-scripts`. The probe then reads `source npm` with a
   note, and the next `base ensure` tries the release again.
+- ⭐ **Once the release is in use, npm's package for that agent goes.** A base built
+  before 9.0.0 holds one. A dropped adapter's footprint counts a file a refusal kept.
 - ⚠ **omp from npm is a Bun program**, so that fallback installs Bun from the
   distribution. npm's own `bun` package leaves `Bun's postinstall script was not
-  run`. The release program needs no Bun.
+  run`. The release program needs no Bun. ⚠ A Bun an earlier fallback installed
+  stays, because it is the distribution's package.
+- ⚠ **A musl base takes npm.** No musl build is pinned.
 
 Each writes a wrapper at `/usr/local/bin/NAME`, because each installs into
 `~/.local/bin` and ⛔ **a herdr pane does not have that on `PATH`**. Each adapter reads
@@ -1662,8 +1671,13 @@ install when a login shell still cannot find it. `WSL-88`, `WSL-89`
 
 ⭐ **A pi model declared before its key is stored is a note.** pi lists only the models
 of a provider it holds a key for. So the probe reads `credential absent`, and the note
-names `pi auth check`. A model `models.json` does not declare stays a problem.
+names `pi auth check --model`. A model `models.json` does not declare stays a problem.
 `WSL-135`
+
+⭐ **So is a model whose provider nothing declares yet, while `models.json` does not
+exist.** That is every new base whose profile names a provider of its own. Its `base
+ensure` exits 0, and the note names the file to write. ⛔ A `models.json` that exists
+and lacks the provider stays a problem. `WSL-135`
 
 ⛔ **Every adapter installs with one `pacman -Syu --needed`.** A bare `-S`, or `-Sy`
 and then `-S`, is the partial upgrade Arch does not support. `WSL-188`

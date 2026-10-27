@@ -1,8 +1,8 @@
 #!/bin/sh
-# pi adapter, install: the Pi coding agent for the base's account, from pi's own
-# release while its digest is the one pinned here, from npm only when that release
-# cannot be fetched, and herdr's own Pi integration so herdr has lifecycle authority
-# over its panes.
+# pi adapter, install: the Pi coding agent for the base's account, and herdr's own Pi
+# integration so herdr has lifecycle authority over its panes. pi comes from its own
+# release while that digest is the one pinned here. npm is taken only when the release
+# cannot be fetched.
 #
 # THE DEFECT IT EXISTS TO REMOVE: an agent herdr can only classify by reading its
 # screen. Pi publishes lifecycle hooks and herdr ships an integration for them, so
@@ -37,17 +37,18 @@ same_file() {
 # ⭐ PI'S OWN RELEASE FIRST, AND npm ONLY WHEN THAT RELEASE CANNOT BE FETCHED. Ruling
 # 20, as ruling 36 amended it: an adapter prefers the provider's official installer or
 # release asset. Every pi release on GitHub carries a standalone build per platform,
-# beside a SHA256SUMS that covers it, and pi's own README calls those the official
-# standalone binaries. WSL-138.
+# beside a SHA256SUMS that covers it. pi's own README calls those the official standalone
+# binaries. WSL-138.
 #
-# ⛔ THE ASSET IS UNPACKED ONLY WHILE ITS DIGEST IS THE ONE PINNED HERE, the route ruling
-# 4 set for Muse: download, save, print the length and SHA-256, and unpack the saved
-# file. Each digest is the line pi v1.4.0's own SHA256SUMS carries. The x86_64 one was
-# also measured on download: 42,645,744 bytes. ⛔ Any other digest stops the ensure with
-# exit 2, keeps the file to be read, and says how to approve it. It never takes npm.
+# ⛔ THE ASSET IS UNPACKED ONLY WHILE ITS DIGEST IS THE ONE PINNED HERE. That is the route
+# ruling 4 set for Muse: download, save, print the length and SHA-256, and unpack the
+# saved file. Each digest is the line pi v1.4.0's own SHA256SUMS carries, and GitHub's
+# own asset digest agrees. The x86_64 one was also measured on download: 42,645,744
+# bytes. ⛔ Any other digest stops the ensure with exit 2 and keeps the file to be read.
+# It never takes npm.
 #
 # ⚠ NOT pi.dev/install.sh, BECAUSE OF WHAT A DIGEST ON IT WOULD PIN. That installer asks
-# pi.dev's API for the newest release at run time and installs it with npm, so a digest
+# pi.dev's API for the newest release at run time and installs it with npm. So a digest
 # on the script pins nothing it installs. It also stops at a menu when it has a terminal.
 PI_RELEASE=1.4.0
 PI_X86_64_PINNED_SHA256=f2e4e4329603223d03260cdb8bd5033dbdc1f73ba58ab8939db2e56546e115d2
@@ -170,7 +171,13 @@ release_install() {
   saved=$STAGE_DIR/$PI_ASSET
   url=$PI_URL_BASE/v$PI_RELEASE/$PI_ASSET
   fetched=$(mktemp "$STAGE_DIR/$PI_ASSET.XXXXXX") || die "no temporary file in $STAGE_DIR"
-  trap 'rm -f "$fetched"' 0 1 2 15
+  # ⛔ A SIGNAL ENDS THE RUN, and the exit takes the partial file with it. A handler that
+  # only removed the file let the run go on. The killed fetch then read as a fetch failure,
+  # and that is the one case npm is taken for.
+  trap 'rm -f "$fetched"' 0
+  trap 'exit 129' 1
+  trap 'exit 130' 2
+  trap 'exit 143' 15
   if ! fetch_error=$(curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --max-redirs 5 \
       "$url" --output "$fetched" 2>&1); then
     rm -f "$fetched"
@@ -185,16 +192,18 @@ release_install() {
   length=$(wc -c < "$saved" | tr -d ' ')
   digest=$(sha256sum "$saved" | cut -d' ' -f1)
   say "saved pi's release asset at $saved: $length bytes, SHA-256 $digest"
-  # ⛔ A FILE WHOSE DIGEST IS NOT THE PINNED ONE IS KEPT TO BE READ AND NEVER UNPACKED,
-  # and npm is NOT taken in its place: a release that changed under its own name is a
-  # question for the operator, not a download failure.
+  # ⛔ A FILE WHOSE DIGEST IS NOT THE PINNED ONE IS KEPT TO BE READ AND NEVER UNPACKED. npm
+  # is NOT taken in its place, because a changed digest is not a download failure. Whoever
+  # reads the refusal compares the file with the release's own list. Where they agree,
+  # they pin it. Ruling 36.
   if [ "$digest" != "$PI_WANT" ]; then
     printf "pi adapter: pi's release asset is not the one this adapter pins, so it was not unpacked and npm was not tried.\n" >&2
     printf '  saved at    %s, %s bytes, SHA-256 %s\n' "$saved" "$length" "$digest" >&2
     printf '  pinned      pi %s, SHA-256 %s\n' "$PI_RELEASE" "$PI_WANT" >&2
     printf "  compare it  with the release's own list, %s\n" "$PI_URL_BASE/v$PI_RELEASE/SHA256SUMS" >&2
-    printf '  approve it  add "version": "%s", "sha256": {"%s": "%s"} to the pi entry in base.adapters, then run base ensure again\n' \
+    printf '  pin it      where they agree, add "version": "%s", "sha256": {"%s": "%s"} to the pi entry in base.adapters, then run base ensure again\n' \
       "$PI_RELEASE" "$(uname -m)" "$digest" >&2
+    printf '  stop        where they disagree. The file is not the one pi published\n' >&2
     exit 2
   fi
   # ⭐ UNPACKED BY THE ACCOUNT, into a directory of its own, from the saved file alone.
@@ -219,6 +228,29 @@ release_install() {
   return 0
 }
 
+# drop_npm_package removes the package npm put pi in, once pi's release is in use. A base
+# built before WSL-138 holds one, and nothing reads it after that. ⚠ As the account,
+# whose files they are.
+drop_npm_package() {
+  case $PI_PACKAGE in
+    '' | /* | *..*) return 0 ;;
+  esac
+  npm_dir=$PREFIX/lib/node_modules/$PI_PACKAGE
+  if [ ! -e "$npm_dir" ] && [ ! -L "$npm_dir" ]; then
+    return 0
+  fi
+  if as_account rm -rf "$npm_dir"; then
+    # ⚠ AND ITS SCOPE, once nothing else is in it. A scratch base kept an empty scope.
+    case $PI_PACKAGE in
+      @*/*) as_account rmdir "${npm_dir%/*}" 2>/dev/null || : ;;
+    esac
+    say "removed $npm_dir, npm's pi, which the release in use does not read"
+  else
+    say "could not remove $npm_dir, npm's pi, which the release in use does not read"
+  fi
+  return 0
+}
+
 installed=$(pi_version || :)
 if from_release; then
   say "pi $installed is installed for $TK_USER from its release, unpacked from the asset this adapter pins"
@@ -229,12 +261,14 @@ if from_release; then
     say "removed $STAGE_DIR/$PI_ASSET, which an earlier refusal kept and the release in use does not need"
   fi
   prune_releases
+  drop_npm_package
 elif [ -n "$PI_ASSET" ] && release_install; then
   installed=$(pi_version || :)
   [ "$installed" = "$PI_RELEASE" ] ||
     die "pi's release $PI_RELEASE is unpacked and $PI_BIN --version answers '${installed:-nothing}'"
   say "installed pi $installed for $TK_USER from its release asset, digest verified"
   prune_releases
+  drop_npm_package
 else
   [ -n "$PI_ASSET" ] || say "pi publishes no Linux build for $(uname -m)"
   # -- the fallback: npm, and only because the release could not be fetched ------------
@@ -249,8 +283,8 @@ else
   if [ -n "$installed" ] && [ "$installed" = "$PI_RELEASE" ]; then
     say "pi $installed from npm is installed for $TK_USER, at the version this adapter pins"
   else
-    # ⚠ npm WILL NOT REPLACE A LAUNCHER IT DID NOT MAKE, so a release's link goes first,
-    # and comes back when npm fails, so a failed fallback leaves the pi that was there.
+    # ⚠ npm WILL NOT REPLACE A LAUNCHER IT DID NOT MAKE. So a release's link goes first,
+    # and it comes back when npm fails. A failed fallback leaves the pi that was there.
     earlier_link=
     if [ -L "$PREFIX/bin/pi" ]; then
       earlier_link=$(as_account readlink "$PREFIX/bin/pi" 2>/dev/null || :)

@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -16,8 +17,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // -- a jq for the cases, because the Go image has none ------------------------------
@@ -27,7 +31,7 @@ import (
 //
 // ⛔ golang:1.25, where the Linux proof runs every case, carries no jq, and the pi
 // probe reads its startup model only through jq. A case that skipped there would leave
-// its rows proved nowhere, and one that used a host's jq where it has one would answer
+// its rows proved nowhere. One that used a host's jq where it has one would answer
 // differently by host. So every host gets this one. WSL-135.
 //
 // ⚠ IT KNOWS ONLY THE PROGRAMS THE PROBE RUNS, by their text, and refuses any other
@@ -143,19 +147,37 @@ func jqEval(program string, doc any, vars map[string]string) (any, error) {
 
 // -- the rig the agent adapters' scripts run in ------------------------------------
 
+// agentScriptBudget is how long one adapter script may take in the rig. Each takes
+// well under a second. ⛔ A script that blocks, as on a FIFO, fails its case rather
+// than holding the suite.
+const agentScriptBudget = 30 * time.Second
+
+// rigAccountTools are the commands an adapter script runs as the account, and the
+// stand-ins run. The rig links each into the account's PATH, and nothing else.
+var rigAccountTools = []string{
+	"sh", "env", "cat", "readlink", "rm", "mkdir", "mktemp", "tar", "gzip", "mv", "ln", "cp",
+	"chmod", "sha256sum", "head", "tr", "od", "cut", "awk", "sed", "grep", "id", "ls",
+	"dirname", "basename", "wc", "du", "touch", "sleep", "printf", "echo", "true", "false",
+	"test", "[",
+}
+
 // agentRig is one account's home and the stand-ins an adapter script reaches, all
 // under one temporary directory.
 type agentRig struct {
-	t                                  *testing.T
-	root, home, bin, prefixBin, system string
+	t                                                      *testing.T
+	root, home, bin, prefixBin, system, accountPath, stage string
 }
 
 func newAgentRig(t *testing.T) *agentRig {
 	t.Helper()
 	root := t.TempDir()
-	r := &agentRig{t: t, root: root, home: filepath.Join(root, "home"), bin: filepath.Join(root, "bin"), system: filepath.Join(root, "usr-local-bin")}
+	r := &agentRig{
+		t: t, root: root, home: filepath.Join(root, "home"), bin: filepath.Join(root, "bin"),
+		system: filepath.Join(root, "usr-local-bin"), accountPath: filepath.Join(root, "account-path"),
+		stage: filepath.Join(root, "stage"),
+	}
 	r.prefixBin = filepath.Join(r.home, ".local", "bin")
-	for _, dir := range []string{r.bin, r.prefixBin, r.system} {
+	for _, dir := range []string{r.bin, r.prefixBin, r.system, r.accountPath} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -168,16 +190,37 @@ func newAgentRig(t *testing.T) *agentRig {
 		}
 		real[tool] = p
 	}
+	// ⛔ THE ACCOUNT'S PATH HOLDS THESE AND THE ACCOUNT'S OWN PREFIX, NOTHING ELSE. The
+	// scripts name /usr/bin and /bin, and a host's own bun there answered for omp. So the
+	// case read the host rather than the script. WSL-138.
+	for _, tool := range rigAccountTools {
+		if p, err := exec.LookPath(tool); err == nil {
+			if err := os.Symlink(p, filepath.Join(r.accountPath, tool)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	r.write(filepath.Join(r.bin, "getent"), "#!/bin/sh\nprintf 'herdr:x:1000:1000::%s:/bin/bash\\n' "+shellQuote(r.home)+"\n")
 	r.write(filepath.Join(r.bin, "id"), "#!/bin/sh\nif [ \"$1\" = -gn ]; then exec "+shellQuote(real["id"])+" -gn; fi\nexec "+shellQuote(real["id"])+" \"$@\"\n")
 	r.write(filepath.Join(r.bin, "uname"), "#!/bin/sh\nif [ \"$1\" = -m ]; then echo \"${STUB_ARCH:-x86_64}\"; exit 0; fi\nexec "+shellQuote(real["uname"])+" \"$@\"\n")
-	// ⭐ runuser -u runs the command as this process, and runuser -l answers what a login
-	// shell would resolve, which is the wrapper this rig's system directory holds.
+	// ⚠ root's chown names the account, and the host has no account herdr.
+	r.write(filepath.Join(r.bin, "chown"), "#!/bin/sh\nexit 0\n")
+	// ⭐ runuser -u runs the command as this process, on the rig's account PATH. runuser -l
+	// answers what a login shell would resolve, which is the wrapper in this rig's system
+	// directory.
 	r.write(filepath.Join(r.bin, "runuser"), `#!/bin/sh
 case $1 in
   -u)
     [ "$2" = herdr ] && [ "$3" = -- ] || exit 9
     shift 3
+    swapped=
+    for a do
+      shift
+      case $swapped$a in
+        PATH=*) set -- "$@" `+shellQuote("PATH="+r.prefixBin+":"+r.accountPath)+`; swapped=yes ;;
+        *) set -- "$@" "$a" ;;
+      esac
+    done
     exec "$@"
     ;;
   -l)
@@ -207,6 +250,30 @@ func (r *agentRig) write(path, body string) {
 	}
 }
 
+func (r *agentRig) link(target, path string) {
+	r.t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+// fifo makes a named pipe at path. ⚠ The cleanup opens it for writing without waiting,
+// which lets go a reader a broken script left blocked on it.
+func (r *agentRig) fifo(path string) {
+	r.t.Helper()
+	if out, err := exec.Command("mkfifo", path).CombinedOutput(); err != nil {
+		r.t.Skipf("mkfifo could not make a named pipe: %v %s", err, out)
+	}
+	r.t.Cleanup(func() {
+		if f, err := os.OpenFile(path, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
+			_ = f.Close()
+		}
+	})
+}
+
 // withJQ puts the jq stand-in where root and the account both find it first.
 func (r *agentRig) withJQ() {
 	r.t.Helper()
@@ -220,15 +287,25 @@ func (r *agentRig) withJQ() {
 }
 
 // run runs one adapter script as `base ensure` and `base status --probe` deliver it.
+// Every path the scripts write outside the account's home is under the rig.
 func (r *agentRig) run(script []byte, env ...string) (int, string) {
 	r.t.Helper()
-	cmd := exec.Command("sh", "-s")
+	ctx, cancel := context.WithTimeout(context.Background(), agentScriptBudget)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-s")
+	cmd.WaitDelay = time.Second
 	cmd.Stdin = bytes.NewReader(script)
 	cmd.Env = append(os.Environ(),
 		"PATH="+r.bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-jobs", "STUB_HOME="+r.home, "TK_PROBE_SESSION=")
+		"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-jobs", "STUB_HOME="+r.home, "TK_PROBE_SESSION=",
+		"TK_PI_STAGE_DIR="+r.stage, "TK_PI_WRAPPER="+filepath.Join(r.system, "pi"),
+		"TK_OMP_STAGE_DIR="+r.stage, "TK_OMP_WRAPPER="+filepath.Join(r.system, "omp"),
+		"TK_OMP_MUSL_MARK="+filepath.Join(r.root, "alpine-release"))
 	cmd.Env = append(cmd.Env, env...)
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		r.t.Fatalf("the script was still running after %s, so something in it blocked:\n%s", agentScriptBudget, out)
+	}
 	var exited *exec.ExitError
 	if err != nil && !errors.As(err, &exited) {
 		r.t.Fatalf("the script did not start: %v", err)
@@ -236,8 +313,8 @@ func (r *agentRig) run(script []byte, env ...string) (int, string) {
 	return cmd.ProcessState.ExitCode(), string(out)
 }
 
-// scriptPin answers what an adapter script assigns NAME at the start of a line, as the
-// herdr pin case reads its pins, so a pin has one home: the script. ⛔ A digest it
+// scriptPin answers what an adapter script assigns NAME at the start of a line. It reads
+// pins as the herdr pin case does, so a pin has one home: the script. ⛔ A digest it
 // answers is a SHA-256, or the case stops.
 func scriptPin(t *testing.T, script []byte, name string) string {
 	t.Helper()
@@ -252,10 +329,14 @@ func scriptPin(t *testing.T, script []byte, name string) string {
 }
 
 // agentScriptsRun skips where an adapter's scripts cannot run at all.
+//
+// ⚠ NOT ON WINDOWS, and the Linux job proves these rows. The scripts run in a Linux base.
+// They read symbolic links back with readlink -f, which this host cannot make. The rig
+// hands them paths a Windows drive letter breaks on a colon-separated PATH.
 func agentScriptsRun(t *testing.T, tools ...string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("the adapter's scripts run under a POSIX shell, which the Linux job has")
+		t.Skip("the adapter's scripts run in a Linux base, on symbolic links and POSIX paths, so the Linux job runs this case")
 	}
 	for _, tool := range append([]string{"sh", "awk", "readlink", "head", "tr", "sha256sum", "mktemp"}, tools...) {
 		if _, err := exec.LookPath(tool); err != nil {
@@ -270,10 +351,10 @@ func agentScriptsRun(t *testing.T, tools ...string) {
 // against a stand-in for pi that answers as pi 1.4.0 was measured to. WSL-135.
 //
 // ⛔ pi LISTS ONLY THE MODELS OF A PROVIDER IT HOLDS A KEY FOR. With no key it prints
-// `No models available`. So the guide's own order, the provider declared and its key
-// still the operator's to store, read as an undeclared model, and the probe told the
-// operator to declare it again. A declared model whose provider has no key is a note
-// with `credential absent`, and an undeclared one stays a problem.
+// `No models available`. So the guide's own order read as an undeclared model: the
+// provider was declared, and its key was still the operator's to store. The probe told
+// the operator to declare it again. A declared model whose provider has no key is a
+// note with `credential absent`. An undeclared one stays a problem.
 func TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne(t *testing.T) {
 	agentScriptsRun(t)
 	probe, err := adapterScript("pi", "probe.sh")
@@ -283,8 +364,8 @@ func TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne(t *testing.
 	r := newAgentRig(t)
 	r.withJQ()
 	r.write(filepath.Join(r.system, "pi"), "#!/bin/sh\n# Written by wsl-toolkit's pi adapter. base ensure rewrites it.\n")
-	// The stand-in for pi answers what its home says pi would: the listing a key gives,
-	// and the `pi auth check --model` verdict for each provider's models.
+	// The stand-in for pi answers what its home says pi would. That is the listing a key
+	// gives, and the `pi auth check --model` verdict for each provider's models.
 	r.write(filepath.Join(r.prefixBin, "pi"), `#!/bin/sh
 case $1 in
   --version) echo 1.4.0 ;;
@@ -342,11 +423,12 @@ esac
 	}
 	const undeclared = "its own catalogue does not list it"
 
-	// ⭐ THE GUIDE'S OWN ORDER: declared in step 5, its key not stored yet.
+	// ⭐ THE GUIDE'S OWN ORDER: declared in step 5, its key not stored yet. The note names
+	// the check the probe trusts, by model.
 	st := state("muse-gateway", "muse-spark-1.3-contributor", "max", "", map[string]string{"muse-gateway": "not_ready"})
 	if !st.Healthy || st.Facts["credential"] != "absent" || len(st.Notes) != 1 ||
 		!strings.Contains(st.Notes[0], "muse-gateway/muse-spark-1.3-contributor is declared in "+models) ||
-		!strings.Contains(st.Notes[0], "pi auth check --provider muse-gateway answers ready") {
+		!strings.Contains(st.Notes[0], "pi auth check --model muse-gateway/muse-spark-1.3-contributor answers ready") {
 		t.Fatalf("a declared model whose key is not stored read as healthy=%v credential=%q notes=%q problems=%q",
 			st.Healthy, st.Facts["credential"], st.Notes, st.Problems)
 	}
@@ -374,30 +456,35 @@ esac
 	// ⚠ A PROVIDER pi CARRIES ITSELF answers not_ready with no key, and models.json
 	// does not name it. Its catalogue waits for the key, so it is a note.
 	st = state("anthropic", "claude-opus-4-5", "high", "", map[string]string{"anthropic": "not_ready"})
-	if !st.Healthy || st.Facts["credential"] != "absent" || len(st.Notes) != 1 || !strings.Contains(st.Notes[0], "a provider pi carries itself") {
+	if !st.Healthy || st.Facts["credential"] != "absent" || len(st.Notes) != 1 || !strings.Contains(st.Notes[0], "a provider pi carries itself") ||
+		!strings.Contains(st.Notes[0], "pi auth check --model anthropic/claude-opus-4-5 answers ready") {
 		t.Fatalf("a built-in provider with no key read as healthy=%v notes=%q problems=%q", st.Healthy, st.Notes, st.Problems)
 	}
 
-	// ⛔ A PROVIDER NOBODY DECLARED, which pi answers invalid for, is a problem.
+	// ⛔ A PROVIDER A models.json THAT EXISTS DOES NOT DECLARE, which pi answers invalid
+	// for, is a problem.
 	st = state("nosuch", "x", "high", "", nil)
 	if st.Healthy || about(st, "so it knows no such provider") != 1 || len(st.Notes) != 0 {
 		t.Fatalf("a provider pi does not know read as notes=%q problems=%q", st.Notes, st.Problems)
 	}
 
-	// ⛔ AND THE GUIDE'S STEP 3: a new base, the profile's model, no models.json yet.
+	// ⭐ AND THE GUIDE'S STEP 3: a new base, the profile's model, no models.json yet. Nothing
+	// is declared, so it is a note naming the file and step 5, and base ensure exits 0.
 	withModels = false
 	st = state("muse-gateway", "muse-spark-1.3-contributor", "max", "", nil)
-	if st.Healthy || about(st, "so it knows no such provider") != 1 || len(st.Notes) != 0 {
-		t.Fatalf("a new base's pi, whose provider is not declared yet, read as notes=%q problems=%q", st.Notes, st.Problems)
+	if !st.Healthy || st.Facts["credential"] != "absent" || len(st.Notes) != 1 ||
+		!strings.Contains(st.Notes[0], models+" does not exist yet") || !strings.Contains(st.Notes[0], "step 5 of the muse-code guide") {
+		t.Fatalf("a new base's pi, whose provider is not declared yet, read as healthy=%v notes=%q problems=%q", st.Healthy, st.Notes, st.Problems)
 	}
 }
 
-// TestTheMuseCodeGuideRunsInItsOwnOrder holds the three faults of the muse-code guide
-// that the ordered pass of WSL-135 found in its prose, beside the probe's fourth.
+// TestTheMuseCodeGuideRunsInItsOwnOrder holds the faults of the muse-code guide that the
+// ordered pass of WSL-135 found in its prose, beside the probe's.
 //
 // ⛔ EACH ONE WAS TRUE OF AN EARLIER TOOL, OR TRUE OUT OF ORDER. Step 3 promised every
-// adapter healthy on a base whose pi provider step 5 declares. Step 4 revoked the grant
-// step 8 works in. Step 9 named the exit 8.0.0 moved to ExitTool.
+// adapter healthy and pi read a problem there. Step 4 revoked the grant step 8 works in,
+// and Muse was never told to trust it. Step 9 named the exit 8.0.0 moved to ExitTool.
+// Step 10 needed a variable step 8 set.
 func TestTheMuseCodeGuideRunsInItsOwnOrder(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "examples", "muse-code", "README.md"))
 	if err != nil {
@@ -417,8 +504,21 @@ func TestTheMuseCodeGuideRunsInItsOwnOrder(t *testing.T) {
 		}
 		return rest
 	}
-	if s := step(3); strings.Contains(s, "Every adapter must read `healthy`") || !strings.Contains(s, "pi reads one problem and `base ensure` exits 2") {
-		t.Errorf("step 3 promises what a new base does not answer: pi reads one problem there until step 5\n%s", s)
+	// ⭐ A NEW BASE'S pi READS A NOTE, NOT A PROBLEM, so step 3's ensure exits 0.
+	if s := step(3); !strings.Contains(s, "Every adapter must read `healthy`") || strings.Contains(s, "exits 2") ||
+		!strings.Contains(s, "pi reads `healthy` with one note") {
+		t.Errorf("step 3 does not say what a new base answers: every adapter healthy, pi with a note until step 5\n%s", s)
+	}
+	// ⛔ THE CHECK STEP 5 NAMES IS THE ONE THE PROBE TRUSTS. pi answers --provider with
+	// not_ready for any name.
+	if s := step(5); !strings.Contains(s, "pi auth check --model muse-gateway/muse-spark-1.3-contributor") || strings.Contains(s, "pi auth check --provider") {
+		t.Errorf("step 5 checks the key with a form the probe does not trust:\n%s", s)
+	}
+	// ⛔ MUSE BLOCKS ON A DIRECTORY IT WAS NOT TOLD TO TRUST, and base ensure tells it about
+	// each grant. Driven on a scratch base: with the grant made after step 3's ensure, step
+	// 8's `agent start muse` answered agent_not_ready and exited 1.
+	if s := step(4); strings.Index(s, "wsl-toolkit base ensure") < strings.Index(s, "wsl-toolkit base grant --source") {
+		t.Errorf("step 4 grants a directory and runs no base ensure after it, so Muse blocks on it in step 8:\n%s", s)
 	}
 	for n := 1; n <= 9; n++ {
 		if strings.Contains(step(n), "base revoke") {
@@ -427,9 +527,14 @@ func TestTheMuseCodeGuideRunsInItsOwnOrder(t *testing.T) {
 	}
 	// ⛔ AND THE PANE STEP 8 LEFT IN THE GRANT IS CLOSED FIRST. Driven on a scratch base:
 	// with the workspace open, revoke answered `target is busy` and exited 1.
-	if s := step(10); !strings.Contains(s, "wsl-toolkit base revoke --target") ||
+	s := step(10)
+	if !strings.Contains(s, "wsl-toolkit base revoke --target") ||
 		strings.Index(s, "workspace close") < 0 || strings.Index(s, "workspace close") > strings.Index(s, "base revoke --target") {
 		t.Errorf("step 10 does not close step 8's workspace before it revokes the grant that workspace holds busy:\n%s", s)
+	}
+	// ⚠ `$made` LIVES IN STEP 8'S SESSION. A reader in a new one reads the id again.
+	if !strings.Contains(s, "wsl-toolkit base herdr -- workspace list") {
+		t.Errorf("step 10 closes the workspace by a variable step 8's session set, and says nothing for a new session:\n%s", s)
 	}
 	if s := step(9); !strings.Contains(s, fmt.Sprintf("`muse` with no argument answers exit %d", ExitTool)) {
 		t.Errorf("step 9 names an exit for a bare launcher that is not the tool's own, %d:\n%s", ExitTool, s)
@@ -438,28 +543,41 @@ func TestTheMuseCodeGuideRunsInItsOwnOrder(t *testing.T) {
 
 // -- WSL-138: each agent's own release, and npm only when it cannot be fetched ------
 
-// releaseRig adds what an installer reaches: a curl that serves one file or fails, an
-// npm that records what it was asked and links a package's launcher as npm does, and a
-// pacman that records what it was asked.
+// releaseRig adds what an installer reaches. That is a curl that serves one file, fails,
+// or is stopped by a signal. It is an npm that records what it was asked, and links a
+// package's launcher as npm does or fails. It is a pacman that records what it was asked.
 type releaseRig struct {
 	*agentRig
-	stage, served, fetches, npmLog, pacmanLog, curlFails string
+	served, fetches, npmLog, pacmanLog, curlFails, curlSignals, npmFails string
 }
 
 func newReleaseRig(t *testing.T, binName, versionPrefix string) *releaseRig {
 	t.Helper()
 	r := &releaseRig{agentRig: newAgentRig(t)}
-	r.stage = filepath.Join(r.root, "stage")
 	r.served = filepath.Join(r.root, "served")
 	r.fetches = filepath.Join(r.root, "fetches")
 	r.npmLog = filepath.Join(r.root, "npm.log")
 	r.pacmanLog = filepath.Join(r.root, "pacman.log")
 	r.curlFails = filepath.Join(r.root, "curl-fails")
+	r.curlSignals = filepath.Join(r.root, "curl-signals")
+	r.npmFails = filepath.Join(r.root, "npm-fails")
+	// ⚠ A SIGNALLED FETCH stops the script itself, the `sh -s` above this curl, with TERM.
 	r.write(filepath.Join(r.bin, "curl"), `#!/bin/sh
 out=
 for a in "$@"; do
   case $a in https://*) printf '%s\n' "$a" >> `+shellQuote(r.fetches)+` ;; esac
 done
+if [ -f `+shellQuote(r.curlSignals)+` ]; then
+  pid=$PPID
+  while [ "${pid:-1}" -gt 1 ]; do
+    if [ "$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null)" = "sh -s " ]; then
+      kill -TERM "$pid"
+      break
+    fi
+    pid=$(awk '{ print $4 }' /proc/$pid/stat 2>/dev/null)
+  done
+  exit 1
+fi
 if [ -f `+shellQuote(r.curlFails)+` ]; then
   echo 'curl: (6) Could not resolve host: github.com' >&2
   exit 6
@@ -471,6 +589,10 @@ cp `+shellQuote(r.served)+` "$out"
 	npm := `#!/bin/sh
 printf 'npm %s\n' "$*" >> ` + shellQuote(r.npmLog) + `
 [ "$1 $2 $3" = "install -g --ignore-scripts" ] || exit 0
+if [ -f ` + shellQuote(r.npmFails) + ` ]; then
+  echo 'npm ERR! code E404' >&2
+  exit 1
+fi
 spec=$4
 pkg=${spec%@*}
 version=${spec##*@}
@@ -513,6 +635,22 @@ func (r *releaseRig) installerHasNotRunNpm(name, out string) {
 	}
 }
 
+// signalled holds an installer whose fetch a signal stopped. ⛔ It exits with the
+// signal's code. It leaves no partial file, and it does not take npm, because nothing
+// failed to be fetched.
+func (r *releaseRig) signalled(script []byte, asset string, env ...string) {
+	r.t.Helper()
+	r.write(r.curlSignals, "")
+	code, out := r.run(script, env...)
+	if code != 143 {
+		r.t.Fatalf("a fetch a TERM stopped answered exit %d, and a stopped run answers 143:\n%s", code, out)
+	}
+	r.installerHasNotRunNpm("a fetch a TERM stopped", out)
+	if left, _ := filepath.Glob(filepath.Join(r.stage, asset+".*")); len(left) != 0 {
+		r.t.Fatalf("a fetch a TERM stopped left %q", left)
+	}
+}
+
 // piReleaseAsset is a pi release laid out as pi's own: one directory, pi/, with the
 // program in it.
 func piReleaseAsset(t *testing.T, version string) []byte {
@@ -547,11 +685,10 @@ func piReleaseAsset(t *testing.T, version string) []byte {
 // adapter's install.sh against stand-ins for GitHub, npm and the base's commands.
 // WSL-138.
 //
-// ⛔ THE ROUTE RULING 4 SET FOR MUSE, applied to pi's own release: the asset is saved,
-// its length and digest are printed, and the saved file is unpacked only while the
-// digest is the pinned one. A changed digest is refused with exit 2 and how to approve
-// it, and npm is NOT tried in its place. npm is taken only when the asset cannot be
-// fetched at all.
+// ⛔ THE ROUTE RULING 4 SET FOR MUSE, applied to pi's own release. The asset is saved,
+// and its length and digest are printed. The saved file is unpacked only while the
+// digest is the pinned one. A changed digest is refused with exit 2, and npm is NOT tried
+// in its place. npm is taken only when the asset cannot be fetched at all.
 func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t *testing.T) {
 	agentScriptsRun(t, "tar", "gzip", "cp", "ln")
 	script, err := adapterScript("pi", "install.sh")
@@ -559,9 +696,6 @@ func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t
 		t.Fatal(err)
 	}
 	asset := piReleaseAsset(t, "9.9.9")
-	env := func(r *releaseRig, extra ...string) []string {
-		return append([]string{"TK_PI_STAGE_DIR=" + r.stage, "TK_PI_WRAPPER=" + filepath.Join(r.system, "pi")}, extra...)
-	}
 
 	// ⛔ THE PINNED RELEASE, and bytes that are not it: refused, kept, never unpacked.
 	release := scriptPin(t, script, "PI_RELEASE")
@@ -571,7 +705,7 @@ func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t
 	} {
 		r := newReleaseRig(t, "pi", "")
 		served := r.serve(asset)
-		code, out := r.run(script, env(r, "STUB_ARCH="+c.arch)...)
+		code, out := r.run(script, "STUB_ARCH="+c.arch)
 		if code != 2 || !strings.Contains(out, "is not the one this adapter pins, so it was not unpacked and npm was not tried") ||
 			!strings.Contains(out, "pinned      pi "+release+", SHA-256 "+c.digest) ||
 			!strings.Contains(out, fmt.Sprintf("%d bytes, SHA-256 %s", len(asset), served)) ||
@@ -590,12 +724,16 @@ func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t
 		}
 	}
 
-	// ⭐ A RELEASE WHOSE DIGEST IS IN FORCE is unpacked by the account and linked.
+	// ⭐ A RELEASE WHOSE DIGEST IS IN FORCE is unpacked by the account and linked. The base
+	// held an earlier release, and npm's pi from before WSL-138.
 	r := newReleaseRig(t, "pi", "")
 	digest := r.serve(asset)
-	moved := env(r, "TK_ADAPTER_VERSION=9.9.9", "TK_ADAPTER_SHA256_X86_64="+digest, "TK_ADAPTER_SHA256_AARCH64="+digest)
+	moved := []string{"TK_ADAPTER_VERSION=9.9.9", "TK_ADAPTER_SHA256_X86_64=" + digest, "TK_ADAPTER_SHA256_AARCH64=" + digest}
 	releases := filepath.Join(r.home, ".local", "share", "wsl-toolkit", "pi")
 	r.write(filepath.Join(releases, "9.9.8", "pi", "pi"), "#!/bin/sh\necho 9.9.8\n")
+	npmPi := filepath.Join(r.home, ".local", "lib", "node_modules", "@earendil-works", "pi-coding-agent")
+	r.write(filepath.Join(npmPi, "dist", "cli.js"), "#!/bin/sh\necho 9.9.7\n")
+	r.link(filepath.Join(npmPi, "dist", "cli.js"), filepath.Join(r.prefixBin, "pi"))
 	code, out := r.run(script, moved...)
 	if code != 0 || !strings.HasSuffix(strings.TrimSpace(out), adapterCompleteLine("pi")) ||
 		!strings.Contains(out, "installed pi 9.9.9 for herdr from its release asset, digest verified") {
@@ -613,6 +751,14 @@ func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t
 	if _, err := os.Stat(filepath.Join(r.stage, "pi-linux-x64.tar.gz")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the saved asset stayed after it was unpacked (%v)", err)
 	}
+	// ⚠ npm's PACKAGE GOES ONCE THE RELEASE IS IN USE. Nothing reads it, and the leftover
+	// probe no longer finds it through the launcher.
+	if _, err := os.Stat(npmPi); !errors.Is(err, os.ErrNotExist) || !strings.Contains(out, "removed "+npmPi+", npm's pi") {
+		t.Fatalf("npm's pi stayed beside the release in use (%v):\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Dir(npmPi)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("npm's empty scope for pi stayed (%v)", err)
+	}
 
 	// ⭐ A SECOND RUN FETCHES NOTHING, and takes away an asset an earlier refusal kept.
 	kept := filepath.Join(r.stage, "pi-linux-x64.tar.gz")
@@ -629,12 +775,31 @@ func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t
 	// ⛔ npm ONLY WHEN THE RELEASE CANNOT BE FETCHED, at the same version.
 	r = newReleaseRig(t, "pi", "")
 	r.write(r.curlFails, "")
-	code, out = r.run(script, env(r, "TK_ADAPTER_VERSION=9.9.9", "TK_ADAPTER_SHA256_X86_64="+digest, "TK_ADAPTER_SHA256_AARCH64="+digest)...)
+	code, out = r.run(script, moved...)
 	if code != 0 || !strings.Contains(out, "could not be fetched from https://github.com/earendil-works/pi/releases/download/v9.9.9/") ||
 		!strings.Contains(r.read(r.npmLog), "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@9.9.9") ||
 		!strings.Contains(out, "installed pi 9.9.9 from npm") {
 		t.Fatalf("a release that could not be fetched answered exit %d, npm %q:\n%s", code, r.read(r.npmLog), out)
 	}
+
+	// ⛔ AND A FAILED npm LEAVES THE pi THAT WAS THERE. The release's link went for npm, and
+	// it comes back.
+	r = newReleaseRig(t, "pi", "")
+	r.write(r.curlFails, "")
+	r.write(r.npmFails, "")
+	earlier := filepath.Join(r.home, ".local", "share", "wsl-toolkit", "pi", "9.9.8", "pi", "pi")
+	r.write(earlier, "#!/bin/sh\necho 9.9.8\n")
+	r.link(earlier, filepath.Join(r.prefixBin, "pi"))
+	code, out = r.run(script, moved...)
+	if code != 3 || !strings.Contains(out, "npm could not install @earendil-works/pi-coding-agent@9.9.9") {
+		t.Fatalf("an npm that failed answered exit %d:\n%s", code, out)
+	}
+	if back, err := os.Readlink(filepath.Join(r.prefixBin, "pi")); err != nil || back != earlier {
+		t.Fatalf("a failed npm left the account's pi at %q (%v), and it was %q", back, err, earlier)
+	}
+
+	// ⛔ A SIGNAL DURING THE FETCH IS NOT A FETCH FAILURE.
+	newReleaseRig(t, "pi", "").signalled(script, "pi-linux-x64.tar.gz", moved...)
 }
 
 // TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched runs the
@@ -643,15 +808,12 @@ func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t
 // ⭐ omp's RELEASE IS ONE BINARY WITH ITS OWN RUNTIME, so a base that takes it installs
 // no Bun. Only the npm fallback is a Bun program.
 func TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t *testing.T) {
-	agentScriptsRun(t, "cp")
+	agentScriptsRun(t, "cp", "mkfifo")
 	script, err := adapterScript("omp", "install.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
 	binary := []byte("#!/bin/sh\necho omp/9.9.9\n")
-	env := func(r *releaseRig, extra ...string) []string {
-		return append([]string{"TK_OMP_STAGE_DIR=" + r.stage, "TK_OMP_WRAPPER=" + filepath.Join(r.system, "omp")}, extra...)
-	}
 
 	release := scriptPin(t, script, "OMP_RELEASE")
 	for _, c := range []struct{ arch, asset, digest string }{
@@ -660,7 +822,7 @@ func TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(
 	} {
 		r := newReleaseRig(t, "omp", "omp/")
 		served := r.serve(binary)
-		code, out := r.run(script, env(r, "STUB_ARCH="+c.arch)...)
+		code, out := r.run(script, "STUB_ARCH="+c.arch)
 		if code != 2 || !strings.Contains(out, "is not the one this adapter pins, so it was not installed and npm was not tried") ||
 			!strings.Contains(out, "pinned      omp "+release+", SHA-256 "+c.digest) ||
 			!strings.Contains(out, `add "version": "`+release+`", "sha256": {"`+c.arch+`": "`+served+`"} to the omp entry in base.adapters`) {
@@ -675,9 +837,13 @@ func TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(
 		}
 	}
 
+	// ⭐ A RELEASE WHOSE DIGEST IS IN FORCE replaces npm's omp from before WSL-138.
 	r := newReleaseRig(t, "omp", "omp/")
 	digest := r.serve(binary)
-	moved := env(r, "TK_ADAPTER_VERSION=9.9.9", "TK_ADAPTER_SHA256_X86_64="+digest, "TK_ADAPTER_SHA256_AARCH64="+digest)
+	moved := []string{"TK_ADAPTER_VERSION=9.9.9", "TK_ADAPTER_SHA256_X86_64=" + digest, "TK_ADAPTER_SHA256_AARCH64=" + digest}
+	npmOmp := filepath.Join(r.home, ".local", "lib", "node_modules", "@oh-my-pi", "pi-coding-agent")
+	r.write(filepath.Join(npmOmp, "dist", "cli.js"), "#!/bin/sh\necho omp/9.9.7\n")
+	r.link(filepath.Join(npmOmp, "dist", "cli.js"), filepath.Join(r.prefixBin, "omp"))
 	code, out := r.run(script, moved...)
 	if code != 0 || !strings.HasSuffix(strings.TrimSpace(out), adapterCompleteLine("omp")) ||
 		!strings.Contains(out, "installed omp 9.9.9 for herdr from its release binary, digest verified") ||
@@ -691,6 +857,12 @@ func TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(
 	if strings.Contains(r.read(r.pacmanLog), "bun") {
 		t.Fatalf("a base that took omp's release installed Bun: %s", r.read(r.pacmanLog))
 	}
+	if _, err := os.Stat(npmOmp); !errors.Is(err, os.ErrNotExist) || !strings.Contains(out, "removed "+npmOmp+", npm's omp") {
+		t.Fatalf("npm's omp stayed beside the release in use (%v):\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Dir(npmOmp)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("npm's empty scope for omp stayed (%v)", err)
+	}
 
 	kept := filepath.Join(r.stage, "omp-linux-x64")
 	r.write(kept, "a binary a refusal kept\n")
@@ -703,14 +875,73 @@ func TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(
 		t.Fatalf("a binary a refusal kept stayed beside the pinned release in use (%v)", err)
 	}
 
+	// ⛔ npm ONLY WHEN THE RELEASE CANNOT BE FETCHED, and that omp is a Bun program.
 	r = newReleaseRig(t, "omp", "omp/")
 	r.write(r.curlFails, "")
-	code, out = r.run(script, env(r, "TK_ADAPTER_VERSION=9.9.9", "TK_ADAPTER_SHA256_X86_64="+digest, "TK_ADAPTER_SHA256_AARCH64="+digest)...)
+	code, out = r.run(script, moved...)
 	if code != 0 || !strings.Contains(out, "could not be fetched from https://github.com/can1357/oh-my-pi/releases/download/v9.9.9/") ||
 		!strings.Contains(r.read(r.npmLog), "npm install -g --ignore-scripts @oh-my-pi/pi-coding-agent@9.9.9") ||
 		!strings.Contains(r.read(r.pacmanLog), "bun") || !strings.Contains(out, "installed omp 9.9.9 from npm") {
 		t.Fatalf("a release that could not be fetched answered exit %d, npm %q, pacman %q:\n%s", code, r.read(r.npmLog), r.read(r.pacmanLog), out)
 	}
+
+	// ⛔ AND A FAILED npm LEAVES THE omp THAT WAS THERE, moved aside and back.
+	r = newReleaseRig(t, "omp", "omp/")
+	r.write(r.curlFails, "")
+	r.write(r.npmFails, "")
+	r.write(filepath.Join(r.prefixBin, "omp"), "#!/bin/sh\necho omp/9.9.8\n")
+	code, out = r.run(script, moved...)
+	if code != 3 || !strings.Contains(out, "npm could not install @oh-my-pi/pi-coding-agent@9.9.9") {
+		t.Fatalf("an npm that failed answered exit %d:\n%s", code, out)
+	}
+	if got := r.read(filepath.Join(r.prefixBin, "omp")); got != "#!/bin/sh\necho omp/9.9.8\n" {
+		t.Fatalf("a failed npm left the account's omp holding %q", got)
+	}
+	if _, err := os.Lstat(filepath.Join(r.prefixBin, ".omp.before-npm")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a failed npm left the moved omp aside (%v)", err)
+	}
+
+	// ⚠ A musl BASE HAS NO PINNED BUILD, so it fetches nothing and takes npm.
+	r = newReleaseRig(t, "omp", "omp/")
+	r.write(filepath.Join(r.root, "alpine-release"), "3.22.0\n")
+	code, out = r.run(script, moved...)
+	if code != 0 || r.read(r.fetches) != "" || !strings.Contains(out, "carry no build this adapter pins for this machine") ||
+		!strings.Contains(r.read(r.npmLog), "@oh-my-pi/pi-coding-agent@9.9.9") {
+		t.Fatalf("a musl base answered exit %d, fetching %q, npm %q:\n%s", code, r.read(r.fetches), r.read(r.npmLog), out)
+	}
+
+	// ⭐ A BASE THAT SEPARATED omp's DIRECTORY keeps its wrapper. The release goes beside it,
+	// and a second run reads the release there and fetches nothing.
+	r = newReleaseRig(t, "omp", "omp/")
+	r.serve(binary)
+	r.write(filepath.Join(r.home, ".profile"), "PI_CODING_AGENT_DIR=$HOME/.pi/agent\nexport PI_CODING_AGENT_DIR\n")
+	separated := append([]string{"TK_ADAPTER_SEPARATE_AGENT_DIR=1"}, moved...)
+	code, out = r.run(script, separated...)
+	if code != 0 || !strings.Contains(out, "installed omp 9.9.9 for herdr from its release binary") ||
+		!strings.Contains(out, "wrote the wrapper, which gives omp alone") {
+		t.Fatalf("a separated base answered exit %d:\n%s", code, out)
+	}
+	before = r.read(r.fetches)
+	code, out = r.run(script, separated...)
+	if code != 0 || r.read(r.fetches) != before || !strings.Contains(out, "from its release, whose digest this adapter pins") ||
+		!strings.Contains(out, "the omp wrapper is already in place") {
+		t.Fatalf("a second run on a separated base answered exit %d, fetching %q after %q:\n%s", code, r.read(r.fetches), before, out)
+	}
+	if got := r.read(filepath.Join(r.prefixBin, "omp-npm")); got != string(binary) {
+		t.Fatalf("the program behind the wrapper holds %q, and it must be the release binary", got)
+	}
+
+	// ⛔ A FIFO WHERE omp WAS holds nothing. The marker is read only from a regular file.
+	r = newReleaseRig(t, "omp", "omp/")
+	r.serve(binary)
+	r.fifo(filepath.Join(r.prefixBin, "omp"))
+	code, out = r.run(script, moved...)
+	if code != 0 || r.read(filepath.Join(r.prefixBin, "omp")) != string(binary) {
+		t.Fatalf("a FIFO at the account's omp answered exit %d:\n%s", code, out)
+	}
+
+	// ⛔ A SIGNAL DURING THE FETCH IS NOT A FETCH FAILURE.
+	newReleaseRig(t, "omp", "omp/").signalled(script, "omp-linux-x64", moved...)
 }
 
 // TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram holds the probe to the two
@@ -720,12 +951,7 @@ func TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(
 // for Bun would fail every base that took the official route, because that route
 // installs none. npm's omp is still a Bun program, and with no Bun it cannot start.
 func TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram(t *testing.T) {
-	agentScriptsRun(t, "od")
-	for _, dir := range []string{"/usr/local/sbin", "/usr/local/bin", "/usr/bin", "/bin"} {
-		if _, err := os.Stat(filepath.Join(dir, "bun")); err == nil {
-			t.Skipf("%s has a bun, so the account always finds one and this case cannot fail", dir)
-		}
-	}
+	agentScriptsRun(t, "od", "mkfifo")
 	probe, err := adapterScript("omp", "probe.sh")
 	if err != nil {
 		t.Fatal(err)
@@ -750,12 +976,24 @@ func TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram(t *testing.T) {
 		}
 		return n
 	}
+	const elf = "\x7fELF\x02\x01\x01 not a program this case runs\n"
 
 	// ⭐ THE RELEASE: an ELF file, and no Bun anywhere the account looks.
-	r.write(launcher, "\x7fELF\x02\x01\x01 not a program this case runs\n")
+	r.write(launcher, elf)
 	st := read()
 	if st.Facts["source"] != "release" || bun(st) != 0 || len(st.Notes) != 0 {
 		t.Fatalf("a release binary read as source=%q, notes %q, problems %q", st.Facts["source"], st.Notes, st.Problems)
+	}
+
+	// ⭐ THE RELEASE BEHIND THE SEPARATING WRAPPER is read where the wrapper runs it.
+	r.write(launcher, "#!/bin/sh\n# wsl-toolkit omp adapter wrapper\nexec omp-npm \"$@\"\n")
+	r.write(filepath.Join(r.prefixBin, "omp-npm"), elf)
+	st = read()
+	if st.Facts["source"] != "release" || bun(st) != 0 {
+		t.Fatalf("a release behind the wrapper read as source=%q, problems %q", st.Facts["source"], st.Problems)
+	}
+	if err := os.Remove(filepath.Join(r.prefixBin, "omp-npm")); err != nil {
+		t.Fatal(err)
 	}
 
 	// ⛔ npm's omp, a Bun program, with no Bun: the problem, and where it came from.
@@ -764,11 +1002,47 @@ func TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram(t *testing.T) {
 	if err := os.Remove(launcher); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(pkg, launcher); err != nil {
-		t.Fatal(err)
-	}
+	r.link(pkg, launcher)
 	st = read()
 	if st.Facts["source"] != "npm" || bun(st) != 1 || len(st.Notes) != 1 || !strings.Contains(st.Notes[0], "came from npm") {
 		t.Fatalf("npm's omp with no Bun read as source=%q, notes %q, problems %q", st.Facts["source"], st.Notes, st.Problems)
+	}
+
+	// ⛔ A FIFO AT THE ACCOUNT'S omp holds nothing. Each read of it waits for a regular file.
+	if err := os.Remove(launcher); err != nil {
+		t.Fatal(err)
+	}
+	r.fifo(launcher)
+	if st = read(); st.Facts["source"] != "other" {
+		t.Fatalf("a FIFO at the account's omp read as source=%q", st.Facts["source"])
+	}
+}
+
+// TestThePiAndOmpFootprintsCountWhatTheirReleasesLeave holds each probe's footprint to
+// what the WSL-138 installers can leave. That is an asset a refusal kept, and npm's
+// package from before the release. ⛔ `base status` names a dropped adapter's leftovers
+// from this answer alone.
+func TestThePiAndOmpFootprintsCountWhatTheirReleasesLeave(t *testing.T) {
+	agentScriptsRun(t, "du")
+	for _, c := range []struct{ name, asset, pkg string }{
+		{"pi", "pi-linux-x64.tar.gz", "@earendil-works/pi-coding-agent"},
+		{"omp", "omp-linux-x64", "@oh-my-pi/pi-coding-agent"},
+	} {
+		probe, err := adapterScript(c.name, "probe.sh")
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := newAgentRig(t)
+		r.write(filepath.Join(r.stage, c.asset), strings.Repeat("a", 64<<10))
+		r.write(filepath.Join(r.home, ".local", "lib", "node_modules", c.pkg, "cli.js"), strings.Repeat("b", 128<<10))
+		code, out := r.run(probe, "TK_PROBE_FOOTPRINT=1")
+		st := parseAdapterProbe(c.name, out)
+		footprint, err := strconv.ParseInt(st.Facts["footprint"], 10, 64)
+		if code != 0 || err != nil || st.Facts["installed"] != "no" || footprint < 192<<10 {
+			t.Fatalf("%s: a kept asset of 64 KiB and npm's package of 128 KiB read as exit %d, footprint %q:\n%s", c.name, code, st.Facts["footprint"], out)
+		}
+		if left, ok := parseLeftover(c.name, out); !ok || left.Bytes != footprint {
+			t.Fatalf("%s: base status would not name what the adapter left: %+v %v", c.name, left, ok)
+		}
 	}
 }

@@ -97,12 +97,12 @@ four adapters; a later run reconciles in seconds. The entries that built the
 adapters carry the measured times with their conditions: `WSL-76`, `WSL-77`,
 `WSL-88` and `WSL-89`.
 
-The last lines print the state. herdr, muse and omp must read `healthy`.
+The last lines print the state. Every adapter must read `healthy`.
 
-⚠ **On a new base, pi reads one problem and `base ensure` exits 2.** The profile
-starts pi on `muse-gateway/muse-spark-1.3-contributor`, and step 5 declares that
-provider. Until then pi knows no such provider. Every adapter is still installed, and
-step 6 reads pi `healthy`. `WSL-135`
+⭐ **On a new base, pi reads `healthy` with one note.** The profile starts pi on
+`muse-gateway/muse-spark-1.3-contributor`, and step 5 declares that provider. Until
+then pi's `models.json` does not exist, and the note names step 5. It stops nothing,
+so `base ensure` exits 0. `WSL-135`
 
 ⭐ **pi and omp come from their own releases.** Each adapter saves the release's file
 and prints its length and SHA-256. It installs the file only while that digest is the
@@ -123,6 +123,15 @@ The grant is live. No restart is needed. The base sees the directory under
 
 ```powershell
 wsl-toolkit base exec -c 'ls /workspaces'
+```
+
+⛔ **Then run `base ensure` once more, so Muse trusts the grant.** Muse asks whether to
+trust a directory on its first start there, and it blocks until a person answers.
+`base ensure` answers yes for each grant, and for nothing else. A grant made after the
+last ensure is still asked about, and step 8's `agent start` then exits 1. `WSL-135`
+
+```powershell
+wsl-toolkit base ensure
 ```
 
 ⛔ **A directory no grant covers is refused.** The refusal prints the `base grant` line
@@ -210,10 +219,13 @@ chmod 600 ~/.pi/agent/auth.json && unset k
 Check it:
 
 ```bash
-pi auth check --provider muse-gateway
+pi auth check --model muse-gateway/muse-spark-1.3-contributor
 ```
 
 It answers `ready`.
+
+⚠ **Check by model.** pi answers `--provider` with `not_ready` for any name, one it
+does not know included. `--model` answers `invalid` for a provider nothing declares.
 
 ⭐ **Until the key is stored, pi's model is a note and not a problem.** pi lists only
 the models of a provider it holds a key for. So `base status --probe` reads
@@ -348,6 +360,14 @@ wsl-toolkit base revoke --target /workspaces/demoproj
 
 ⛔ **Close the workspace first.** Its pane's shell sits in the granted directory, so
 the mount is busy. `base revoke` then exits 1 and leaves the configuration unchanged.
+
+⚠ **`$made` is step 8's.** Run this in the PowerShell session that ran step 8. In a new
+one, read the id of the workspace labelled `work` again, and close that:
+
+```powershell
+$id = ((wsl-toolkit base herdr -- workspace list | ConvertFrom-Json).result.workspaces | Where-Object label -eq work).workspace_id
+wsl-toolkit base herdr -- workspace close $id
+```
 
 ⛔ **`base revoke` takes `--target` alone.** A grant is named by where the base sees
 it, not by the Windows directory. The mount goes at once. An empty directory is left
