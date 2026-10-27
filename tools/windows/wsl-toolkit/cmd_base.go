@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -529,6 +530,9 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		// run, so a status that only listed the distribution would be a status
 		// that cannot answer the question it was asked.
 		fmt.Fprintf(out, "  usable      not checked. Pass --probe to run a container and find out\n")
+		// ⛔ ITS PROBLEMS STILL PRINT. The exit code counts them, so a report that
+		// stopped here exited 1 and named nothing. WSL-206.
+		renderProblems(out, st)
 		return
 	}
 	fmt.Fprintf(out, "  usable      %v\n", st.Healthy)
@@ -582,6 +586,12 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 			fmt.Fprintf(out, "              ⚠ %s\n", n)
 		}
 	}
+	renderProblems(out, st)
+}
+
+// renderProblems prints a base's problems, then each remediation with its
+// command.
+func renderProblems(out io.Writer, st toolkit.BaseState) {
 	for _, p := range st.Problems {
 		fmt.Fprintf(out, "  ! %s\n", p)
 	}

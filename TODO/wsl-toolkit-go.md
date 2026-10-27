@@ -17558,3 +17558,40 @@ Exit 0, with a case where a write waits while a fork holds the lock, and the sca
 ```text
 linux-proof --rows-since 5feb917: proved tree 445d7e7 (commit 3d74c61), 179 of 183 rows red, 4 skipped for want of jq
 ```
+
+## WSL-206. `base status` without `--probe` exits 1 and names nothing
+
+**Source** the 9.0.0 drive, where a fresh alpine base's status exited 1 with no problem line, and the `WSL-202` repair's notes
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Without `--probe`, the status report stops at `usable not checked`, before its problems and remediations. The exit code still counts those problems. A base whose disk is not sparse then answers 1, and nothing on screen says why.
+
+## Premise
+
+Read at `395c1aa`: `renderBaseState` returns early when not probed, and `verdictFor` reads `st.Problems`. The `WSL-202` repair printed a nested or gone grant on its own line for this reason, and left every other problem unsaid.
+
+## Approach
+
+The problems and remediations print in both cases, from one function. A case renders a base with a problem and no probe, and finds the problem and its command.
+
+## Consumers
+
+None. The exit code is unchanged, and the text gains the lines that explain it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where a status without `--probe` prints its problem and the command that repairs it.
+
+---
+
+## Closing
+
+Open.

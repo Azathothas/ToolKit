@@ -882,3 +882,40 @@ Exit 0.
 **Closed 2026-10-26, merged from `r8/docs`.** The register is read again, row by row. It adds tcp.ts.relay.ajam.dev, whose build script runs each binary with `wsl.exe -d`, and one row for the four projects that carry TEMPLATE's pages. It corrects agent-box's flags, names podbox's lane proof and pg-toolkit's exit contract under the 125 break, and says what a packaged app is refused. The Problem's "as root" is wrong: `wsl.exe -d wsl-toolkit -- id` answered uid 1000, the base's default account.
 
 ⚠ The Approach asked for each row's file and line. For the three private repositories, pg-toolkit, dash.vpn.ajam.dev and tcp.ts.relay.ajam.dev, the public register keeps the name, the commands and what each must do, and leaves their file paths, lines and commits out. agent-box and cross-libc-dlopen were read through GitHub, with no local copy.
+
+## DOC-16. Two configuration examples in the manual are refused as whole files
+
+**Source** the 9.0.0 drive, whose scratch configuration followed the `base.registry` example
+**Category** docs, **Priority** P3, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The manual shows `base.registry` and the shared tmpfs setting as whole JSON objects with no `schema` key. A file written from either is refused: it declares schema "" and the build reads `wsl-toolkit-config/1`.
+
+## Premise
+
+Read at `395c1aa`: every other configuration example in the manual carries `"schema": "wsl-toolkit-config/1"`. A scan of every JSON block in the tracked Markdown found these two alone.
+
+## Approach
+
+Both examples carry the schema line, and each block parses as JSON.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh docs
+```
+
+Exit 0, and both examples load when written to a file and passed to `config --config`.
+
+---
+
+## Closing
+
+**Closed on main after `wsl-toolkit-v9.0.0`.** The `base.registry` example and the shared tmpfs example each carry `"schema": "wsl-toolkit-config/1"`. A scan of every JSON block in the tracked Markdown finds no other configuration without it. Each example, written to a file, loads with the installed 9.0.0: `config --config FILE` exits 0 for both.

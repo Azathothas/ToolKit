@@ -141,3 +141,32 @@ func TestAGrantLineNamesWhatKeepsItUnmounted(t *testing.T) {
 		t.Errorf("base status without --probe does not mark the nested grant alone:\n%s", out)
 	}
 }
+
+// TestBaseStatusWithoutProbeNamesItsProblems renders a base whose configured
+// state has a problem, without --probe. ⛔ The report ended before its problems
+// while the exit code counted them, so `base status` exited 1 and named nothing.
+// The 9.0.0 drive found it on a fresh alpine base. WSL-206.
+func TestBaseStatusWithoutProbeNamesItsProblems(t *testing.T) {
+	st := toolkit.BaseState{
+		Name:     "wsl-toolkit-status",
+		Problems: []string{"the base's disk is not sparse"},
+		Remediations: []toolkit.Remediation{{
+			ID: "disk-not-sparse", What: "the base's disk is not sparse", Costs: "the disk only grows",
+			Command: "wsl-toolkit base reclaim", Repairable: true,
+		}},
+	}
+	out := captureStderr(t, func() { renderBaseState(st, false) })
+	for _, want := range []string{
+		"  usable      not checked.",
+		"  ! the base's disk is not sparse\n",
+		"  ⛔ DISK-NOT-SPARSE\n",
+		"     RUN    wsl-toolkit base reclaim\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("base status without --probe does not print %q:\n%s", want, out)
+		}
+	}
+	if verdictFor(st) != exitFailed {
+		t.Errorf("a base with a problem answers %d", verdictFor(st))
+	}
+}

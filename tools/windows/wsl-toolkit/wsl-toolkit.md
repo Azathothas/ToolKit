@@ -1104,7 +1104,8 @@ proxy their traffic takes. Each base was set up by hand inside the guest before.
 `WSL-196`
 
 ```json
-{ "base": { "registry": {
+{ "schema": "wsl-toolkit-config/1",
+  "base": { "registry": {
   "mirrors": { "docker.io": ["mirror.gcr.io"] },
   "proxy": "http://proxy.example:3128",
   "no_proxy": ["localhost", "127.0.0.1"]
@@ -2559,7 +2560,7 @@ values in a `/tmp` directory. The payload's first line removes it.
 ### ⭐ Closing the shared tmpfs, and what it costs
 
 ```json
-{ "base": { "automount": "off", "shared_tmpfs": "off" } }
+{ "schema": "wsl-toolkit-config/1", "base": { "automount": "off", "shared_tmpfs": "off" } }
 ```
 
 ⛔ **`/mnt/wsl` is one `tmpfs`, common to every distribution in the WSL2 utility
@@ -2762,7 +2763,9 @@ over a stale record names `base ensure --repair` whatever words podman chose.
 ⛔ **`base status` without `--probe` runs no container, and its answer says so.**
 The text says `usable not checked`, and `--json` carries `probed: false`, so
 `healthy: false` beside it is no verdict. Under `--probe`, `probed` is true once a
-container was asked to run. `WSL-137`
+container was asked to run. `WSL-137` ⛔ The problems the configuration and the
+disk show still print, each with its command, so an exit 1 always names its
+cause. The report used to stop before them. `WSL-206`
 
 ⭐ **The verifier reads the managed account's passwd entry as the account reads
 it.** `--json` carries `account.passwd`: `ok`, `unreadable` or `no-entry`. A base

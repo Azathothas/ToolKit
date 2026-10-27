@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 263  open 0  blocked 0  done 263
+total 265  open 1  blocked 0  done 264
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 0 | 0 | 124 | 124 |
-| P3 | 0 | 0 | 35 | 35 |
-| **all** | **0** | **0** | **263** | **263** |
+| P2 | 1 | 0 | 124 | 125 |
+| P3 | 0 | 0 | 36 | 36 |
+| **all** | **1** | **0** | **264** | **265** |
 
 ---
 
@@ -55,6 +55,7 @@ total 263  open 0  blocked 0  done 263
 | DOC-13 | P3 | S | done | The router and the rules count the release and CI wrong | [`docs.md`](docs.md) |
 | DOC-14 | P2 | M | done | The skills tell an agent things the tool does not do | [`docs.md`](docs.md) |
 | DOC-15 | P3 | S | done | The consumer register misses one consumer and describes another's call wrongly | [`docs.md`](docs.md) |
+| DOC-16 | P3 | S | done | Two configuration examples in the manual are refused as whole files | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |
@@ -300,6 +301,7 @@ total 263  open 0  blocked 0  done 263
 | WSL-203 | P2 | S | done | A package manager that hangs holds the build with no bound | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-204 | P2 | S | done | Provisioning's limit cuts a bounded package manager try short with no name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-205 | P2 | S | done | A stand-in a case wrote can be busy when it runs, so the go job fails by chance | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-206 | P2 | S | open | `base status` without `--probe` exits 1 and names nothing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

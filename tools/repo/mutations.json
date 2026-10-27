@@ -8075,6 +8075,15 @@
       "args": []
     },
     {
+      "label": "wsl-toolkit: base status without --probe prints its problems",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\t\trenderProblems(out, st)\n\t\treturn\n",
+      "replace": "\t\treturn\n",
+      "run": "TestBaseStatusWithoutProbeNamesItsProblems",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the carried bootstrap puts its prefix after the system path",
       "file": "internal/toolkit/shipped/bootstrap.sh",
       "find": "  ip_line=\"export PATH=\\\"\\$PATH:$PREFIX/bin\\\"\"",
