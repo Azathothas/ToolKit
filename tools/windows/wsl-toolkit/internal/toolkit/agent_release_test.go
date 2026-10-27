@@ -155,7 +155,7 @@ const agentScriptBudget = 30 * time.Second
 // rigAccountTools are the commands an adapter script runs as the account, and the
 // stand-ins run. The rig links each into the account's PATH, and nothing else.
 var rigAccountTools = []string{
-	"sh", "env", "cat", "readlink", "rm", "mkdir", "mktemp", "tar", "gzip", "mv", "ln", "cp",
+	"sh", "env", "cat", "readlink", "rm", "rmdir", "mkdir", "mktemp", "tar", "gzip", "mv", "ln", "cp",
 	"chmod", "sha256sum", "head", "tr", "od", "cut", "awk", "sed", "grep", "id", "ls",
 	"dirname", "basename", "wc", "du", "touch", "sleep", "printf", "echo", "true", "false",
 	"test", "[",
