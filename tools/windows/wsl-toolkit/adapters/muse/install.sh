@@ -447,6 +447,52 @@ else
   fi
 fi
 
+# -- herdr's detection rules for Muse ----------------------------------------------------
+# ⭐ herdr READS A LOCAL RULE FILE FOR AN AGENT, and a local one always wins over its
+# bundled and remote manifests: herdr's own docs, and the override_path of its source.
+# herdr's Muse manifest matches no rule on Muse Code 1.4.13's input screen, so this
+# writes one that does, and the reporter above stays as the fallback. WSL-158.
+#
+# ⛔ WRITTEN WHOLE ON EVERY ENSURE, like herdr's tracked configuration, so a hand edit
+# is replaced. The adapter's file says what it changes from herdr's own and why.
+# ⭐ A FILE THAT IS NOT THIS ADAPTER'S IS LEFT AS IT IS: one the operator wrote for
+# herdr is theirs, and the probe reports it as `other`.
+HERDR_RULES_DIR=$TK_HOME/.config/herdr/agent-detection
+HERDR_RULES=$HERDR_RULES_DIR/muse.toml
+HERDR_RULES_MARK="from wsl-toolkit's muse adapter"
+herdr_rules_skip=
+if [ -z "${TK_FILE_HERDR_DETECTION_TOML_B64:-}" ]; then
+  herdr_rules_skip='this adapter carries no rule file'
+elif ! command -v herdr >/dev/null 2>&1 && [ ! -x /usr/local/bin/herdr ]; then
+  herdr_rules_skip='no herdr is installed in this base to read them. Add the herdr adapter to base.adapters'
+elif [ -f "$HERDR_RULES" ] && ! head -n 1 "$HERDR_RULES" | grep -q "$HERDR_RULES_MARK"; then
+  herdr_rules_skip="$HERDR_RULES is not this adapter's, so it is left as it is"
+fi
+if [ -n "$herdr_rules_skip" ]; then
+  say "no herdr detection rules: $herdr_rules_skip"
+else
+  install -d -o "$TK_USER" -g "$(tk_group)" -m 0700 "$TK_HOME/.config" "$TK_HOME/.config/herdr" "$HERDR_RULES_DIR"
+  rules_tmp=$(mktemp)
+  rules_encoded=$(mktemp)
+  printf '%s' "$TK_FILE_HERDR_DETECTION_TOML_B64" > "$rules_encoded"
+  base64 -d < "$rules_encoded" > "$rules_tmp" || die "herdr's detection rules for Muse did not decode"
+  rm -f "$rules_encoded"
+  if same_file "$rules_tmp" "$HERDR_RULES"; then
+    rm -f "$rules_tmp"
+    say "herdr's detection rules for Muse are in place at $HERDR_RULES"
+  else
+    install -o "$TK_USER" -g "$(tk_group)" -m 0644 "$rules_tmp" "$HERDR_RULES"
+    rm -f "$rules_tmp"
+    # ⚠ A RUNNING SERVER LOADS RULES AT ITS START, so it is asked to reload them, which
+    # ends no pane. A server that is not running reads them when it starts.
+    if as_account herdr server reload-agent-manifests >/dev/null 2>&1; then
+      say "wrote $HERDR_RULES, and the herdr server reloaded it"
+    else
+      say "wrote $HERDR_RULES. No herdr server answered, and one reads it when it starts"
+    fi
+  fi
+fi
+
 # ⛔ SIGNING IN IS THE OPERATOR'S, and nothing here reads or writes the credential.
 say "signing in is the operator's: $tool base shell, then muse login"
 

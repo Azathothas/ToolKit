@@ -1,0 +1,125 @@
+# herdr's detection rules for Muse Code, from wsl-toolkit's muse adapter. WSL-158.
+#
+# base ensure writes this to ~/.config/herdr/agent-detection/muse.toml whole, every
+# time, beside the herdr adapter, and asks a running herdr server to reload it. A
+# change belongs in tools/windows/wsl-toolkit/adapters/muse/herdr-detection.toml.
+#
+# ⭐ WHY THERE IS A FILE AT ALL. herdr reads a pane's screen to tell idle from working
+# and blocked, and its own Muse manifest, 2026.08.26.1 bundled and remote alike,
+# matches no rule on Muse Code 1.4.13's input screen: `herdr agent explain` answers
+# `rule: none` and `fallback_reason: default_known_agent_idle_fallback`. herdr loads a
+# local override from this path, and a local override always wins over its bundled
+# and remote manifests.
+#
+# ⚠ SO IT ALSO SHADOWS A NEWER MUSE MANIFEST herdr publishes. `herdr agent explain`
+# says so as `local_override_shadowing_remote`, and the muse adapter's probe reads it.
+#
+# ⭐ WHAT CHANGED FROM herdr's OWN, measured on Muse Code 1.4.13 in a herdr pane:
+#   - the input prompt is `❯`, where herdr's rule knows only `⟩`;
+#   - the status line carries `max`, the effort this tool's adapters start Muse on,
+#     which herdr's fallback rule does not list, and echo's line carries no effort.
+# Every other rule is herdr's bundled manifest unchanged. The trust prompt and a turn
+# in progress matched those rules on 1.4.13, and every phrase the approval and
+# question rules pair is still in 1.4.13's binary. ⚠ An approval screen was not
+# drawn: the credential-free echo provider calls no tool. The herdr reporter covers
+# approval through PreToolUse and PermissionRequest, and stays as the fallback.
+id = "muse"
+min_engine_version = 2
+aliases = ["muse-code", "muse-cli"]
+
+[[rules]]
+id = "workspace_trust_blocked"
+state = "blocked"
+priority = 970
+region = "bottom_non_empty_lines(12)"
+visible_blocker = true
+contains = ["Do you trust this workspace?"]
+any = [
+  { contains = ["Trust and continue"] },
+  { contains = ["Use Up/Down"] },
+]
+
+[[rules]]
+id = "pick_request_blocked"
+state = "blocked"
+priority = 950
+region = "bottom_non_empty_lines(8)"
+visible_blocker = true
+any = [
+  { contains = ["Enter to select", "Tab for an optional note"] },
+  { contains = ["Enter to toggle", "Esc to interrupt"] },
+]
+
+[[rules]]
+id = "menu_overlay"
+state = "unknown"
+priority = 940
+region = "bottom_non_empty_lines(8)"
+skip_state_update = true
+any = [
+  { contains = ["enter confirm", "esc go back"] },
+  { contains = ["enter save", "esc go back"] },
+  { contains = ["space toggle", "esc close", "type filter"] },
+]
+
+[[rules]]
+id = "working_esc_interrupt"
+state = "working"
+priority = 900
+region = "bottom_non_empty_lines(8)"
+visible_working = true
+contains = ["esc to interrupt"]
+not = [
+  { contains = ["Enter to select", "Tab for an optional note"] },
+  { contains = ["Enter to toggle", "Esc to interrupt"] },
+]
+
+[[rules]]
+id = "blocked_approval"
+state = "blocked"
+priority = 850
+region = "bottom_non_empty_lines(8)"
+visible_blocker = true
+any = [
+  { contains = ["Allow this stage once", "Always allow in this workspace"] },
+  { contains = ["Allow once", "Allow for this session"] },
+  { contains = ["Yes, proceed", "Yes, don't ask again this session"] },
+]
+
+# ⭐ `❯` IS MUSE 1.4.13's INPUT PROMPT, between two rules, with the status line under
+# them. `⟩` is kept for the Muse herdr's own manifest was written against.
+# ⚠ Each is written as its code point, U+276F and U+27E9, and the status line's dot
+# as U+00B7: herdr's regex engine reads `\x{...}`, and this tree keeps such
+# characters out of its text.
+[[rules]]
+id = "idle_prompt"
+state = "idle"
+priority = 700
+region = "bottom_non_empty_lines(5)"
+visible_idle = true
+any = [
+  { line_regex = ['^\s*[\x{27E9}\x{276F}]\s*$'] },
+  { line_regex = ['^\s*[\x{27E9}\x{276F}]\s+\S'] },
+]
+not = [
+  { contains = ["esc to interrupt"] },
+  { contains = ["Enter to select", "Tab for an optional note"] },
+  { contains = ["Enter to toggle", "Esc to interrupt"] },
+  { contains = ["enter confirm", "esc go back"] },
+  { contains = ["enter save", "esc go back"] },
+  { contains = ["space toggle", "esc close", "type filter"] },
+]
+
+# ⭐ `max` IS THE EFFORT THIS TOOL STARTS MUSE ON, and echo's status line names no
+# effort at all.
+[[rules]]
+id = "idle_status_fallback"
+state = "idle"
+priority = 500
+region = "bottom_non_empty_lines(3)"
+visible_idle = true
+any = [
+  { line_regex = ['^\s*\S+ \x{B7} (none|minimal|low|medium|high|xhigh|max|ultra) \x{B7} '] },
+  { line_regex = ['^\s*echo \x{B7} '] },
+]
+not = [{ contains = ["esc to interrupt"] }]

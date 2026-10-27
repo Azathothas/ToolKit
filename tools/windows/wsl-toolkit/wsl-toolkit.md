@@ -1673,6 +1673,29 @@ when the session ends. ⛔ A settings file that is not a JSON object carrying
 start over one. `base status --probe` reports the events the hook is registered for
 and runs its self-test. `WSL-88`
 
+⭐ **With the `herdr` adapter beside it, `muse` also writes herdr's rules for Muse's
+screen.** herdr reads a local rule file at `~/.config/herdr/agent-detection/muse.toml`.
+A local file wins over herdr's bundled and remote manifests. `WSL-158`
+
+| Muse Code 1.4.13 in a herdr pane | herdr's own rules | with the adapter's file |
+| --- | --- | --- |
+| the input prompt, `❯` | `rule: none`, idle by `default_known_agent_idle_fallback` | ⭐ `idle_prompt` |
+| a status line carrying `max` | `rule: none` | ⭐ `idle_status_fallback` |
+| a turn in progress, `esc to interrupt` | `working_esc_interrupt` | `working_esc_interrupt` |
+| `Do you trust this workspace?` | `workspace_trust_blocked` | `workspace_trust_blocked` |
+
+- ⭐ Every other rule is herdr's own, unchanged. Each phrase its approval and question
+  rules pair is still in the Muse 1.4.13 binary.
+- ⚠ No approval screen was drawn, because the echo provider calls no tool. The
+  reporter covers approval through `PreToolUse` and `PermissionRequest`, and it stays
+  as the fallback.
+- ⚠ The file shadows a newer Muse manifest herdr publishes. `herdr agent explain` says
+  so as `local_override_shadowing_remote`.
+- ⭐ A running server is asked to reload the file, which ends no pane. A file of your
+  own at that path is left as it is.
+- `base status --probe` reports `herdr_detection_rules` and `herdr_detection_source`. A
+  herdr that ignores the file is a note carrying herdr's own warning.
+
 ⛔ **`base ensure` also asks Muse itself.** It runs one session of Muse's
 credential-free echo provider in a scratch directory under `/tmp`. It then looks for
 that session's `SessionStart` in the hook's own log. A file that names the hook proves only

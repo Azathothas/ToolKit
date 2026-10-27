@@ -9,7 +9,7 @@ one.
 | adapter | what it installs | driven on |
 | --- | --- | --- |
 | [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client. ⭐ With `private_net`, a network namespace for that server and its agents | the `arch` preset, with systemd |
-| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, and ⭐ a herdr reporter for its lifecycle | the `arch` preset |
+| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, ⭐ a herdr reporter for its lifecycle, and herdr's rules for its screen | the `arch` preset |
 | [`pi/`](pi/) | the Pi coding agent from npm with `--ignore-scripts`, and **herdr's own** pi integration | the `arch` preset |
 | [`omp/`](omp/) | Oh My Pi from npm, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | the `arch` preset |
 
@@ -19,6 +19,11 @@ against herdr 0.9.0 and Muse Code 1.3.0, through Muse's credential-free `--provi
 echo`: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` with its release, and
 the adoption of a resumed session. ⚠ `PreToolUse` and `PermissionRequest` are
 registered and not yet driven, because the echo provider calls no tool.
+
+⭐ **The muse adapter also writes herdr's own rules for Muse's screen**, at the local
+path herdr reads before its bundled and remote manifests. They match Muse Code
+1.4.13's idle screen, which herdr's own rules did not, and the reporter stays as the
+fallback. `WSL-158`
 
 ⭐ **herdr's `private_net` adds three files and changes none.** A drop-in beside the
 server's unit, a unit that links the namespace, and the script it runs. Each is a

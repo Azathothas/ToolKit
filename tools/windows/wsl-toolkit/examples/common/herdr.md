@@ -210,6 +210,10 @@ wsl-toolkit base herdr -- agent explain work
 It answers `screen_detection_skip_reason: full_lifecycle_hook_authority` for those two.
 Muse reports through the hook this tool's `muse` adapter installs.
 
+⭐ **herdr also reads Muse's screen, with rules the `muse` adapter writes.** herdr's own
+Muse rules match no idle screen of Muse Code 1.4.13, and `agent explain` then answers
+`rule: none`. With the adapter's file it names `idle_prompt`. `WSL-158`
+
 ---
 
 ## ⚠ With `private_net`, the agents have a network of their own

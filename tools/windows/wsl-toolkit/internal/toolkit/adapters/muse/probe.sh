@@ -157,6 +157,30 @@ if [ -f "$MUSE_SETTINGS" ] && command -v jq >/dev/null 2>&1; then
   printf 'herdr_reporter_events %s\n' "${registered:-none}"
 fi
 
+# -- herdr's detection rules for Muse, read back -------------------------------------
+# ⭐ WHETHER THE FILE IS THERE, AND WHETHER herdr LOADS IT. install.sh writes the file,
+# and a herdr whose manifest format moved ignores a file it cannot read, with a warning
+# and its own rules instead. ⚠ Facts and a note, not problems: the reporter still
+# reports, and `base ensure` writes the same file again and cannot cure it. WSL-158.
+HERDR_RULES=$TK_HOME/.config/herdr/agent-detection/muse.toml
+if [ -f "$HERDR_RULES" ] && head -n 1 "$HERDR_RULES" | grep -q "from wsl-toolkit's muse adapter"; then
+  printf 'herdr_detection_rules installed\n'
+  if command -v jq >/dev/null 2>&1; then
+    loaded=$(as_account herdr server agent-manifests --json 2>/dev/null |
+      as_account jq -r '.result.manifests[]? | select(.agent == "muse") | "\(.source_kind)|\(.warning // "it gave no warning")"' 2>/dev/null | head -n 1)
+    kind=${loaded%%|*}
+    if [ -n "$kind" ]; then
+      printf 'herdr_detection_source %s\n' "$kind"
+      [ "$kind" = "local override" ] ||
+        printf 'note herdr reads its own Muse rules and not %s: %s\n' "$HERDR_RULES" "${loaded#*|}"
+    fi
+  fi
+elif [ -f "$HERDR_RULES" ]; then
+  printf 'herdr_detection_rules other\n'
+else
+  printf 'herdr_detection_rules absent\n'
+fi
+
 # -- and Muse runs it ----------------------------------------------------------------
 # ⛔ THE LINE ABOVE READS THE FILE install.sh WROTE, AND THAT PROVES install.sh WROTE IT.
 # A hook in a file Muse does not read, or outside a matcher group, read back as six

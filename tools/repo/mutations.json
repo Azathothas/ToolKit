@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "muse: herdr rules of the operator's own are left as they are",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "elif [ -f \"$HERDR_RULES\" ] \u0026\u0026 ! head -n 1 \"$HERDR_RULES\" | grep -q \"$HERDR_RULES_MARK\"; then\n",
+      "replace": "elif false; then\n",
+      "run": "TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem",
+      "args": []
+    },
+    {
       "label": "herdr: private_net is refused on an adapter that cannot take it",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters.go",
@@ -233,6 +242,87 @@
       "find": "    if [ \"$(ip netns identify \"$pid\" 2\u003e/dev/null || :)\" = \"$NETNS\" ]; then\n",
       "replace": "    if false; then\n",
       "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
+      "args": []
+    },
+    {
+      "label": "muse: herdr's rules know Muse 1.4's prompt",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/herdr-detection.toml",
+      "find": "  { line_regex = ['^\\s*[\\x{27E9}\\x{276F}]\\s*$'] },\n",
+      "replace": "  { line_regex = ['^\\s*\\x{27E9}\\s*$'] },\n",
+      "run": "TestTheMuseRulesMatchTheScreenMuseDraws",
+      "args": []
+    },
+    {
+      "label": "muse: herdr's rules know the max effort",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/herdr-detection.toml",
+      "find": "(none|minimal|low|medium|high|xhigh|max|ultra)",
+      "replace": "(none|minimal|low|medium|high|xhigh|ultra)",
+      "run": "TestTheMuseRulesMatchTheScreenMuseDraws",
+      "args": []
+    },
+    {
+      "label": "muse: herdr's rules know echo's status line",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/herdr-detection.toml",
+      "find": "  { line_regex = ['^\\s*echo \\x{B7} '] },\n",
+      "replace": "",
+      "run": "TestTheMuseRulesMatchTheScreenMuseDraws",
+      "args": []
+    },
+    {
+      "label": "muse: herdr's rules keep herdr's own blocked approval",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/herdr-detection.toml",
+      "find": "id = \"blocked_approval\"\n",
+      "replace": "id = \"approval\"\n",
+      "run": "TestTheMuseRulesMatchTheScreenMuseDraws",
+      "args": []
+    },
+    {
+      "label": "muse: herdr's rules are written where herdr reads them",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    install -o \"$TK_USER\" -g \"$(tk_group)\" -m 0644 \"$rules_tmp\" \"$HERDR_RULES\"\n",
+      "replace": "    :\n",
+      "run": "TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem",
+      "args": []
+    },
+    {
+      "label": "muse: a running herdr reloads the rules",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    if as_account herdr server reload-agent-manifests \u003e/dev/null 2\u003e\u00261; then\n",
+      "replace": "    if false; then\n",
+      "run": "TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem",
+      "args": []
+    },
+    {
+      "label": "muse: no rules are written without herdr",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "elif ! command -v herdr \u003e/dev/null 2\u003e\u00261 \u0026\u0026 [ ! -x /usr/local/bin/herdr ]; then\n  herdr_rules_skip=",
+      "replace": "elif false; then\n  herdr_rules_skip=",
+      "run": "TestTheMuseAdapterWritesNoHerdrRulesWithoutHerdr",
+      "args": []
+    },
+    {
+      "label": "muse: the probe reads the rules file back",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "if [ -f \"$HERDR_RULES\" ] \u0026\u0026 head -n 1 \"$HERDR_RULES\" | grep -q \"from wsl-toolkit's muse adapter\"; then\n",
+      "replace": "if false; then\n",
+      "run": "TestTheMuseProbeSaysWhetherHerdrLoadsItsRules",
+      "args": []
+    },
+    {
+      "label": "muse: the probe notes rules herdr does not load",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "      [ \"$kind\" = \"local override\" ] ||\n",
+      "replace": "      true ||\n",
+      "run": "TestTheMuseProbeSaysWhetherHerdrLoadsItsRules",
       "args": []
     },
     {
