@@ -106,6 +106,12 @@ func goTestModule(root, goBin, m, dir string, split map[string]bool, k int) []st
 //
 // ⚠ THE LIST BUILDS THE BINARY FIRST, so the k runs find its compile in the
 // cache rather than make k of their own.
+//
+// ⭐ EACH PROCESS RUNS WITH -count=1, AND THE TEST CACHE IS NOT ASKED. Four
+// processes of internal/toolkit's cases that go test could cache took 191 s and
+// 317 s on the operator's host. With -count=1 the same cases took 90 s and
+// 100 s. A cached result needs an unchanged package, which a gate after a
+// change to it never has. CI's GOFLAGS carries -count=1 already. TOOL-40.
 func goTestSplit(goBin, m, dir, pkg string, k int) []string {
 	out, err := runIn(dir, goBin, "test", "-list", ".", pkg)
 	if err != nil {
@@ -124,7 +130,7 @@ func goTestSplit(goBin, m, dir, pkg string, k int) []string {
 	}
 	runs := make([]string, len(patterns))
 	each(len(patterns), func(i int) {
-		if out, err := runIn(dir, goBin, "test", "-run", patterns[i], pkg); err != nil {
+		if out, err := runIn(dir, goBin, "test", "-count=1", "-run", patterns[i], pkg); err != nil {
 			runs[i] = sprintf("%s: go test: %s", m, testFailure(out))
 		}
 	})

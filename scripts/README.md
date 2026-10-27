@@ -277,7 +277,9 @@ in module order, whichever module finished first.
 cases set a variable, so one process ran them one after another. The check
 lists the cases from the package's own binary and deals them out as `-run`
 patterns. ⛔ A case that no pattern matches, or that two match, fails the
-check. A package is split only where its cases keep their state to their own
+check. Each process runs with `-count=1`, as CI's `GOFLAGS` does. On Windows
+Go's test cache cost these cases two to seven times what they cost without
+it. A package is split only where its cases keep their state to their own
 process. `splitTests` in `tools/check/internal/checks/gotest.go` names each one
 and why. `TOOL-40` has the figures.
 

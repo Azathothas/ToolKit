@@ -207,3 +207,35 @@ func TestAFailureInOneProcessIsAFinding(t *testing.T) {
 		t.Fatalf("one case failed, and the step found %q", found)
 	}
 }
+
+// TestASplitPackagesCasesRunAgainOnEveryCheck: a second go check over a module
+// that did not change runs the split package's cases again.
+//
+// ⚠ GOFLAGS IS EMPTIED. CI's carries -count=1, which would run them again with
+// or without the check's own.
+func TestASplitPackagesCasesRunAgainOnEveryCheck(t *testing.T) {
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no Go toolchain on PATH")
+	}
+	t.Setenv("GOFLAGS", "")
+	root, ran := t.TempDir(), t.TempDir()
+	cases := []string{"TestA", "TestB", "TestC"}
+	splitModule(t, root, ran, cases, "")
+	for run := 1; run <= 2; run++ {
+		if found := goTestModule(root, goBin, "mod", filepath.Join(root, "mod"), map[string]bool{"mod/p": true}, 2); len(found) != 0 {
+			t.Fatalf("check %d: the module's cases all pass, and the step found %q", run, found)
+		}
+	}
+	got := ranIn(t, ran)
+	// ⛔ THE CACHE ANSWERS HERE, or the count below proves nothing. The package
+	// that is not split ran its case in the first check alone.
+	if n := len(got["q-TestQ"]); n != 1 {
+		t.Fatalf("the package that is not split ran its case %d times in two checks, so the test cache answered nothing", n)
+	}
+	for _, c := range cases {
+		if n := len(got["p-"+c]); n != 2 {
+			t.Errorf("%s ran %d time(s) in two checks, want 2: a cached pass stood in for a run", c, n)
+		}
+	}
+}

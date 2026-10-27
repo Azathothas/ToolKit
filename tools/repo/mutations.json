@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "check: a split package's cases run again on every go check",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "goBin, \"test\", \"-count=1\", \"-run\", patterns[i], pkg)",
+      "replace": "goBin, \"test\", \"-run\", patterns[i], pkg)",
+      "run": "TestASplitPackagesCasesRunAgainOnEveryCheck",
+      "args": []
+    },
+    {
       "label": "mutate: a skip its baseline made is kept from a handed-in run",
       "module": "tools/repo",
       "file": "internal/mutate/embed.go",
@@ -140,8 +149,8 @@
       "label": "check: a case that fails in one of a split package's processes is a finding",
       "module": "tools/check",
       "file": "internal/checks/gotest.go",
-      "find": "\t\tif out, err := runIn(dir, goBin, \"test\", \"-run\", patterns[i], pkg); err != nil {",
-      "replace": "\t\tif out, err := runIn(dir, goBin, \"test\", \"-run\", patterns[i], pkg); err != nil && false {",
+      "find": "\t\tif out, err := runIn(dir, goBin, \"test\", \"-count=1\", \"-run\", patterns[i], pkg); err != nil {",
+      "replace": "\t\tif out, err := runIn(dir, goBin, \"test\", \"-count=1\", \"-run\", patterns[i], pkg); err != nil && false {",
       "run": "TestAFailureInOneProcessIsAFinding",
       "args": []
     },
