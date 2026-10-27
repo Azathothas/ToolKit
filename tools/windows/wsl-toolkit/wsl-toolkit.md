@@ -2619,6 +2619,13 @@ archive as it moves, and the variable does not change it. A refusal for silence 
 a slow link reads the same, why the limit was what it was, and the variable. It ends
 with the command that reads the engine that pulled. `WSL-176`
 
+⭐ **`base presets` prints what each preset measured, and on which host.** The first
+figures came from a host with a custom kernel, cgroup v1 off and DNS tunneling. Each
+preset was then built again on a stock host, with no `.wslconfig` at all. Every build
+passed there, in 40 to 155 seconds. The developer toolset took alpine 45 seconds
+there against 173 on the first host, and fedora 107 against 420. The mirror of the
+day moves a figure more than the host does. `WSL-197`
+
 ⭐ **`--preset` is compared with the image the base was built from.** This machine's
 record of the base answers, and the configuration answers where there is no record.
 So a preset the base already has rebuilds nothing. The comparison is made again under

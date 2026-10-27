@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: every preset carries a stock host's figures",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/presets.go",
+      "find": "\" + presetHost + \" \" + presetStock + \"40s cold, 40s warm, 45s developer; 236 MiB disk, 620 MiB developer; podman 5.8.9.\",\n",
+      "replace": "\" + presetHost,\n",
+      "run": "TestEveryPresetCarriesAStockHostFigure",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a stop the helper finds no job for keeps its refusal",
       "file": "cmd_jobs.go",
       "find": "\t\trep, err = c.StopJob(ctx, id, *grace)\n",

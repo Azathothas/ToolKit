@@ -17055,7 +17055,7 @@ Open.
 ## WSL-197. The presets' measurements were taken on one host with a non-default `.wslconfig`
 
 **Source** the 8.0.0 builder of `WSL-188`, 2026-10-26, workflow wf_874f9bf0-e3a, from its drives on scratch instances; row 13 of `WSL-188`, split as that entry's Approach says
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -17087,7 +17087,16 @@ Each preset builds on a stock host, and its figures are recorded with that host'
 
 ## Closing
 
-Open.
+Done. Under ruling 36 this host was made a stock one for the run: the operator's `.wslconfig` was set aside, WSL shut down, and restored byte for byte after, its hash compared. WSL 3.0.3 with its own 6.18.54.1 kernel, podman's machine stopped, so each base was built with `wslc`. Each preset was built three times on its own instance and state directory: cold with an empty rootfs cache, warm, and warm with `--toolset developer`, automount and interop off. All twelve exited 0.
+
+| preset | cold | warm | developer | disk | developer disk | podman |
+| --- | --- | --- | --- | --- | --- | --- |
+| arch | 55s | 47s | 62s | 1004 MiB | 1708 MiB | 6.1.4 |
+| alpine | 40s | 40s | 45s | 236 MiB | 620 MiB | 5.8.9 |
+| debian | 49s | 57s | 155s | 588 MiB | 1740 MiB | 5.4.2 |
+| fedora | 113s | 74s | 107s | 556 MiB | 1068 MiB | 5.8.9 |
+
+`presets.go` carries each row beside the first host's figures, `base presets` prints both, and the manual says where they differ: the developer toolset took alpine 45s here against 173s, and fedora 107s against 420s. `TestEveryPresetCarriesAStockHostFigure` holds it, and its row went red on Windows.
 
 
 ## WSL-198. On Alpine a restart mounts no grant, and a read-only grant is refused
