@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z; it ends on wsl-toolkit-v8.0.0
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 8.0.0 published from 5e0bdcf, installed and driven
-entries         total 257  open 5  blocked 5  done 247
+entries         total 258  open 11  blocked 0  done 247
 this session    ruling 31, then rulings 32 to 35
 ```
 
@@ -57,7 +57,9 @@ Measured on this host unless a row says read.
 
 ## In progress
 
-Nothing. The open entries are the work order's item 13.
+Ruling 36, from 2026-10-27: every leftover of 8.0.0 is finished here, with nothing handed
+back. This host is cleaned: podman's machine pruned and compacted, the old default base
+removed with its state. `WSL-197` is building each preset on a stock host now.
 
 ## The work order, set by the operator on 2026-10-21
 
@@ -90,28 +92,12 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
 10. **The exit codes**, ruling 35: `WSL-127` and `WSL-166`. **Closed:** both in 8.0.0.
 11. **One base under a canonical name**, ruling 32: `WSL-167`, then `WSL-193`.
     **Closed:** both in 8.0.0.
-12. **Blocked, each on what its entry names**: `WSL-134`, `WSL-135`, `WSL-138`,
-    `WSL-158` and `WSL-159`.
-13. **Next**: `WSL-198`, a grant on an Alpine base after a restart, first. Then
-    `WSL-199`, `WSL-196`, `WSL-197`, which needs a stock host, and `TOOL-40`.
+12. **Unblocked by ruling 36**: `WSL-134`, `WSL-135`, `WSL-138`, `WSL-158` and `WSL-159`.
+    Each entry's Decision says how.
+13. **Next**: `WSL-197` on a stock host, then `WSL-198`, `WSL-199`, `WSL-196`, `WSL-200`
+    and `TOOL-40`, released as `wsl-toolkit-v8.1.0` with the five above.
 
 ## Open questions for the operator
 
-1. **`WSL-159`, the old record's question 3.** Should the herdr service, and so
-   every agent it starts, run in a private network namespace, at the cost of
-   rootless containers for the base account? Nothing else waits on it.
-2. **`WSL-138`, ruling 20.** Each official installer for `pi` and `omp` needs its
-   digest approved, as ruling 4 did for Muse. The session measures each and asks
-   with the numbers.
-3. **`WSL-134` and `WSL-135`** need the operator at the desktop: a real terminal
-   window, and three sign-ins.
-4. **The base disk is not sparse.** `base reclaim` needs `wsl --shutdown` first,
-   which stops every distribution, so it is the operator's step.
-5. **The consumer register is public, and three consumers are private.**
-   `docs/consumers.md` keeps the names of pg-toolkit, dash.vpn.ajam.dev and
-   tcp.ts.relay.ajam.dev, the commands each calls and what each must do, and
-   leaves out their file paths, lines and commits. Should those come back?
-6. **`WSL-197` needs a host with WSL's defaults**, to build each preset once; this
-   host's `.wslconfig` is not one.
-7. **This base keeps its older name `wsl-toolkit`.** Moving it to `wsl-toolkit-jobs`
-   deletes its disk, home and images, so it waits on the operator's word.
+None. Ruling 36 settled the seven that were here, and each entry it touches carries its
+decision. ⛔ Only a credential waits on the operator: the three sign-ins of `WSL-135`.

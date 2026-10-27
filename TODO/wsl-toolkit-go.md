@@ -14008,7 +14008,7 @@ afterwards: ~/.wsl-toolkit/shells empty, /tmp/tmp.* count 0; --private-net --roo
 ## WSL-134. A real window's focus event was never produced for herdr's `--remote` signals
 
 **Source** `WSL-76`, which closed without it under ruling 23, and the old record's question 2
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** blocked
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
 
 ---
 
@@ -14030,8 +14030,7 @@ The operator runs the client `base attach` prints in a real window, with
 
 ## Decision
 
-⚠ **Blocked on the operator**: it needs a real window at the operator's desktop
-and keyboard. No session can produce the event.
+⭐ **Unblocked by ruling 36.** A session opens a real Windows Terminal window with `wt.exe`, runs the client `base attach` prints in it beside the probe, and moves the focus with the Win32 foreground call. That is a real focus event, from a real window.
 
 ## Consumers
 
@@ -14049,13 +14048,13 @@ Signal 7 reports `seen` in a real window.
 
 ## Closing
 
-Blocked; the Decision names on what.
+Open.
 
 
 ## WSL-135. The muse-code guide was never run as one ordered pass from an empty host
 
 **Source** `WSL-78`, which closed without it under ruling 23, and the old record's question 4
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** blocked
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
 
 ---
 
@@ -14075,7 +14074,7 @@ session records the transcript.
 
 ## Decision
 
-⚠ **Blocked on the operator**: the sign-ins are the operator's credentials.
+⭐ **Unblocked by ruling 36, except three credentials.** A session runs every step in order from an empty host. At step 5 it runs each sign-in up to its credential prompt, and records what each later step answers without one. ⛔ A credential is the operator's, and only that.
 
 ## Consumers
 
@@ -14093,7 +14092,7 @@ Every step's command exits as the guide says.
 
 ## Closing
 
-Blocked; the Decision names on what.
+Open.
 
 
 ## WSL-136. A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run
@@ -14235,7 +14234,7 @@ budget, met on the first 7.0.0 attempt above (exit 124).
 ## WSL-138. An adapter installs from npm where the provider publishes an official installer
 
 **Source** ruling 20, which has had no entry since it was made
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** blocked
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
 
 ---
 
@@ -14256,8 +14255,7 @@ against an approved digest, runs it from the file it read, and falls back to npm
 
 ## Decision
 
-⚠ **Blocked on the operator**: ruling 20 says each installer's digest is an
-operator approval, as ruling 4 was for Muse. The session measures each digest and asks.
+⭐ **Decided by ruling 36.** The session reads each provider's official installer or release asset from the provider's own release, pins its SHA-256 in the adapter, and records the digest and its source here. A changed upstream digest is refused, as Muse's is.
 
 ## Consumers
 
@@ -14275,7 +14273,7 @@ Exit 0, then `base ensure` on a scratch base installs `pi` and `omp` the officia
 
 ## Closing
 
-Blocked; the Decision names on what.
+Open.
 
 
 ## WSL-139. `base ensure` leaves older herdr nightly clients on disk
@@ -15067,7 +15065,7 @@ merge: TestOnlyEnsureStartsAMuseSessionAndItsAnswerCarriesTheFinding green once 
 ## WSL-158. Without the reporter, herdr shows a Muse pane as idle
 
 **Source** the old record's finding 27
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** blocked
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
 
 ---
 
@@ -15085,7 +15083,7 @@ Re-measure with `herdr agent explain` on each nightly, and drop the reporter whe
 
 ## Decision
 
-⚠ **Blocked upstream**: the manifest rule is herdr's.
+⭐ **Unblocked by ruling 36.** A session re-measures on herdr's newest nightly. If herdr reads a local agent rule, the adapter ships one for Muse. Otherwise the reporter is the design, and the entry closes saying so.
 
 ## Consumers
 
@@ -15103,13 +15101,13 @@ A rule matches Muse's screen.
 
 ## Closing
 
-Blocked; the Decision names on what.
+Open.
 
 
 ## WSL-159. An agent started through herdr runs in the shared network namespace
 
 **Source** the old record's finding 40 and question 3
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** blocked
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
 
 ---
 
@@ -15130,8 +15128,7 @@ containers for the account, or the agents stay in the shared one.
 
 ## Decision
 
-⚠ **Blocked on the operator's ruling**, the old record's question 3, which
-`WSL-68` left unanswered. Nothing else waits on it.
+⭐ **Decided by ruling 36: an opt-in, off by default.** A base key puts herdr's service, and so every agent it starts, in a private network namespace. It says what that gives up: rootless containers for the account, from those agents. Without the key nothing changes.
 
 ## Consumers
 
@@ -15149,7 +15146,7 @@ Exit 0, then an agent's `ip link` shows the namespace.
 
 ## Closing
 
-Blocked; the Decision names on what.
+Open.
 
 
 ## WSL-160. Three command groups keep two lists of their subcommands that nothing compares
@@ -17161,6 +17158,43 @@ pwsh -NoProfile -File scripts/common/check-go.ps1
 ```
 
 Exit 0, with a case where `as_account` takes the `su` form when `runuser` is missing.
+
+---
+
+## Closing
+
+Open.
+
+## WSL-200. `gc` cleans nothing on the host once the base is gone
+
+**Source** the operator's cleanup of 2026-10-27, after `base remove` of this host's default base
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+With no base registered, `gc` and `gc --apply` print that there is nothing inside it to clean up and exit 0. The host half stays: open records, empty incoming directories and ended sessions of the removed base. `resources` lists each and says `gc --apply` clears them.
+
+## Premise
+
+Measured on this host after `base remove`: `resources` named 4 open records, 4 incoming directories and 2 gone sessions, and `gc --apply` removed none. `cmdGC` in `cmd_admin.go` returns before `Cleanup` when the base is not registered.
+
+## Approach
+
+With no base registered, `gc` plans and applies the host half alone: incoming directories, sessions of a gone base and the ledger's stale records, with the same dry run, `--json` and verdict. `resources` and `gc` then agree.
+
+## Consumers
+
+A caller that ran `gc` after `base remove` now gets its host leftovers removed. Nothing else changes.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where `gc --apply` on a home with no base removes its host leftovers and a dry run removes nothing.
 
 ---
 

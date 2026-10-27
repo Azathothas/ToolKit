@@ -361,6 +361,21 @@ ruling 34, the operator chose "Include both": the tool's own exit 2 is told apar
 a job's, and `text-tool eol` refuses a path that does not exist. Each gets a break row
 in `docs/consumers.md`. ⚠ It amends ruling 31.
 
+**36.** ⛔ **2026-10-27: nothing waits on the operator that a session can do.** 8.0.0
+shipped with a shutdown, a rename, a stock-host run and a register question handed
+back. The operator: "currently you are the only one using wsl", "i don' care about
+legacy/consumer breaks, all of them will rebuild it", and "do not ever defer again". So:
+- **This host is the session's.** It runs `wsl --shutdown`, restarts WSL's VM, removes,
+  renames and rebuilds bases, and cleans podman's machine itself. ⚠ The tool still never
+  runs `wsl --shutdown` for its users.
+- **A break needs no question.** It still gets its row in `docs/consumers.md`.
+- **A decision that waited on the operator is the session's**, with its reason in the
+  entry. Ruling 20's digests are pinned by the session from each provider's own
+  release, which amends ruling 20. `WSL-159` becomes an opt-in, off by default. The
+  register keeps the private consumers' names and commands alone.
+- ⛔ **Only a credential stays the operator's**: a password, a sign-in, a key. A session
+  runs everything up to it and says exactly where it stopped.
+
 ## 9. Before every push
 
 ⭐ **A green local gate is not CI.** Run the Go tests with `TEMP` and `TMP` at an
