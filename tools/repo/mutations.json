@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "mutate: a skip its baseline made is kept from a handed-in run",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "&& v.State != \"SKIPPED\" {",
+      "replace": "&& v.State != \"\" {",
+      "run": "TestASkipItsBaselineMadeIsKeptFromAHandedInRun",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a fake that takes a mutation row again leaves the file it holds",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/embedswap/embedswap.go",
@@ -191,12 +200,12 @@
       "args": []
     },
     {
-      "label": "mutate: only an ok is kept from a handed-in run",
+      "label": "mutate: a green handed-in run is asked again on a compile",
       "module": "tools/repo",
       "file": "internal/mutate/embed.go",
-      "find": "\tif v.State != \"ok\" {\n\t\treturn Verdict{}, false\n\t}\n\twk.p.embedded()",
-      "replace": "\tif v.State == \"\" {\n\t\treturn Verdict{}, false\n\t}\n\twk.p.embedded()",
-      "run": "TestOnlyAnOkIsKeptFromAHandedInRun",
+      "find": "\tif v.State != \"ok\" && v.State != \"SKIPPED\" {",
+      "replace": "\tif v.State == \"\" {",
+      "run": "TestAGreenHandedInRunIsCompiled",
       "args": []
     },
     {

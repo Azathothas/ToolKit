@@ -17,8 +17,9 @@
 // the receipt, a case that failed by chance in a run nothing changed would
 // certify the guard.
 //
-// ⛔ ONLY "ok" IS KEPT FROM SUCH A RUN. Any other verdict is asked again the old
-// way, on a compile, so a THEATRE, BROKEN or SKIPPED row reads as it always did.
+// ⛔ ONLY "ok" AND "SKIPPED" ARE KEPT FROM SUCH A RUN. Any other verdict is asked
+// again the old way, on a compile, so a THEATRE or BROKEN row reads as it always
+// did. A binary that missed a reader of the bytes can only stay green.
 //
 // ⚠ ONLY WHERE ONE PACKAGE HOLDS THE ROW'S CASES AND EMBEDS THE FILE. The binary
 // writes the file while its `go test` runs. A second package in that run could
@@ -168,7 +169,11 @@ func (wk *worker) onBaselineBinary(dest, name string, body, changed []byte, m Mu
 		return Verdict{}, false
 	}
 	v := judge(Verdict{Label: m.Label}, b, r, err)
-	if v.State != "ok" {
+	// ⭐ A SKIP IS KEPT TOO, and judge calls a run SKIPPED only where its
+	// baseline skipped every case as well. That host cannot run the cases, and a
+	// compile of the same bytes could not change it. Asked again, every skipped
+	// row ran twice. TOOL-40.
+	if v.State != "ok" && v.State != "SKIPPED" {
 		return Verdict{}, false
 	}
 	wk.p.embedded()

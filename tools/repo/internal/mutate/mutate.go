@@ -278,7 +278,7 @@ func Run(root string, t *Table, sel Selection, w io.Writer) ([]Verdict, error) {
 	close(stop)
 	<-stopped
 	if p.handed > 0 {
-		fmt.Fprintf(w, "  %d of %d row(s) changed an embedded file and were proved with no compile\n", p.handed, len(mine))
+		fmt.Fprintf(w, "  %d of %d row(s) changed an embedded file and were settled with no compile\n", p.handed, len(mine))
 	}
 	return p.got, nil
 }

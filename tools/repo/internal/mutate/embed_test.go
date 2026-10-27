@@ -74,8 +74,8 @@ func TestARowOnAnEmbeddedFileRunsOnItsBaselinesBinary(t *testing.T) {
 	if built := builtWith(t, logged); strings.Join(built, " ") != "refuse refuse" {
 		t.Fatalf("the runs' binaries were built with %v, want the baseline's twice and no compile of the row\n%s", built, log)
 	}
-	if !strings.Contains(log, "1 of 1 row(s) changed an embedded file and were proved with no compile") {
-		t.Fatalf("the log does not say the row was proved with no compile:\n%s", log)
+	if !strings.Contains(log, "1 of 1 row(s) changed an embedded file and were settled with no compile") {
+		t.Fatalf("the log does not say the row was settled with no compile:\n%s", log)
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "mod", "rule.txt")); err != nil || string(b) != "refuse\n" {
 		t.Fatalf("the tree's own file was changed: %q, %v", b, err)
@@ -122,12 +122,12 @@ func TestARunThatTookNothingCannotCertifyAGuard(t *testing.T) {
 	}
 }
 
-// TestOnlyAnOkIsKeptFromAHandedInRun: a package that takes the file and not
-// the variable stays green on the handed-in run, and the row is compiled.
+// TestAGreenHandedInRunIsCompiled: a package that takes the file and not the
+// variable stays green on the handed-in run, and the row is compiled.
 //
-// ⛔ A RUN THAT DID NOT GO RED IS ASKED AGAIN THE OLD WAY. Keeping its THEATRE
+// ⛔ A RUN THAT STAYED GREEN IS ASKED AGAIN THE OLD WAY. Keeping its THEATRE
 // would accuse a guard its case does catch.
-func TestOnlyAnOkIsKeptFromAHandedInRun(t *testing.T) {
+func TestAGreenHandedInRunIsCompiled(t *testing.T) {
 	t.Parallel()
 	logged := filepath.Join(t.TempDir(), "built.log")
 	root := fixtureWith(t, map[string]string{
@@ -140,6 +140,27 @@ func TestOnlyAnOkIsKeptFromAHandedInRun(t *testing.T) {
 	}
 	if built := builtWith(t, logged); strings.Join(built, " ") != "refuse refuse allow" {
 		t.Fatalf("the runs' binaries were built with %v, want the row compiled after its handed-in run stayed green\n%s", built, log)
+	}
+}
+
+// TestASkipItsBaselineMadeIsKeptFromAHandedInRun: this host cannot run the
+// case, mutated or not, and the row is not compiled to learn that again.
+//
+// ⭐ ASKED AGAIN, EVERY SKIPPED ROW RAN TWICE. On Windows many toolkit rows on
+// a script skip, and a sample of 35 took 364 s against 333 s before. TOOL-40.
+func TestASkipItsBaselineMadeIsKeptFromAHandedInRun(t *testing.T) {
+	t.Parallel()
+	logged := filepath.Join(t.TempDir(), "built.log")
+	root := fixtureWith(t, map[string]string{
+		"guard.go": embedGuard, "rule.txt": "refuse\n", "take_test.go": embedTaker(true),
+		"guard_test.go": embedCase(logged, "\tt.Skip(\"this host cannot run it\")\n"),
+	})
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{embedRow}}, Selection{Jobs: 1})
+	if got[0].State != "SKIPPED" {
+		t.Fatalf("state %q, want SKIPPED (%s)\n%s", got[0].State, got[0].Reason, log)
+	}
+	if built := builtWith(t, logged); strings.Join(built, " ") != "refuse refuse" {
+		t.Fatalf("the runs' binaries were built with %v, want the baseline's twice and no compile of the row\n%s", built, log)
 	}
 }
 
