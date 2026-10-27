@@ -25,6 +25,8 @@ tools/windows/wsl-toolkit/
                             only test files import it
   internal/parallelread     reads which parallel cases set shared state;
                             only test files import it
+  internal/toolkitsource    reads internal/toolkit's source, type-checked;
+                            only its own test files hold code
   acceptance.ps1            real-Windows acceptance runner
   consumer.ps1              published-release smoke runner. -Exe drives a
                             working-tree build instead, which is what the
@@ -125,15 +127,16 @@ the row's bytes too, because a package variable takes them first.
 
 ⭐ **A new embedded file goes in the tables of
 `internal/toolkit/mutate_embed_test.go`.**
-`TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing, a file two
-variables embed, and a package variable set from an embedded one. `TOOL-40`.
+`internal/toolkitsource` refuses one that is missing, a file two variables
+embed, and a package variable set from an embedded one. It is its own package,
+so the test binary every row links again does not link `go/types`. `TOOL-40`.
 
 ⭐ **A case that sets nothing shared calls `parallelCase`, and runs beside the
 others like it.** ⛔ A case that calls `t.Setenv`, changes the working directory
 or sets a package variable of any package stays serial. That holds through
 every function of this package it calls or passes on, to any depth.
-`TestNoParallelCaseSetsWhatAnotherReads` reads that from the type-checked
-source, with `internal/parallelread`. A method called on a package variable
+`TestNoParallelCaseSetsWhatAnotherReads` in `internal/toolkitsource` reads that
+from the type-checked source, with `internal/parallelread`. A method called on a package variable
 sets it, unless the method only reads, and so do `delete`, `clear`, `copy`,
 `append` and `&`.
 
