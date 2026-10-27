@@ -146,6 +146,87 @@ func TestGCWithNoBaseCleansThisMachinesHalf(t *testing.T) {
 	}
 }
 
+// ⛔ `gc` CHOOSES THIS MACHINE'S HALF WHERE THE BASE IS GONE, FOR BOTH ROUTES. The
+// command chose for itself, so its choice was proved only where wsl.exe runs. GC
+// chooses for the command and the helper, and a registered base is never
+// cleaned as a gone one. WSL-200.
+func TestGCChoosesThisMachinesHalfWhereTheBaseIsGone(t *testing.T) {
+	n := newNoBaseHome(t)
+	ctx := context.Background()
+	var said []string
+	n.r.log = func(s string) { said = append(said, s) }
+	plan, err := n.r.GC(ctx, false, CleanupPolicy{}, false)
+	if err != nil || !plan.DryRun || len(plan.HostDirs) != 2 || len(plan.Sessions) != 1 {
+		t.Fatalf("gc with no base planned %+v, %v; want the two host directories and the session", plan, err)
+	}
+	for _, p := range []string{n.incoming, n.job, n.session} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("the dry run removed %s: %v", p, err)
+		}
+	}
+	plan, err = n.r.GC(ctx, true, CleanupPolicy{}, false)
+	if err != nil || plan.DryRun || len(plan.Entries) != 3 {
+		t.Fatalf("gc --apply with no base answered %+v, %v", plan, err)
+	}
+	for _, p := range []string{n.incoming, n.job, n.session} {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("gc --apply with no base left %s: %v", p, err)
+		}
+	}
+	if got := n.openRecords(t); got != 0 {
+		t.Errorf("gc --apply with no base left %d record(s) open, want none", got)
+	}
+
+	// ⛔ A REGISTERED BASE IS CLEANED WITH ITS GUEST. The fake refuses the guest's
+	// scripts, so that cleanup fails, and it never reads the base as gone.
+	n.h.say(t, "registered", fakeBaseName)
+	said = nil
+	_, _ = n.r.GC(ctx, false, CleanupPolicy{}, false)
+	if s := strings.Join(said, "\n"); strings.Contains(s, "is not registered") {
+		t.Errorf("a registered base was cleaned as a gone one:\n%s", s)
+	}
+}
+
+// ⛔ AN INSTANCE WITH NO BASE STILL REFUSES AN ID NOTHING IN IT BELONGS TO, and
+// still narrows to one it holds. The command refused it before it chose, and GC
+// refuses it from the survey it cleans. WSL-115, WSL-200.
+func TestGCWithNoBaseStillRefusesAnUnknownJob(t *testing.T) {
+	n := newNoBaseHome(t)
+	ctx := context.Background()
+	if _, err := n.r.GC(ctx, true, CleanupPolicy{Job: "dddddddddddddddd"}, false); !errors.Is(err, ErrUnknownJob) {
+		t.Fatalf("an id nothing here belongs to answered %v; want the unknown-job refusal", err)
+	}
+	for _, p := range []string{n.incoming, n.job, n.session} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("a refused cleanup removed %s: %v", p, err)
+		}
+	}
+	plan, err := n.r.GC(ctx, false, CleanupPolicy{Job: noBaseJob}, false)
+	if err != nil || len(plan.HostDirs) != 1 || plan.HostDirs[0] != n.job || len(plan.Sessions) != 0 {
+		t.Fatalf("an id this instance holds answered %+v, %v; want its host directory alone", plan, err)
+	}
+}
+
+// ⚠ A WSL THAT CANNOT BE ASKED CLEANS UP NEITHER HALF. Read as no base, a
+// refused listing would remove this machine's half of a base that is still
+// registered. The command exits 2 over it, as it did when it asked. WSL-200.
+func TestGCThatCannotAskWSLCleansNothing(t *testing.T) {
+	n := newNoBaseHome(t)
+	n.h.say(t, "listing", "denied")
+	plan, err := n.r.GC(context.Background(), true, CleanupPolicy{}, false)
+	if !errors.Is(err, ErrRegistrationUnread) || !errors.Is(err, ErrWslDenied) || plan.Schema != CleanupSchema || len(plan.Entries) != 0 {
+		t.Fatalf("gc that could not ask WSL answered %+v, %v; want the unread refusal and an empty plan", plan, err)
+	}
+	for _, p := range []string{n.incoming, n.job, n.session} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("gc that could not ask WSL removed %s: %v", p, err)
+		}
+	}
+	if got := n.openRecords(t); got != 3 {
+		t.Errorf("gc that could not ask WSL closed records: %d open, want 3", got)
+	}
+}
+
 // ⛔ THE POLICY IS THE ONE A CLEANUP WITH A BASE HAS. A transfer still in flight
 // is kept, a job nothing here belongs to is refused, and a build that holds the
 // base's lock keeps its record. WSL-200.

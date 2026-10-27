@@ -12,6 +12,28 @@ import (
 	"time"
 )
 
+// ErrRegistrationUnread is a `gc` that could not ask WSL whether the base is
+// registered, so it cleaned up neither half. WSL-200.
+var ErrRegistrationUnread = errors.New("WSL could not say whether the base is registered, so nothing was cleaned up")
+
+// GC is the cleanup `gc` runs, directly or through the helper: the cleanup with a
+// base where the base is registered, and this machine's half alone where it is
+// not. WSL-200.
+//
+// ⛔ ONE CHOICE FOR BOTH ROUTES. The command and the helper each chose for
+// themselves, and the command's choice could be proved only where wsl.exe runs.
+// A host without it could not see the fix go.
+func (r *Runner) GC(ctx context.Context, apply bool, policy CleanupPolicy, images bool) (CleanupPlan, error) {
+	registered, err := r.wsl.Exists(ctx, r.cfg.Base.Name)
+	if err != nil {
+		return CleanupPlan{Schema: CleanupSchema, DryRun: !apply, Entries: []CleanupEntry{}}, fmt.Errorf("%w: %w", ErrRegistrationUnread, err)
+	}
+	if !registered {
+		return r.CleanupHost(ctx, apply, policy)
+	}
+	return r.Cleanup(ctx, apply, policy, images)
+}
+
 // CleanupHost is a cleanup for an instance whose base is not registered: this
 // machine's half alone, with the plan, the dry run, the entries and the verdict
 // a cleanup with a base has. WSL-200.

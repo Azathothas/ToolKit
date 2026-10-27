@@ -3,13 +3,16 @@
 package toolkit
 
 import (
+	"context"
 	_ "embed"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
 // How the base's engines reach a registry: a mirror tried before a registry, and
@@ -232,6 +235,53 @@ func registryEnv(r *RegistryConfig) map[string]string {
 		"TK_REGISTRY_MIRRORS_B64": enc(mirrorsDropIn(r)),
 		"TK_REGISTRY_PROXY_B64":   enc(proxyDropIn(r)),
 	}
+}
+
+// registryComplete is the last line the registry run prints.
+const registryComplete = "registry-complete"
+
+// registryRequest is mirrors.sh run on its own, as root: base.registry's two
+// drop-ins, and a line for each one that changed. WSL-196.
+func (b *Base) registryRequest(out io.Writer) ExecRequest {
+	script := "set -u\nsay() { printf '%s\\n' \"$*\"; }\n" + string(mirrorsScript) +
+		"\napply_registry_settings || exit 3\nprintf '%s\\n' '" + registryComplete + "'\n"
+	return ExecRequest{
+		Distro: b.cfg.Base.Name, User: "root", Script: []byte(script),
+		Env: registryEnv(b.cfg.Base.Registry), Timeout: time.Minute, Stdout: out, Stderr: out,
+	}
+}
+
+// applyRegistry writes base.registry's two drop-ins on their own, and says
+// whether either one changed. WSL-196.
+//
+// ⛔ THE PROBE PULLS BEFORE engines.sh RUNS. A base that needs a mirror or a proxy
+// to pull its probe image never got the key that reaches it. The pull was not
+// judged, ensure refused, and the refusal said to wait for a registry that only
+// the unapplied key reaches. Ensure runs this before that refusal, and probes
+// once more where a file changed.
+//
+// ⛔ ONLY THE OWNER WRITES THEM, as only the owner runs engines.sh. WSL-167.
+func (b *Base) applyRegistry(ctx context.Context) bool {
+	if err := b.assertOwner("changed", "base ensure"); err != nil {
+		return false
+	}
+	out := &prefixWriter{to: func(line string) {
+		if line != registryComplete {
+			b.log(line)
+		}
+	}}
+	code, err := b.wsl.Exec(ctx, b.registryRequest(out))
+	out.Flush()
+	seen := strings.TrimSpace(out.seen.String())
+	if err != nil || code != 0 || !strings.Contains(seen, registryComplete) {
+		reason := seen[strings.LastIndex(seen, "\n")+1:]
+		if reason == "" && err != nil {
+			reason = err.Error()
+		}
+		b.log(fmt.Sprintf("base.registry's drop-ins could not be written, exit %d: %s", code, reason))
+		return false
+	}
+	return strings.Contains(seen, "registry mirrors: ") || strings.Contains(seen, "engine proxy: ")
 }
 
 // RegistryRows is base.registry as `config` and `base status` print it, one row

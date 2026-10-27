@@ -490,7 +490,7 @@ It plans and removes these, with the same dry run, `--json`, entries and exit co
 | what | when |
 | --- | --- |
 | a job's host directory, and an incoming, upload or artifact directory | as with a base |
-| a session | its distribution is not registered |
+| a session | it ended, or its distribution is not registered. A session in a distribution that is still registered is asked of that guest, as with a base |
 | an open record | its directory is gone, or it names a guest directory in a distribution that is not registered. The gone base's build record is closed too |
 
 The rules a cleanup with a base keeps still hold:
@@ -502,7 +502,10 @@ The rules a cleanup with a base keeps still hold:
 - A build that holds the base's lock keeps its record, and so does a build whose
   distribution was registered meanwhile.
 - `--caches` and `--images` find nothing: both live in the base's engine.
-- It runs through the helper too.
+- It runs through the helper too, which makes the same choice.
+- ⚠ A `gc` that cannot ask WSL whether the base is registered cleans up neither
+  half. Called directly, it exits 2 and prints no plan. Through the helper, it
+  exits 1 with the helper's reason.
 
 Measured on a scratch home whose base was removed with a session running and a
 killed client's incoming directory. `resources` listed both and one open record.
@@ -1114,7 +1117,11 @@ proxy their traffic takes. Each base was set up by hand inside the guest before.
 
 - ⭐ **Provisioning writes it**, so a new base pulls through it from its first pull.
 - ⭐ **Every owner's `base ensure` writes it too**, so a working base takes a change
-  with no rebuild and no restart. A key taken away removes both files.
+  with no rebuild and no restart. A key taken away removes both files. A file that
+  already holds the same bytes is left alone, and no line is printed for it.
+- ⭐ **A probe that could not pull gets it first.** The owner's `base ensure` writes
+  both files before it refuses a probe that was not judged. Where either one
+  changed, the probe is asked once more.
 - The files are `/etc/containers/registries.conf.d/99-wsl-toolkit-mirrors.conf` and
   `/etc/containers/containers.conf.d/99-wsl-toolkit-proxy.conf`. Root's engine reads
   them as the account's does, so the QEMU step pulls through them too.
@@ -2783,6 +2790,11 @@ first, with a bound of 120 seconds. A pull that failed answers `not judged:
 registry docker.io unreachable`, with the registry's own reason. `base ensure` then
 exits 2 and changes nothing: no provisioning, no restart and no rebuild. `base status
 --probe` exits 1 with the same problem. `WSL-174`
+
+⭐ **A pull that needs `base.registry` gets it first.** The probe runs before the step
+that writes the key, so a base that reaches its registry only through a mirror or a
+proxy never got either. The owner's `base ensure` writes both drop-ins before it
+refuses, and asks the probe once more where either one changed. `WSL-196`
 
 ⛔ **A reason the tool does not know is not judged.** A blob fetch cut off with `EOF`,
 a `GOAWAY` or `context deadline exceeded` keeps the base. Only the base's own causes

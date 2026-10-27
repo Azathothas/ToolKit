@@ -938,7 +938,25 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 			// Re-provisioning over a registry that refused the probe image ran a
 			// full upgrade, restarted WSL's VM under every job, and could end in a
 			// rebuild. This refuses and keeps the base as it is. WSL-174.
+			//
+			// ⛔ base.registry IS WRITTEN FIRST. The probe pulls before engines.sh
+			// runs, so a base that needs a mirror or a proxy to reach the registry
+			// never got the key, and the refusal said to wait for a registry only
+			// the key reaches. A change is probed once more. WSL-196.
 			var nj *ProbeNotJudgedError
+			if errors.As(last, &nj) && b.applyRegistry(ctx) {
+				b.log("base.registry's drop-ins changed, so the engine is asked once more")
+				report, err := b.verify(ctx)
+				if err == nil {
+					b.log("the engine answers: " + report.Engine)
+					for _, h := range report.Held {
+						b.log("another configuration's grant stays mounted: " + h)
+					}
+					return b.finishEnsure(ctx, st)
+				}
+				b.log("it still cannot: " + err.Error())
+				last = err
+			}
 			if errors.As(last, &nj) {
 				b.log("⛔ THE BASE WAS NOT JUDGED, so it is left as it is: " + nj.Error())
 				return st, b.notJudgedRefusal(nj)

@@ -3,10 +3,13 @@
 package toolkit
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -215,6 +218,36 @@ func TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey(t *testing.
 			t.Errorf("base.registry changed %s:\n%s", rel, got[rel])
 		}
 	}
+
+	const (
+		mirrors = "etc/containers/registries.conf.d/99-wsl-toolkit-mirrors.conf"
+		proxy   = "etc/containers/containers.conf.d/99-wsl-toolkit-proxy.conf"
+	)
+	// ⭐ THE SAME KEY AGAIN WRITES NOTHING AND SAYS NOTHING, as engines.sh's own
+	// files do. WSL-196.
+	out = engineSettingsRun(t, with, r)
+	if strings.Contains(out, "registry mirrors") || strings.Contains(out, "engine proxy") {
+		t.Errorf("the same base.registry again was reported as a change:\n%s", out)
+	}
+	if again := listTree(t, with); again[mirrors] != mirrorsDropIn(r) || again[proxy] != proxyDropIn(r) {
+		t.Errorf("the same base.registry again changed a drop-in: %v", again)
+	}
+	// ⛔ A KEY TAKEN AWAY TAKES BOTH FILES, and says so, on any host. The case for
+	// engines.sh needs a POSIX host; this one runs in Git's sh too. WSL-196.
+	narrowed := &RegistryConfig{Mirrors: map[string][]string{"docker.io": {"mirror.gcr.io"}}}
+	out = engineSettingsRun(t, with, narrowed)
+	if got = listTree(t, with); got[mirrors] != mirrorsDropIn(narrowed) || got[proxy] != "" ||
+		!strings.Contains(out, "registry mirrors: ") || !strings.Contains(out, "engine proxy: none, so ") {
+		t.Errorf("a proxy taken away left %q, or the mirrors read %q:\n%s", got[proxy], got[mirrors], out)
+	}
+	out = engineSettingsRun(t, with)
+	got = listTree(t, with)
+	if _, ok := got[mirrors]; ok || !strings.Contains(out, "registry mirrors: none, so ") {
+		t.Errorf("a key taken away left the mirrors drop-in:\n%s", out)
+	}
+	if len(got) != len(files) {
+		t.Errorf("a key taken away left %d file(s), want the %d of a base that never had it: %v", len(got), len(files), got)
+	}
 }
 
 // ⛔ EVERY OWNER'S ENSURE WRITES base.registry's DROP-INS, the same bytes, and a
@@ -235,6 +268,10 @@ func TestEnginesShWritesTheRegistryDropInsAndTakesThemAway(t *testing.T) {
 	if h.read(mirrors) != mirrorsDropIn(h.registry) || h.read(proxy) != proxyDropIn(h.registry) {
 		t.Fatalf("engines.sh wrote mirrors %q and proxy %q\n%s", h.read(mirrors), h.read(proxy), out)
 	}
+	// ⭐ An ensure that changes nothing says nothing about either file.
+	if out, _ = h.run(false, false, false); strings.Contains(out, "registry mirrors") || strings.Contains(out, "engine proxy") {
+		t.Errorf("the same base.registry again was reported as a change:\n%s", out)
+	}
 	h.registry = &RegistryConfig{Mirrors: map[string][]string{"docker.io": {"mirror.gcr.io"}}}
 	h.run(false, false, false)
 	if h.read(mirrors) != mirrorsDropIn(h.registry) || h.read(proxy) != "" {
@@ -244,6 +281,80 @@ func TestEnginesShWritesTheRegistryDropInsAndTakesThemAway(t *testing.T) {
 	out, _ = h.run(false, false, false)
 	if _, err := os.Stat(h.path(mirrors)); !os.IsNotExist(err) || !strings.Contains(out, "registry mirrors: none") {
 		t.Errorf("a key taken away left the mirrors drop-in (%v):\n%s", err, out)
+	}
+}
+
+// ⛔ A GUEST THAT CANNOT TAKE A SUM STILL GETS THE NEW FILE. Two empty sums would
+// match, so a base without sha256sum would keep a stale drop-in and say nothing.
+// Run in a real shell, with sha256sum refused. WSL-196.
+func TestARegistryDropInIsWrittenWhereNoSumCanBeTaken(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX shell on this host")
+	}
+	path := seedFile(t, t.TempDir(), "registries.conf.d/99-wsl-toolkit-mirrors.conf", "a stale drop-in\n")
+	want := mirrorsDropIn(testRegistry())
+	script := "set -eu\nsay() { printf '%s\\n' \"$*\"; }\nsha256sum() { return 127; }\n" + string(mirrorsScript) +
+		"\nregistry_drop_in '" + filepath.ToSlash(path) + "' '" + base64.StdEncoding.EncodeToString([]byte(want)) + "' 'registry mirrors'\n"
+	out, err := exec.Command(sh, "-c", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("the drop-in writer failed: %v\n%s", err, out)
+	}
+	if got, _ := os.ReadFile(path); string(got) != want || !strings.Contains(string(out), "registry mirrors: ") {
+		t.Errorf("a guest without sha256sum kept %q and said %q", got, out)
+	}
+}
+
+// ⛔ A PROBE THAT COULD NOT PULL IS HANDED base.registry BEFORE IT IS REFUSED. The
+// probe pulls before engines.sh runs, so a base that reaches its registry only
+// through the key never got it, and every ensure refused it. The owner writes
+// both drop-ins, and a change is probed once more. The base is kept as it is:
+// no re-provisioning and no restart. WSL-196.
+func TestAProbeThatCouldNotPullIsHandedBaseRegistryFirst(t *testing.T) {
+	h := newFakeHost(t)
+	b, s, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	b.cfg.Base.Registry = testRegistry()
+	h.stageGuest(t, "verify=unpullable-until-registry", "registry=changed", "binfmt=ok")
+	if _, err := b.EnsureWith(context.Background(), false, false); err != nil {
+		t.Fatalf("a base that reaches its registry through base.registry answered %v\n%s", err, strings.Join(s.lines, "\n"))
+	}
+	ran, err := os.ReadFile(filepath.Join(h.state, "registry.script"))
+	if err != nil || assigned(ran, "TK_REGISTRY_MIRRORS_B64") != registryEnv(b.cfg.Base.Registry)["TK_REGISTRY_MIRRORS_B64"] {
+		t.Fatalf("the registry run was not handed base.registry's drop-ins: %v", err)
+	}
+	if !s.said("registry mirrors: "+MirrorsDropIn) || !s.said("asked once more") || s.said(registryComplete) {
+		t.Errorf("the ensure did not say what it wrote and that it asked again: %v", s.lines)
+	}
+	if s.said("re-provisioning") || callAt(h.calls(t), "wsl --terminate") >= 0 {
+		t.Errorf("the ensure re-provisioned or restarted the base: %v", s.lines)
+	}
+	assertKept(t, h, b, disk)
+}
+
+// ⛔ ONLY THE OWNER WRITES THEM, AND DROP-INS THAT CHANGE NOTHING KEEP THE
+// REFUSAL. A guest's ensure leaves them as the owner set them, as it leaves the
+// engines. An owner whose drop-ins are current is refused as before, and its
+// probe is not asked again. WSL-196, WSL-174.
+func TestAProbeThatCouldNotPullKeepsItsRefusalWhereNothingChanges(t *testing.T) {
+	for _, guest := range []bool{true, false} {
+		h := newFakeHost(t)
+		b, s, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+		b.cfg.Base.Registry = testRegistry()
+		b.guest = guest
+		h.stageGuest(t, "verify=unpullable", "registry=same", "binfmt=ok")
+		_, err := b.EnsureWith(context.Background(), false, false)
+		var nj *ProbeNotJudgedError
+		if !errors.As(err, &nj) {
+			t.Fatalf("guest %v: a probe that could not pull answered %v; want it not judged", guest, err)
+		}
+		_, statErr := os.Stat(filepath.Join(h.state, "registry.script"))
+		if ran := statErr == nil; ran == guest {
+			t.Errorf("guest %v: the registry run ran %v; only the owner's ensure runs it", guest, ran)
+		}
+		if s.said("asked once more") {
+			t.Errorf("guest %v: the probe was asked again where nothing changed: %v", guest, s.lines)
+		}
+		assertKept(t, h, b, disk)
 	}
 }
 

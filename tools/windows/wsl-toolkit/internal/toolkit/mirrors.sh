@@ -5,7 +5,8 @@
 # ahead of provision.sh, so a new base pulls through them from its first pull,
 # and every owner's `base ensure` carries it ahead of engines.sh, so a base that
 # already works takes a changed key with no rebuild. Both call
-# apply_registry_settings.
+# apply_registry_settings. An owner's ensure whose probe could not pull runs it
+# on its own first, since the probe runs before engines.sh.
 #
 # TK_REGISTRY_MIRRORS_B64 and TK_REGISTRY_PROXY_B64 are each drop-in's text, as
 # the executable rendered it, and empty where the key names none.
@@ -16,7 +17,7 @@
 
 # >>> the registry settings: begin
 # registry_drop_in PATH B64 WHAT writes PATH from B64, or removes it where B64 is
-# empty, and says which.
+# empty, and says which. It says nothing where PATH already holds those bytes.
 registry_drop_in() {
   if [ -z "$2" ]; then
     [ -e "$1" ] || return 0
@@ -26,6 +27,15 @@ registry_drop_in() {
   fi
   mkdir -p "${1%/*}" || return 1
   printf '%s' "$2" | base64 -d > "$1.new" || { rm -f "$1.new"; return 1; }
+  # ⭐ THE SAME BYTES LEAVE THE FILE ALONE AND PRINT NOTHING, as engines.sh's
+  # install_file does, so an ensure that changes nothing says nothing. ⚠ NOT cmp,
+  # which a base with no toolset does not carry. ⛔ An empty sum is no match, so
+  # a guest without sha256sum still gets the file. WSL-196.
+  tk_registry_sum=$(sha256sum < "$1.new" 2>/dev/null) || tk_registry_sum=
+  if [ -n "$tk_registry_sum" ] && [ -f "$1" ] && [ "$tk_registry_sum" = "$(sha256sum < "$1" 2>/dev/null)" ]; then
+    rm -f "$1.new"
+    return 0
+  fi
   chmod 0644 "$1.new" || { rm -f "$1.new"; return 1; }
   mv -f "$1.new" "$1" || return 1
   say "$3: $1"

@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -45,33 +44,16 @@ func TestGCRefusesANarrowingItCannotHonour(t *testing.T) {
 	}
 }
 
-// ⛔ An instance with no base still refuses an id nothing in it belongs to, and
-// still answers for one it holds. A correctness review found the first exit 0.
-func TestAnInstanceWithNoBaseStillRefusesAnUnknownJob(t *testing.T) {
-	home := t.TempDir()
-	policy := toolkit.CleanupPolicy{Job: cliJobID}
-	if err := unregisteredJobRefusal(home, policy); !errors.Is(err, toolkit.ErrUnknownJob) {
-		t.Fatalf("an id nothing here belongs to answered %v", err)
-	}
-	owner, err := toolkit.ClaimJob(home, cliJobID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	owner.Release()
-	if err := unregisteredJobRefusal(home, policy); err != nil {
-		t.Fatalf("an id this instance holds was refused: %v", err)
-	}
-	if err := unregisteredJobRefusal(home, toolkit.CleanupPolicy{}); err != nil {
-		t.Fatalf("a cleanup naming no job was refused: %v", err)
-	}
-}
-
 // ⛔ A refusal prints no plan: an empty document beside it reads as a cleanup
 // that found nothing to do.
+//
+// ⚠ AND A CLEANUP THAT COULD NOT ASK WHETHER THE BASE IS REGISTERED is one. The
+// command asked before it chose, and exited 2 with no plan. WSL-200.
 func TestARefusedCleanupExitsTwoAndPrintsNoPlan(t *testing.T) {
 	for _, err := range []error{
 		fmt.Errorf("%w: %s", toolkit.ErrUnknownJob, cliJobID),
 		toolkit.ErrWorkspaceViaHelper,
+		fmt.Errorf("%w: %w", toolkit.ErrRegistrationUnread, toolkit.ErrWslDenied),
 	} {
 		var code int
 		var got error

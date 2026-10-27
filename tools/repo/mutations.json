@@ -2,6 +2,78 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: gc that cannot ask WSL cleans up neither half",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tif err != nil {\n\t\treturn CleanupPlan{Schema: CleanupSchema, DryRun: !apply, Entries: []CleanupEntry{}}, fmt.Errorf(\"%w: %w\", ErrRegistrationUnread, err)\n\t}\n",
+      "replace": "\t_ = err\n",
+      "run": "TestGCThatCannotAskWSLCleansNothing",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc that cannot ask WSL exits 2 with no plan",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_admin.go",
+      "find": "\tif errors.Is(err, toolkit.ErrRegistrationUnread) {\n\t\treturn exitCannot, err\n\t}\n",
+      "replace": "",
+      "run": "TestARefusedCleanupExitsTwoAndPrintsNoPlan",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a probe that could not pull is handed base.registry first",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "if errors.As(last, &nj) && b.applyRegistry(ctx) {",
+      "replace": "if errors.As(last, &nj) && false {",
+      "run": "TestAProbeThatCouldNotPullIsHandedBaseRegistryFirst",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only the owner writes base.registry before a refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\tif err := b.assertOwner(\"changed\", \"base ensure\"); err != nil {\n\t\treturn false\n\t}\n",
+      "replace": "",
+      "run": "TestAProbeThatCouldNotPullKeepsItsRefusalWhereNothingChanges",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry run that changed nothing asks the probe no second time",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\treturn strings.Contains(seen, \"registry mirrors: \") || strings.Contains(seen, \"engine proxy: \")\n",
+      "replace": "\treturn true\n",
+      "run": "TestAProbeThatCouldNotPullKeepsItsRefusalWhereNothingChanges",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the registry run is handed base.registry's drop-ins",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\t\tEnv: registryEnv(b.cfg.Base.Registry), Timeout: time.Minute, Stdout: out, Stderr: out,\n",
+      "replace": "\t\tEnv: map[string]string{}, Timeout: time.Minute, Stdout: out, Stderr: out,\n",
+      "run": "TestAProbeThatCouldNotPullIsHandedBaseRegistryFirst",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry drop-in that holds the same bytes is left alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.sh",
+      "find": "  if [ -n \"$tk_registry_sum\" ] && [ -f \"$1\" ] && [ \"$tk_registry_sum\" = \"$(sha256sum < \"$1\" 2>/dev/null)\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey|TestEnginesShWritesTheRegistryDropInsAndTakesThemAway",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a guest without sha256sum still gets the new drop-in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.sh",
+      "find": "[ -n \"$tk_registry_sum\" ] && [ -f \"$1\" ]",
+      "replace": "[ -f \"$1\" ]",
+      "run": "TestARegistryDropInIsWrittenWhereNoSumCanBeTaken",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base.registry survives loading",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/catalog.go",
@@ -160,7 +232,7 @@
       "file": "internal/toolkit/mirrors.sh",
       "find": "    rm -f \"$1\" || return 1\n",
       "replace": "",
-      "run": "TestEnginesShWritesTheRegistryDropInsAndTakesThemAway",
+      "run": "TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey|TestEnginesShWritesTheRegistryDropInsAndTakesThemAway",
       "args": []
     },
     {
@@ -193,18 +265,18 @@
     {
       "label": "wsl-toolkit: gc with no base cleans this machine's half",
       "module": "tools/windows/wsl-toolkit",
-      "file": "cmd_admin.go",
-      "find": "\t\tplan, err := runner.CleanupHost(ctx, *apply, policy)\n\t\treturn finishGC(plan, err, *asJSON)\n",
-      "replace": "\t\treturn exitOK, nil\n",
-      "run": "TestGCWithNoBaseRemovesThisMachinesHalf",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tif !registered {\n\t\treturn r.CleanupHost(ctx, apply, policy)\n\t}\n",
+      "replace": "\t_ = registered\n",
+      "run": "TestGCChoosesThisMachinesHalfWhereTheBaseIsGone|TestTheHelpersGCWithNoBaseCleansThisMachinesHalf",
       "args": []
     },
     {
       "label": "wsl-toolkit: the helper's gc with no base cleans this machine's half",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/helper.go",
-      "find": "regErr == nil && !registered {",
-      "replace": "regErr == nil && !registered && false {",
+      "find": "\tplan, err := h.runner.GC(r.Context(), req.Apply, policy, req.Images)\n",
+      "replace": "\tplan, err := h.runner.Cleanup(r.Context(), req.Apply, policy, req.Images)\n",
       "run": "TestTheHelpersGCWithNoBaseCleansThisMachinesHalf",
       "args": []
     },
@@ -11325,10 +11397,10 @@
     },
     {
       "label": "wsl-toolkit: an instance with no base refuses an unknown gc --job",
-      "file": "cmd_admin.go",
-      "find": "\tif js, err := toolkit.ReadJobState(home, policy.Job); err == nil && js.Known {\n\t\treturn nil\n\t}\n",
-      "replace": "\tif true {\n\t\treturn nil\n\t}\n",
-      "run": "TestAnInstanceWithNoBaseStillRefusesAnUnknownJob",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tnote, err := policy.Unmatched(targets)\n\tif err != nil {\n\t\treturn plan, err\n\t}\n",
+      "replace": "\tnote, _ := policy.Unmatched(targets)\n",
+      "run": "TestGCWithNoBaseStillRefusesAnUnknownJob|TestGCWithNoBaseKeepsWhatACleanupWithABaseKeeps",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },

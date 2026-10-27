@@ -262,43 +262,12 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	st, err := runner.Base().Status(ctx, false)
-	if err != nil {
-		return exitCannot, err
-	}
-	if !st.Registered {
-		home, err := toolkit.Home()
-		if err != nil {
-			return exitCannot, err
-		}
-		if err := unregisteredJobRefusal(home, policy); err != nil {
-			return exitCannot, err
-		}
-		// ⛔ THIS MACHINE'S HALF IS STILL CLEANED UP. gc returned here, so the
-		// records, incoming directories and sessions `resources` listed stayed,
-		// and `gc --apply` removed none of them. WSL-200.
-		plan, err := runner.CleanupHost(ctx, *apply, policy)
-		return finishGC(plan, err, *asJSON)
-	}
-	plan, err := runner.Cleanup(ctx, *apply, policy, *images)
+	// ⛔ WITH NO BASE, THIS MACHINE'S HALF IS STILL CLEANED UP. gc returned before
+	// it looked, so the records, incoming directories and sessions `resources`
+	// listed stayed. The runner chooses the half, as it does for the helper, and
+	// refuses there a job nothing in this instance belongs to. WSL-200, WSL-115.
+	plan, err := runner.GC(ctx, *apply, policy, *images)
 	return finishGC(plan, err, *asJSON)
-}
-
-// unregisteredJobRefusal refuses a --job that nothing in this instance belongs
-// to, for an instance whose base is not registered and so has no guest to ask.
-//
-// ⛔ THE REFUSAL WAS MADE ONLY FROM WHAT THE GUEST HOLDS. An instance with no
-// base returned before it was asked, so an id from another instance exited 0
-// there, which is WSL-115's own defect. A correctness review found it.
-func unregisteredJobRefusal(home string, policy toolkit.CleanupPolicy) error {
-	if policy.Job == "" {
-		return nil
-	}
-	if js, err := toolkit.ReadJobState(home, policy.Job); err == nil && js.Known {
-		return nil
-	}
-	_, err := policy.Unmatched(nil)
-	return err
 }
 
 // finishGC renders a cleanup and turns it into an exit code.
@@ -307,6 +276,11 @@ func unregisteredJobRefusal(home string, policy toolkit.CleanupPolicy) error {
 // beside the refusal reads as a cleanup that found nothing to do. WSL-115.
 func finishGC(plan toolkit.CleanupPlan, err error, asJSON bool) (int, error) {
 	if errors.Is(err, toolkit.ErrUnknownJob) || errors.Is(err, toolkit.ErrWorkspaceViaHelper) {
+		return exitCannot, err
+	}
+	// ⚠ A CLEANUP THAT COULD NOT ASK WHETHER THE BASE IS REGISTERED attempted
+	// nothing, and exits 2 with no plan, as it did when the command asked. WSL-200.
+	if errors.Is(err, toolkit.ErrRegistrationUnread) {
 		return exitCannot, err
 	}
 	if asJSON {
