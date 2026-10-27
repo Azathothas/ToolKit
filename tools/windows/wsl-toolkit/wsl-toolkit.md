@@ -1589,19 +1589,19 @@ row prints only where the key is on, probed or not. Those agents give up two thi
   because guest root can leave any namespace.
 - ✅ Muse's own sandbox still runs, because `bwrap` needs no privilege.
 
-| measured in a herdr pane on an Arch base | without the key | with `private_net` |
+| measured in a herdr pane on one Arch base, both ways | without the key | with `private_net` |
 | --- | --- | --- |
 | the network namespace | the shared one | ⭐ its own |
 | `ip -o link` | `lo`, `eth0` | `lo` and pasta's own `eth0` |
 | the Windows host, ICMP | answered | ⭐ **refused** |
 | the internet, `https://example.com` | `200` | `200` |
-| a service on the shared namespace's `127.0.0.1` | reached | ⭐ **refused** |
+| a service on the shared namespace's `127.0.0.1` | `200` | ⭐ **refused** |
 | `id -u` | the account's | the account's |
-| `nft flush ruleset` | | ⭐ `Operation not permitted` |
-| `systemd-run --user` | | ⭐ no user bus to reach |
-| `sudo -n true` | runs | ⛔ refused, `no new privileges` |
-| `podman run` | runs | ⛔ refused |
-| `bwrap --unshare-net` | runs | runs |
+| `nft flush ruleset` | `Operation not permitted` | `Operation not permitted`, so the rules hold |
+| `systemd-run --user`, with `XDG_RUNTIME_DIR` set | exit 0, a unit outside the pane | ⭐ **refused**, `Operation not permitted` |
+| `sudo -n true` | exit 0 | ⛔ refused, `no new privileges` |
+| `podman run` | exit 0 | ⛔ exit 125, `newuidmap` |
+| `bwrap --unshare-net` | exit 0 | exit 0 |
 
 ⭐ **Root makes this namespace, and not the account.** `base exec --private-net` runs
 pasta as the account, which makes the payload uid 0 in a user namespace. Every agent
