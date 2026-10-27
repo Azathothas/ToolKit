@@ -23,12 +23,17 @@
 # HARD RULE: THE SIGNAL COUNT IS ASSERTED. A table that stopped early exits 0 over
 # a smaller suite, which is the shape a check takes on its way to reporting nothing.
 #
-# WHAT IT CANNOT MEASURE: a real focus event. A pseudo console has no window, so
-# signal 6 is reported `operator` and never `pass`. It is the one thing in this
-# file that needs a person at a real Windows Terminal.
+# A REAL FOCUS EVENT NEEDS A REAL WINDOW. A pseudo console has no window, so
+# without -RealWindow signal 7 is reported `operator` and never `pass`. With it,
+# the client runs in a Windows Terminal window of its own, the foreground is moved
+# away and back with the Win32 calls, and the client's own input trace
+# (HERDR_WINDOWS_INPUT_TRACE, read from herdr's source) must record FocusGained.
+# Nobody has to sit at the desktop, but a window opens and takes the focus for a
+# few seconds, and no key is typed into it. WSL-134.
 #
 # Usage:
 #   pwsh -NoProfile -File tools/windows/wsl-toolkit/herdr-remote-probe.ps1 -Herdr PATH -Label NAME
+#   pwsh -NoProfile -File tools/windows/wsl-toolkit/herdr-remote-probe.ps1 -Herdr PATH -Label NAME -RealWindow
 #   pwsh -NoProfile -File tools/windows/wsl-toolkit/herdr-remote-probe.ps1 -Herdr PATH -Label NAME -Json
 #
 # Exit codes: 0 every measurable signal passed, 1 one did not, 2 could not run.
@@ -47,6 +52,7 @@ param(
     [string]$Instance = '',
     [string]$Distribution = '',
     [string]$OutDir = '',
+    [switch]$RealWindow,
     [switch]$Json
 )
 
@@ -193,6 +199,43 @@ public sealed class HerdrProbePty : IDisposable {
         if (hProcess != IntPtr.Zero) { CloseHandle(hProcess); hProcess = IntPtr.Zero; }
     }
 }
+
+// The real window of signal 7: find it by its title, and move the foreground.
+// Windows lets a background process take the foreground only while a key is
+// down, so Front presses and releases Alt around the call. No other key is sent.
+public static class HerdrProbeWindow {
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+
+    public static IntPtr Find(string title) {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((h, l) => {
+            if (!IsWindowVisible(h)) return true;
+            var sb = new StringBuilder(512);
+            GetWindowTextW(h, sb, sb.Capacity);
+            if (sb.ToString().Contains(title)) { found = h; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    public static bool Front(IntPtr h) {
+        ShowWindow(h, 9);
+        keybd_event(0x12, 0, 0, UIntPtr.Zero);
+        SetForegroundWindow(h);
+        keybd_event(0x12, 0, 2, UIntPtr.Zero);
+        Thread.Sleep(300);
+        return GetForegroundWindow() == h;
+    }
+
+    public static void Minimize(IntPtr h) { ShowWindow(h, 6); }
+}
 '@
 if (-not ('HerdrProbePty' -as [type])) { Add-Type -TypeDefinition $source -Language CSharp }
 
@@ -301,6 +344,83 @@ Set-Content -LiteralPath $clientConfig -Value 'onboarding = false' -Encoding asc
 $env:HERDR_CONFIG_PATH = $clientConfig
 $result.client_config = $clientConfig
 
+function Measure-RealWindowFocus {
+    # The client runs under a pwsh of its own inside the window, so its
+    # environment is set there: wt.exe hands a new window the environment of
+    # the Terminal already running, not this process's. The command goes as
+    # -EncodedCommand because wt.exe reads a bare ';' as its own separator.
+    $out = [ordered]@{ seen = $false; detail = '' }
+    $wt = Get-Command wt.exe -ErrorAction SilentlyContinue
+    if (-not $wt) { $out.detail = 'no wt.exe on PATH, so there is no real window to open'; return $out }
+    $xdg = Join-Path $OutDir "xdg-$Label-$stamp"
+    New-Item -ItemType Directory -Force $xdg | Out-Null
+    $trace = Join-Path $xdg 'herdr\herdr-client.log'
+    $pidFile = Join-Path $xdg 'client.pid'
+    $title = "herdr-probe-$Label-$stamp"
+    $inner = @(
+        "`$env:XDG_CONFIG_HOME = '$xdg'"
+        "`$env:HERDR_CONFIG_PATH = '$clientConfig'"
+        "`$env:HERDR_WINDOWS_INPUT_TRACE = '1'"
+        "`$env:HERDR_LOG = 'herdr=info'"
+        "`$PID | Set-Content -LiteralPath '$pidFile'"
+        "& '$Herdr' --remote $Distribution --remote-keybindings server"
+        'exit 0'
+    ) -join "`n"
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
+    $pwsh = (Get-Process -Id $PID).Path
+    Start-Process -FilePath $wt.Source -ArgumentList @('-w', 'new', '--title', $title, '--suppressApplicationTitle',
+        '--', $pwsh, '-NoProfile', '-NoLogo', '-EncodedCommand', $encoded) | Out-Null
+    $hwnd = [IntPtr]::Zero
+    for ($i = 0; $i -lt 40 -and $hwnd -eq [IntPtr]::Zero; $i++) {
+        Start-Sleep -Milliseconds 500
+        $hwnd = [HerdrProbeWindow]::Find($title)
+    }
+    try {
+        if ($hwnd -eq [IntPtr]::Zero) { $out.detail = "no window titled $title appeared in 20 s"; return $out }
+        # The client connects and draws before the focus is moved.
+        Start-Sleep -Seconds 6
+        [HerdrProbeWindow]::Minimize($hwnd)
+        Start-Sleep -Seconds 2
+        $mark = if (Test-Path -LiteralPath $trace) { (Get-Item -LiteralPath $trace).Length } else { 0 }
+        $fronted = [HerdrProbeWindow]::Front($hwnd)
+        Start-Sleep -Seconds 3
+        # The client holds its log open for writing, so it is read with sharing:
+        # ReadAllBytes asked for it alone and was refused on the first drive.
+        $text = ''
+        if (Test-Path -LiteralPath $trace) {
+            $fs = [IO.File]::Open($trace, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+            try {
+                $null = $fs.Seek($mark, [IO.SeekOrigin]::Begin)
+                $text = (New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8)).ReadToEnd()
+            }
+            finally { $fs.Dispose() }
+        }
+        $out.trace = $trace
+        $out.fronted = $fronted
+        $out.gained = ([regex]::Matches($text, 'FocusGained')).Count
+        if ($out.gained -gt 0) {
+            $out.seen = $true
+            $out.detail = "the window was minimized and fronted (foreground $fronted), and the client traced $($out.gained) FocusGained"
+        }
+        elseif (-not (Test-Path -LiteralPath $trace)) {
+            $out.detail = "the client wrote no trace at $trace"
+        }
+        else {
+            $out.detail = "fronted $fronted, and the client traced no FocusGained after it"
+        }
+        return $out
+    }
+    finally {
+        # The client goes with the probe, and so does its window: the wrapper
+        # exits 0 when herdr ends, and the Terminal closes a tab that exited 0.
+        if (Test-Path -LiteralPath $pidFile) {
+            $wrapper = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()
+            Get-CimInstance Win32_Process -Filter "ParentProcessId = $wrapper" -ErrorAction SilentlyContinue |
+                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        }
+    }
+}
+
 $child = $null
 $failed = 0
 try {
@@ -390,8 +510,22 @@ try {
     elseif ($exited) { Add-Signal 6 'detach' 'fail' "exited $code"; $failed++ }
     else { Add-Signal 6 'detach' 'fail' 'still running after 15 s'; $child.Kill(); $result.killed = $true; $failed++ }
 
-    # 7. the one a pseudo console cannot stage.
-    Add-Signal 7 'real window focus' 'operator' 'a pseudo console has no window; needs a real Windows Terminal'
+    # 7. the one a pseudo console cannot stage. -RealWindow stages it in a real
+    #    Windows Terminal window: minimized, then brought to the front, and the
+    #    client's own trace must hold a FocusGained written after that. WSL-134.
+    if (-not $RealWindow) {
+        Add-Signal 7 'real window focus' 'operator' 'a pseudo console has no window; run with -RealWindow'
+    }
+    else {
+        $result.real_window = Measure-RealWindowFocus
+        if ($result.real_window.seen) {
+            Add-Signal 7 'real window focus' 'seen' $result.real_window.detail
+        }
+        else {
+            Add-Signal 7 'real window focus' 'fail' $result.real_window.detail
+            $failed++
+        }
+    }
 }
 finally {
     if ($child) {
@@ -414,7 +548,8 @@ if ($signals.Count -ne $expected) {
     Exit-Cannot "the probe recorded $($signals.Count) signals and must record $expected"
 }
 $result.signals = $signals
-$result.measurable = ($expected - 1)
+$measurable = if ($RealWindow) { $expected } else { $expected - 1 }
+$result.measurable = $measurable
 $result.failed = $failed
 
 $path = Join-Path $OutDir "$Label-$stamp.json"
@@ -430,7 +565,7 @@ else {
     foreach ($s in $signals) {
         Write-Output ("  {0}  {1,-18} {2}" -f $s.verdict.PadRight(8), $s.signal, $s.detail)
     }
-    Write-Output "  $($expected - 1) measurable, $failed failed"
+    Write-Output "  $measurable measurable, $failed failed"
 }
 if ($failed -gt 0) { exit 1 }
 exit 0

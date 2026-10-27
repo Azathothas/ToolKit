@@ -1496,7 +1496,8 @@ top of `%USERPROFILE%\.ssh\config`. Its `ProxyCommand` starts `sshd -i` through
 ⛔ **A herdr 0.9.0 Windows client does not work against it.** It repaints only on focus
 and runs neither typed text nor a prefix command, whatever the server's release. The
 same release carries the 0.9.5 client, which passes all six measurable signals of
-`herdr-remote-probe.ps1`. `WSL-141`
+`herdr-remote-probe.ps1`. `WSL-141` ⭐ With `-RealWindow` it passes the seventh too: a
+real Windows Terminal window's focus reaches the client as `FocusGained`. `WSL-134`
 
 ⚠ **On the default, `base attach` prints the `herdr` on `PATH`, and fetches no client.**
 Put the 0.9.5 one there: `herdr-0.9.5-windows-x86_64.zip` or

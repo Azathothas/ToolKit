@@ -171,10 +171,15 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/herdr-remote-probe.ps1 -Herdr CL
 
 It drives the client in a Windows pseudo console, types into a herdr workspace **it
 creates and closes itself**, and reads every result back from the server rather than
-off the screen. Six signals are measurable and the seventh, a real window focus event,
-is reported `operator` because a pseudo console has no window. `base attach` prints the
-client matching the server the base runs, which is the one to pass. ⚠ Exit 2 is "could
-not run" and exit 1 is "a signal failed"; they are different answers.
+off the screen. Six signals are measurable there. The seventh, a real window focus
+event, is reported `operator` because a pseudo console has no window. `base attach`
+prints the client matching the server the base runs, which is the one to pass. ⚠ Exit 2
+is "could not run" and exit 1 is "a signal failed"; they are different answers.
+
+⭐ **`-RealWindow` measures the seventh too.** The client opens in a Windows Terminal
+window of its own, which is minimized and brought back with the Win32 calls. The
+client's own input trace must then hold `FocusGained`, and signal 7 reads `seen`. No
+key is typed into that window, and it closes with the probe. `WSL-134`
 
 For a focused distribution change, use a separately named `eph-*` distribution and an
 isolated `--home`. Exercise success, failure, deadline, ownership refusal,

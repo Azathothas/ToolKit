@@ -14008,7 +14008,7 @@ afterwards: ~/.wsl-toolkit/shells empty, /tmp/tmp.* count 0; --private-net --roo
 ## WSL-134. A real window's focus event was never produced for herdr's `--remote` signals
 
 **Source** `WSL-76`, which closed without it under ruling 23, and the old record's question 2
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -14048,7 +14048,21 @@ Signal 7 reports `seen` in a real window.
 
 ## Closing
 
-Open.
+Done. `herdr-remote-probe.ps1 -RealWindow` stages signal 7 in a real Windows Terminal window, with no person at the desktop. herdr's own source names the switch: its Windows client traces each input batch to its client log under `HERDR_WINDOWS_INPUT_TRACE`. The probe opens the client in a window of its own, minimizes it and fronts it with the Win32 calls, Alt held around the call so Windows lets a background process move the foreground, and reads the trace with sharing. No key is typed into the window, which closes with the probe.
+
+Driven on this host against `wsl-toolkit-jobs` with the nightly client `base attach` prints, herdr 0.9.5: the first run traced `FocusLost` at the minimize and `FocusGained` at the front, and failed only to read the log the client held open. The second, after the shared read:
+
+```text
+  pass      repaint            5068 bytes in 12 ms with no input, 98.8 pct of the 5132 drawn by focus-in
+  pass      typed text         the pane printed 22813probewsl134
+  pass      prefix command     tabs 2 to 3
+  pass      resize             16579 to 20216 bytes after 140x42 to 100x30
+  pass      detach             exited 0
+  seen      real window focus  the window was minimized and fronted (foreground True), and the client traced 1 FocusGained
+  7 measurable, 0 failed
+```
+
+Exit 0, no herdr client left running and no window left open. Without `-RealWindow` signal 7 still reads `operator`.
 
 
 ## WSL-135. The muse-code guide was never run as one ordered pass from an empty host
@@ -14071,6 +14085,21 @@ Measured on 2026-09-17: step 5 is three sign-ins, each the operator's credential
 
 The operator runs the guide from an empty host, signing in at step 5, and a
 session records the transcript.
+
+⛔ **The ordered pass of 2026-10-27 found four faults**, run from an empty host under
+ruling 36 with `wsl-toolkit` 8.0.0, every step in order. Each sign-in stopped at its
+credential prompt: Muse's device code, `pi auth check` answering `not_ready`, and
+`omp usage` naming no account.
+1. Step 3 says every adapter must read `healthy`. On a new base pi cannot: its
+   provider is declared in step 5, so `base ensure` exits 2 there.
+2. The pi probe reads `pi --list-models`, which lists only the models of a provider
+   pi holds a key for. After step 5 declared the model, the probe still said to
+   declare it. A declared model whose provider has no key yet is a note, not a fault.
+3. Step 4 runs `base revoke --target /workspaces/demoproj` in order, and step 8 then
+   works in that revoked directory.
+4. Step 9 says a bare `muse` answers exit 2 from Windows. Since 8.0.0 it answers 125.
+
+Fix all four in the guide and the pi adapter's probe, with a case for the probe.
 
 ## Decision
 

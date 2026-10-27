@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z; it ends on wsl-toolkit-v8.0.0
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 8.0.0 published from 5e0bdcf, installed and driven
-entries         total 258  open 10  blocked 0  done 248
+entries         total 258  open 9  blocked 0  done 249
 this session    ruling 31, then rulings 32 to 35
 ```
 
@@ -59,7 +59,9 @@ Measured on this host unless a row says read.
 
 Ruling 36, from 2026-10-27: every leftover of 8.0.0 is finished here, with nothing handed
 back. This host is cleaned: podman's machine pruned and compacted, the old default base
-removed with its state. `WSL-197` is building each preset on a stock host now.
+removed with its state, and `wsl-toolkit-jobs` built by the muse-code guide in order.
+`WSL-197` and `WSL-134` are done. The guide's ordered pass found four faults, filed in
+`WSL-135` and built with `WSL-138` in 8.1.0.
 
 ## The work order, set by the operator on 2026-10-21
 

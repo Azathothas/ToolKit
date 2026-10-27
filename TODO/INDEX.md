@@ -20,7 +20,7 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 258  open 10  blocked 0  done 248
+total 258  open 9  blocked 0  done 249
 ```
 
 | priority | open | blocked | done | total |
@@ -28,8 +28,8 @@ total 258  open 10  blocked 0  done 248
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
 | P2 | 4 | 0 | 115 | 119 |
-| P3 | 6 | 0 | 29 | 35 |
-| **all** | **10** | **0** | **248** | **258** |
+| P3 | 5 | 0 | 30 | 35 |
+| **all** | **9** | **0** | **249** | **258** |
 
 ---
 
@@ -228,7 +228,7 @@ total 258  open 10  blocked 0  done 248
 | WSL-131 | P2 | M | done | Job defaults are repeated in every wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-132 | P2 | S | done | Two acceptance cases are not isolated from what they run beside | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-133 | P3 | S | done | `base shell` has no `--private-net` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-134 | P3 | S | open | A real window's focus event was never produced for herdr's `--remote` signals | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-134 | P3 | S | done | A real window's focus event was never produced for herdr's `--remote` signals | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-135 | P3 | S | open | The muse-code guide was never run as one ordered pass from an empty host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-136 | P2 | M | done | A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-137 | P2 | M | done | A base stops running containers after a host restart until someone repairs it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
