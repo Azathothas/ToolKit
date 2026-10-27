@@ -15,35 +15,18 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"testing/fstest"
+
+	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/embedswap"
 )
 
 // ⭐ A MUTATION ROW ON AN EMBEDDED FILE RUNS ON THE BINARY ITS BASELINE BUILT.
 // tools/repo's harness hands this binary the changed bytes instead of compiling
 // the package again. A compile of this package and its cases is most of a row.
-// TOOL-40.
-//
-// ⛔ THE VARIABLE AND THE FILE BOTH TAKE THE BYTES, BEFORE ANY CASE RUNS. A
-// mutation compiled in changes both: most cases read the variable, and a few
-// read the file from disk. The file is written last, so it says the variable
-// took them too.
-//
-// ⚠ THE HARNESS READS THE FILE BACK AFTER THE RUN. A binary that left it as it
-// was took nothing, and the row is compiled and run the old way.
-const (
-	// mutateEmbedEnv is the file's path under this package's directory, as its
-	// go:embed pattern spells it.
-	mutateEmbedEnv = "REPO_MUTATE_EMBED"
-	// mutateWithEnv is a file that holds the changed bytes.
-	mutateWithEnv = "REPO_MUTATE_WITH"
-	// mutateFileEnv is the file itself, in the copy the row runs in.
-	mutateFileEnv = "REPO_MUTATE_FILE"
-)
-
+// internal/embedswap reads the harness's variables. TOOL-40.
 func init() {
 	// ⚠ NOT FATAL. A binary that could not take the bytes leaves the file as it
 	// was, and the harness compiles the row instead.
-	if err := takeMutation(); err != nil {
+	if err := embedswap.Take(takeEmbedded); err != nil {
 		fmt.Fprintf(os.Stderr, "the embedded file a mutation row named was not taken: %v\n", err)
 	}
 }
@@ -78,76 +61,24 @@ func embeddedTrees() map[string]*embedTree {
 	}
 }
 
-// takeMutation puts the bytes a mutation row names where this binary reads them.
-func takeMutation() error {
-	name := os.Getenv(mutateEmbedEnv)
-	if name == "" {
-		return nil
-	}
-	body, err := os.ReadFile(os.Getenv(mutateWithEnv))
-	if err != nil {
-		return err
-	}
+// takeEmbedded puts a row's bytes in the variable that embeds name: a script's
+// own, or a copy of the directory that holds it.
+func takeEmbedded(name string, body []byte) error {
 	if p, ok := embeddedBytes()[name]; ok {
 		*p = body
-	} else if err := takeIntoTree(name, body); err != nil {
-		return err
-	}
-	file := os.Getenv(mutateFileEnv)
-	if file == "" {
 		return nil
 	}
-	// ⚠ ONCE. A case that starts this binary again as a fake hands it the same
-	// variables, and the copy already holds the bytes.
-	if was, err := os.ReadFile(file); err == nil && bytes.Equal(was, body) {
-		return nil
-	}
-	return os.WriteFile(file, body, 0o600)
-}
-
-// takeIntoTree swaps the embedded directory that holds name for a copy in which
-// name holds body.
-func takeIntoTree(name string, body []byte) error {
 	root, _, _ := strings.Cut(name, "/")
 	tree, ok := embeddedTrees()[root]
 	if !ok {
 		return fmt.Errorf("%s is not a file this package embeds", name)
 	}
-	copied, err := withFile(*tree, name, body)
+	copied, err := embedswap.WithFile(*tree, name, body)
 	if err != nil {
 		return err
 	}
 	*tree = copied
 	return nil
-}
-
-// withFile copies every file of tree, with name holding body.
-func withFile(tree embedTree, name string, body []byte) (embedTree, error) {
-	out := fstest.MapFS{}
-	err := fs.WalkDir(tree, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		data, err := fs.ReadFile(tree, p)
-		if err != nil {
-			return err
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		out[p] = &fstest.MapFile{Data: data, Mode: info.Mode(), ModTime: info.ModTime()}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	f, ok := out[name]
-	if !ok {
-		return nil, fmt.Errorf("%s is not a file this package embeds", name)
-	}
-	f.Data = body
-	return out, nil
 }
 
 // embedDirective is one go:embed line of this package and the variable under it.
@@ -270,9 +201,9 @@ func TestAMutationRowsBytesReachTheVariableAndTheFile(t *testing.T) {
 		if err := os.WriteFile(file, []byte("as it was\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv(mutateEmbedEnv, name)
-		t.Setenv(mutateWithEnv, with)
-		t.Setenv(mutateFileEnv, file)
+		t.Setenv(embedswap.NameEnv, name)
+		t.Setenv(embedswap.WithEnv, with)
+		t.Setenv(embedswap.FileEnv, file)
 		return file
 	}
 	read := func(p string) string {
@@ -286,7 +217,7 @@ func TestAMutationRowsBytesReachTheVariableAndTheFile(t *testing.T) {
 
 	mutated := []byte("#!/bin/sh\necho the row's verify.sh\n")
 	file := hand("verify.sh", mutated)
-	if err := takeMutation(); err != nil {
+	if err := embedswap.Take(takeEmbedded); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(verifyScript, mutated) {
@@ -298,7 +229,7 @@ func TestAMutationRowsBytesReachTheVariableAndTheFile(t *testing.T) {
 
 	probe := []byte("#!/bin/sh\necho the row's probe.sh\n")
 	file = hand("adapters/muse/probe.sh", probe)
-	if err := takeMutation(); err != nil {
+	if err := embedswap.Take(takeEmbedded); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := adapterScript("muse", "probe.sh"); err != nil || !bytes.Equal(got, probe) {
@@ -327,13 +258,10 @@ func TestAMutationRowsBytesReachTheVariableAndTheFile(t *testing.T) {
 	// ⛔ A NAME THIS PACKAGE DOES NOT EMBED WRITES NO FILE, so the harness sees
 	// the row was not taken and compiles it.
 	file = hand("nothing-embeds-this.sh", []byte("x\n"))
-	if err := takeMutation(); err == nil {
+	if err := embedswap.Take(takeEmbedded); err == nil {
 		t.Error("a file this package does not embed was taken")
 	}
 	if got := read(file); got != "as it was\n" {
 		t.Errorf("a file this package does not embed was written: %q", got)
-	}
-	if _, err := withFile(savedTree, "adapters/muse/none.sh", nil); err == nil {
-		t.Error("a path the tree does not hold was added to it")
 	}
 }

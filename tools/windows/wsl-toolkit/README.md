@@ -21,6 +21,10 @@ tools/windows/wsl-toolkit/
   internal/toolkit/adapters generated copy of adapters/, which the gate compares
   internal/toolkit/shipped  generated copy of the scripts/common/ files the
                             executable CARRIES, which the gate compares
+  internal/embedswap        hands a mutation row's bytes to a test binary;
+                            only test files import it
+  internal/parallelread     reads which parallel cases set shared state;
+                            only test files import it
   acceptance.ps1            real-Windows acceptance runner
   consumer.ps1              published-release smoke runner. -Exe drives a
                             working-tree build instead, which is what the
@@ -108,15 +112,16 @@ host is reported as skipped, and CI's ubuntu job proves it.
 
 ⭐ **A row that changes a file `internal/toolkit` embeds needs no compile.**
 `repo mutate` hands the changed bytes to the binary its baseline built.
-`internal/toolkit/mutate_embed_test.go` puts them in the embedding variable and
-in the file before any case runs. Only a red run is kept, and anything else is
-proved the old way. A new embedded file goes in that file's tables, and
-`TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing. `TOOL-40`
+`internal/embedswap` puts them in the embedding variable and in the file before
+any case runs. Only a red run is kept, and anything else is proved the old way.
+A new embedded file goes in the tables of `internal/toolkit/mutate_embed_test.go`,
+and `TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing. `TOOL-40`
 
 ⭐ **A case that sets nothing shared calls `parallelCase`, and runs beside the
 others like it.** ⛔ A case that calls `t.Setenv`, changes the working directory
 or sets a package variable stays serial, through any helper it calls.
-`TestNoParallelCaseSetsWhatAnotherReads` reads that from the source. ⚠ A case
+`TestNoParallelCaseSetsWhatAnotherReads` reads that from the source, with
+`internal/parallelread`. ⚠ A case
 with a bound a loaded host can break stays serial too, as a child that must
 never stall for 2 s.
 

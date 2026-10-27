@@ -6,11 +6,11 @@
 // the changed bytes to the test binary instead. TOOL-40.
 //
 // ⭐ THE PROTOCOL IS THREE VARIABLES. REPO_MUTATE_EMBED is the file's path under
-// the package's directory, REPO_MUTATE_WITH a file holding the changed bytes,
-// and REPO_MUTATE_FILE the file itself in the staged copy. The package's own test
-// code puts the bytes in the embedding variable, then in the file, before any
-// case runs. tools/windows/wsl-toolkit/internal/toolkit/mutate_embed_test.go is
-// the one package here that does.
+// the package's directory, and REPO_MUTATE_WITH a file holding the changed
+// bytes. REPO_MUTATE_FILE is the file itself in the staged copy. The package's
+// own test code puts the bytes in the embedding variable, then in the file,
+// before any case runs. internal/toolkit is the one package here that does, with
+// tools/windows/wsl-toolkit/internal/embedswap.
 //
 // ⛔ THE FILE IS READ BACK, AND IT IS THE RECEIPT. A binary that does not know
 // the protocol leaves the file as it was, and its run is thrown away. Without

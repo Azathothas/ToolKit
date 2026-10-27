@@ -43,7 +43,7 @@ var adapterFiles embed.FS
 //
 // ⚠ AN INTERFACE AND NOT embed.FS, so a test binary can hold the same tree with
 // one file changed. A mutation row on an embedded file then needs no compile of
-// this package, which is mutate_embed_test.go. TOOL-40.
+// this package, and internal/embedswap hands the file in. TOOL-40.
 type embedTree interface {
 	fs.ReadDirFS
 	fs.ReadFileFS

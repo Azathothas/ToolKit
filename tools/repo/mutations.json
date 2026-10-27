@@ -2,6 +2,105 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a mutation row's bytes reach what takes them before the file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\tif err := take(name, body); err != nil {\n\t\treturn err\n\t}",
+      "replace": "\tdefer func() { _ = take(name, body) }()",
+      "run": "TestTheBytesReachWhatTakesThemAndThenTheFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a mutation row's bytes reach the file a case reads from disk",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\treturn os.WriteFile(file, body, 0o600)\n}",
+      "replace": "\treturn nil\n}",
+      "run": "TestTheBytesReachWhatTakesThemAndThenTheFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a mutation row nothing takes writes no file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\tif err := take(name, body); err != nil {\n\t\treturn err\n\t}",
+      "replace": "\t_ = take(name, body)",
+      "run": "TestANameNothingTakesWritesNoFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ordinary test run takes no mutation row's bytes",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\tif name == \"\" {\n\t\treturn nil\n\t}",
+      "replace": "\tif name == \"-\" {\n\t\treturn nil\n\t}",
+      "run": "TestNoRowNamedTakesNothing",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a copied tree holds the row's bytes in the named file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\tf.Data = body\n",
+      "replace": "\t_ = f\n",
+      "run": "TestWithFileChangesOneFileAndKeepsTheRest",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a copied tree refuses a name it does not hold",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\tf, ok := out[name]\n\tif !ok {\n",
+      "replace": "\tf, ok := out[name]\n\tif !ok {\n\t\tf = &fstest.MapFile{}\n\t\tout[name] = f\n\t}\n\tif false {\n",
+      "run": "TestWithFileChangesOneFileAndKeepsTheRest",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that sets the environment is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tcase \"Setenv\", \"Unsetenv\", \"Clearenv\", \"Chdir\":",
+      "replace": "\t\t\t\tcase \"Unsetenv\", \"Clearenv\", \"Chdir\":",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that sets a package variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\tif id, ok := e.(*ast.Ident); ok && vars[id.Name] && !locals[id.Name] && !allowed[id.Name] {",
+      "replace": "\t\tif id, ok := e.(*ast.Ident); ok && vars[id.Name] && !locals[id.Name] && !allowed[id.Name] && false {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that sets another package's variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\tif id, ok := sel.X.(*ast.Ident); ok && imported[id.Name] && !locals[id.Name] && !vars[id.Name] {",
+      "replace": "\t\t\tif id, ok := sel.X.(*ast.Ident); ok && imported[id.Name] && !locals[id.Name] && !vars[id.Name] && false {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that moves the working directory is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tif fn.Name == \"chdir\" {",
+      "replace": "\t\t\t\tif false {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a case that calls a parallel helper is read as parallel",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tif helper.parallel && !strings.HasPrefix(c, \".\") {",
+      "replace": "\t\t\t\tif helper.parallel && strings.HasPrefix(c, \".\") {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
       "label": "check: a split package's cases run in several processes",
       "module": "tools/check",
       "file": "internal/checks/gotest.go",
@@ -53,69 +152,6 @@
       "find": "func testProcesses() int { return min(4, max(2, runtime.NumCPU()/4)) }",
       "replace": "func testProcesses() int { return min(4, max(1, runtime.NumCPU()/64)) }",
       "run": "TestASplitPackageRunsInTwoToFourProcesses",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a parallel case that sets the environment is found",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/parallel_test.go",
-      "find": "\t\t\t\tcase \"Setenv\", \"Unsetenv\", \"Clearenv\", \"Chdir\":",
-      "replace": "\t\t\t\tcase \"Unsetenv\", \"Clearenv\", \"Chdir\":",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a parallel case that sets a package variable is found",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/parallel_test.go",
-      "find": "\t\tif id, ok := e.(*ast.Ident); ok && vars[id.Name] && !locals[id.Name] && !allowed[id.Name] {",
-      "replace": "\t\tif id, ok := e.(*ast.Ident); ok && vars[id.Name] && !locals[id.Name] && !allowed[id.Name] && false {",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a case that calls a parallel helper is read as parallel",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/parallel_test.go",
-      "find": "\t\t\t\tif helper.parallel && !strings.HasPrefix(c, \".\") {",
-      "replace": "\t\t\t\tif helper.parallel && strings.HasPrefix(c, \".\") {",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a mutation row's bytes reach the variable that embeds the file",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/mutate_embed_test.go",
-      "find": "\tif p, ok := embeddedBytes()[name]; ok {\n\t\t*p = body\n\t} else",
-      "replace": "\tif p, ok := embeddedBytes()[name]; ok {\n\t\t_ = p\n\t} else",
-      "run": "TestAMutationRowsBytesReachTheVariableAndTheFile",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a mutation row's bytes reach an embedded directory",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/mutate_embed_test.go",
-      "find": "\t*tree = copied\n",
-      "replace": "\t_ = copied\n",
-      "run": "TestAMutationRowsBytesReachTheVariableAndTheFile",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a mutation row's bytes reach the file a case reads from disk",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/mutate_embed_test.go",
-      "find": "\treturn os.WriteFile(file, body, 0o600)\n}",
-      "replace": "\treturn nil\n}",
-      "run": "TestAMutationRowsBytesReachTheVariableAndTheFile",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: every embedded script has an entry a mutation row's bytes reach",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/mutate_embed_test.go",
-      "find": "\t\t\"stale.sh\":        &staleScript,\n",
-      "replace": "",
-      "run": "TestEveryEmbeddedFileCanTakeAMutation",
       "args": []
     },
     {
