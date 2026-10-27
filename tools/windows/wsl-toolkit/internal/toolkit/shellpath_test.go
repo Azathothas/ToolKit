@@ -53,13 +53,13 @@ func shellSafe(p string) bool {
 // pasted into a script as it is. WSL-198.
 func TestACasesDirectoryWithASpaceIsNotPastedIntoAScript(t *testing.T) {
 	for p, want := range map[string]bool{
-		"C:/Users/AjamX/DOWNLO~1/ToolKit/x": true,
-		"/tmp/TestX123/001":                 true,
-		"C:/Users/First Last/AppData/x":     false,
-		"/tmp/it's":                         false,
-		`C:\Users\x`:                        false,
-		"/tmp/$HOME":                        false,
-		"":                                  false,
+		"D:/build/DOWNLO~1/ToolKit/x": true,
+		"/tmp/TestX123/001":           true,
+		"D:/build/First Last/x":       false,
+		"/tmp/it's":                   false,
+		`D:\build\x`:                  false,
+		"/tmp/$HOME":                  false,
+		"":                            false,
 	} {
 		if got := shellSafe(p); got != want {
 			t.Errorf("shellSafe(%q) = %v, want %v", p, got, want)
