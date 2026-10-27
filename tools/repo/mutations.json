@@ -353,6 +353,15 @@
       "args": []
     },
     {
+      "label": "wsl-toolkit: base status without --probe marks a grant nothing mounts",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\t\tfmt.Fprintf(out, \"  grant       %s %s <- %s%s\\n\", mount.Mode, mount.Target, mount.Source, goneMark(mount))\n",
+      "replace": "\t\tfmt.Fprintf(out, \"  grant       %s %s <- %s%s\\n\", mount.Mode, mount.Target, mount.Source, \"\")\n",
+      "run": "TestAGrantLineNamesWhatKeepsItUnmounted",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a target under a linked parent is named as one",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/grants.sh",
