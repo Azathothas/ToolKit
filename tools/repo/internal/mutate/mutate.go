@@ -403,11 +403,14 @@ func (wk *worker) one(m Mutation, b baseline) Verdict {
 	args = append(args, m.Args...)
 	wk.doing(strconv.Quote(m.Label))
 
-	// ⭐ A FILE THE PACKAGE EMBEDS IS HANDED TO THE BINARY THE BASELINE BUILT,
-	// and only an "ok" from that run is kept. embed.go. TOOL-40.
+	// ⭐ A FILE THE PACKAGE EMBEDS IS HANDED TO THE BINARY THE BASELINE BUILT.
+	// An "ok" or a "SKIPPED" from a run that took the bytes is kept. Any other
+	// verdict of such a run is the first of two, and a compile is the second.
+	// embed.go. TOOL-40.
+	var handed handedIn
 	if name, ok := embeddedName(dest, m, b.pkgs); ok {
-		if v, kept := wk.onBaselineBinary(dest, name, body, []byte(changed), m, b, args); kept {
-			return v
+		if handed = wk.onBaselineBinary(dest, name, body, []byte(changed), m, b, args); handed.final {
+			return handed.v
 		}
 	}
 
@@ -433,6 +436,12 @@ func (wk *worker) one(m Mutation, b baseline) Verdict {
 
 	r, err := wk.goTest(dest, m.File, args...)
 	v = judge(v, b, r, err)
+	// ⛔ A HANDED-IN RUN THAT TOOK THE BYTES IS THE FIRST OF TWO RUNS. Thrown
+	// away, a case that fails by chance would have had a second chance to
+	// certify the row. A green there and a red here are BROKEN.
+	if handed.took {
+		return agreeHanded(handed.v, v)
+	}
 	if !askAgain(v, r) {
 		return v
 	}

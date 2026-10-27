@@ -5,21 +5,33 @@
 // through a new compile of the whole package and its cases. So the harness hands
 // the changed bytes to the test binary instead. TOOL-40.
 //
-// ⭐ THE PROTOCOL IS THREE VARIABLES. REPO_MUTATE_EMBED is the file's path under
+// ⭐ THE PROTOCOL IS FOUR VARIABLES. REPO_MUTATE_EMBED is the file's path under
 // the package's directory, and REPO_MUTATE_WITH a file holding the changed
-// bytes. REPO_MUTATE_FILE is the file itself in the staged copy. The package's
-// own test code puts the bytes in the embedding variable, then in the file,
-// before any case runs. internal/toolkit is the one package here that does, with
+// bytes. REPO_MUTATE_FILE is the file itself in the staged copy. Its staged
+// bytes' SHA-256 is REPO_MUTATE_STAGED. The package's own test code puts the
+// bytes in the embedding variable, then in the file, before any case runs.
+// internal/toolkit is the one package here that does, with
 // tools/windows/wsl-toolkit/internal/embedswap.
 //
 // ⛔ THE FILE IS READ BACK, AND IT IS THE RECEIPT. A binary that does not know
 // the protocol leaves the file as it was, and its run is thrown away. Without
 // the receipt, a case that failed by chance in a run nothing changed would
-// certify the guard.
+// certify the guard. ⚠ Only the process that runs the cases writes it. A child
+// that process starts takes the bytes and writes nothing.
 //
-// ⛔ ONLY "ok" AND "SKIPPED" ARE KEPT FROM SUCH A RUN. Any other verdict is asked
-// again the old way, on a compile, so a THEATRE or BROKEN row reads as it always
-// did. A binary that missed a reader of the bytes can only stay green.
+// ⛔ A PROCESS THAT COULD NOT TAKE THE BYTES LEAVES A MARK BESIDE THEM. A child
+// that ran on the old bytes would otherwise hide behind its parent's receipt.
+// A marked run is thrown away like one with no receipt.
+//
+// ⛔ EACH RUN HAS ITS OWN BYTES' FILE, REMOVED WHEN IT ENDS. A process that
+// outlived its run cannot read the next row's bytes. Nor can it write over a
+// file that no longer holds the bytes its row was staged over.
+//
+// ⛔ "ok" AND "SKIPPED" ARE KEPT FROM A RUN THAT TOOK THE BYTES, as from a
+// compile. A reader the swap missed sees the baseline's bytes, so it can only
+// keep a case green. Any other verdict is the first of two runs, and a compile
+// is the second. So a green run here and a red compile are BROKEN, as two
+// compiles that disagree always were.
 //
 // ⚠ ONLY WHERE ONE PACKAGE HOLDS THE ROW'S CASES AND EMBEDS THE FILE. The binary
 // writes the file while its `go test` runs. A second package in that run could
@@ -32,7 +44,11 @@ package mutate
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -40,13 +56,24 @@ import (
 	"strings"
 )
 
-// The protocol's variables. ⛔ The test code that answers them names the same
-// three, and a rename on one side alone sends every row back to a compile.
+// The protocol's variables. ⛔ The test code that answers them names the same,
+// and a rename on one side alone sends every row back to a compile.
 const (
-	embedNameEnv = "REPO_MUTATE_EMBED"
-	embedWithEnv = "REPO_MUTATE_WITH"
-	embedFileEnv = "REPO_MUTATE_FILE"
+	embedNameEnv   = "REPO_MUTATE_EMBED"
+	embedWithEnv   = "REPO_MUTATE_WITH"
+	embedFileEnv   = "REPO_MUTATE_FILE"
+	embedStagedEnv = "REPO_MUTATE_STAGED"
+	// embedMissed is the mark a process that could not take the bytes leaves
+	// beside them.
+	embedMissed = ".missed"
 )
+
+// stagedDigest is how REPO_MUTATE_STAGED spells a file's bytes: SHA-256, in
+// lowercase hex, as embedswap.Digest does.
+func stagedDigest(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
 
 // embeddedName answers the row's file as the package's go:embed pattern spells
 // it, when the one package holding the row's cases embeds it.
@@ -139,43 +166,65 @@ func embedMatches(pattern, name string) bool {
 	return false
 }
 
-// onBaselineBinary runs the row with its bytes handed to the test binary. It
-// answers false when the run settles nothing, and the row is then compiled.
-func (wk *worker) onBaselineBinary(dest, name string, body, changed []byte, m Mutation, b baseline, args []string) (Verdict, bool) {
+// handedIn is what a run on the baseline's binary settled.
+type handedIn struct {
+	// v is the run's verdict, when the binary took the bytes.
+	v Verdict
+	// took is whether the binary took them, and final whether v is the row's.
+	took, final bool
+}
+
+// agreeHanded is agree, for a run that took the bytes and a compile of the
+// same row. ⛔ Two that disagree are BROKEN, and the reason names both causes.
+func agreeHanded(handed, compiled Verdict) Verdict {
+	v := agree(handed, compiled)
+	if handed.State != compiled.State {
+		v.Reason = fmt.Sprintf("the run on its baseline's binary read %s and a compile read %s, so neither is the answer. The swap missed a reader of the bytes, or a case fails by chance", say(handed), say(compiled))
+	}
+	return v
+}
+
+// onBaselineBinary runs the row with its bytes handed to the test binary. A
+// run that is not final leaves the row to a compile. The compile is its only
+// run when the bytes were not taken, and its second run when they were.
+func (wk *worker) onBaselineBinary(dest, name string, body, changed []byte, m Mutation, b baseline, args []string) handedIn {
 	file := filepath.Join(dest, filepath.FromSlash(m.File))
-	dir := filepath.Join(wk.slot.dir, "embed")
+	dir, err := os.MkdirTemp(wk.slot.dir, "embed-")
+	if err != nil {
+		return handedIn{}
+	}
+	defer os.RemoveAll(dir)
 	with := filepath.Join(dir, "changed")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return Verdict{}, false
-	}
 	if err := os.WriteFile(with, changed, 0o600); err != nil {
-		return Verdict{}, false
+		return handedIn{}
 	}
-	env := []string{embedNameEnv + "=" + name, embedWithEnv + "=" + with, embedFileEnv + "=" + file}
+	env := []string{embedNameEnv + "=" + name, embedWithEnv + "=" + with, embedFileEnv + "=" + file,
+		embedStagedEnv + "=" + stagedDigest(body)}
 	r, err := wk.goTestEnv(dest, m.File, env, args...)
 	got, readErr := os.ReadFile(file)
-	took := readErr == nil && bytes.Equal(got, changed)
+	_, markErr := os.Stat(with + embedMissed)
+	took := readErr == nil && bytes.Equal(got, changed) && errors.Is(markErr, fs.ErrNotExist)
 	// ⛔ PUT BACK BEFORE ANYTHING ELSE RUNS IN THE COPY, and read back.
 	if werr := os.WriteFile(file, body, 0o600); werr != nil {
 		wk.drop(m.Module)
-		return Verdict{Label: m.Label, State: "BROKEN", Reason: "the embedded file could not be put back: " + werr.Error()}, true
+		return handedIn{v: Verdict{Label: m.Label, State: "BROKEN", Reason: "the embedded file could not be put back: " + werr.Error()}, final: true}
 	}
 	if back, rerr := os.ReadFile(file); rerr != nil || !bytes.Equal(back, body) {
 		wk.drop(m.Module)
-		return Verdict{Label: m.Label, State: "BROKEN", Reason: "the embedded file did not read back as it was staged"}, true
+		return handedIn{v: Verdict{Label: m.Label, State: "BROKEN", Reason: "the embedded file did not read back as it was staged"}, final: true}
 	}
 	if !took {
 		wk.p.note(fmt.Sprintf("  compiled: the binary of %q did not take the embedded file it was handed, so the row runs on a new compile\n", m.Label))
-		return Verdict{}, false
+		return handedIn{}
 	}
 	v := judge(Verdict{Label: m.Label}, b, r, err)
 	// ⭐ A SKIP IS KEPT TOO, and judge calls a run SKIPPED only where its
 	// baseline skipped every case as well. That host cannot run the cases, and a
 	// compile of the same bytes could not change it. Asked again, every skipped
 	// row ran twice. TOOL-40.
-	if v.State != "ok" && v.State != "SKIPPED" {
-		return Verdict{}, false
+	final := v.State == "ok" || v.State == "SKIPPED"
+	if final {
+		wk.p.embedded()
 	}
-	wk.p.embedded()
-	return v, true
+	return handedIn{v: v, took: true, final: final}
 }

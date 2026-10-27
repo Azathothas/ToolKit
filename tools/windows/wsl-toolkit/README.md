@@ -113,12 +113,20 @@ host is reported as skipped, and CI's ubuntu job proves it.
 ⭐ **A row that changes a file `internal/toolkit` embeds needs no compile.**
 `repo mutate` hands the changed bytes to the binary its baseline built.
 `internal/embedswap` puts them in the embedding variable and in the file before
-any case runs. A red run is kept, and so is a skip its baseline made too.
-Anything else is proved the old way. A new embedded file goes in the tables of
-`internal/toolkit/mutate_embed_test.go`, and
-`TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing. ⚠ A fake
-an `init` starts reads the row's bytes too, because a package variable takes
-them first. `TOOL-40`.
+any case runs. The file read back is the receipt, and only the process that
+runs the cases writes it. A process it starts takes the bytes and writes
+nothing. ⛔ A process that cannot take them stops and leaves a mark, and the row
+is then compiled.
+
+⛔ **A red run that took the bytes is kept, and so is a skip its baseline made
+too.** Any other verdict is the first of two runs, and a compile is the second.
+So a green run and a red compile are BROKEN. ⚠ A fake an `init` starts reads
+the row's bytes too, because a package variable takes them first.
+
+⭐ **A new embedded file goes in the tables of
+`internal/toolkit/mutate_embed_test.go`.**
+`TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing, a file two
+variables embed, and a package variable set from an embedded one. `TOOL-40`.
 
 ⭐ **A case that sets nothing shared calls `parallelCase`, and runs beside the
 others like it.** ⛔ A case that calls `t.Setenv`, changes the working directory
