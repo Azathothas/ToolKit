@@ -13,16 +13,22 @@ import (
 // -- WSL-188: the engine's settings are drop-ins -------------------------------
 
 // engineSettingsRun runs provision.sh's engine settings section with /etc and the
-// account's home under dir, and answers what it printed.
-func engineSettingsRun(t *testing.T, dir string) string {
+// account's home under dir, and answers what it printed. ⚠ mirrors.sh's functions
+// come first, as the provisioning payload carries them, and registry is the
+// configuration's base.registry, nil for none. WSL-196.
+func engineSettingsRun(t *testing.T, dir string, registry ...*RegistryConfig) string {
 	t.Helper()
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")
 	}
 	at := filepath.ToSlash(dir)
-	section := strings.ReplaceAll(provisionerSection(t, "the engine's settings"), "/etc/containers/", at+"/etc/containers/")
-	script := "set -eu\nTK_USER=agent\nTK_HOME=" + at + "/home\n" +
+	section := strings.ReplaceAll(string(mirrorsScript)+"\n"+provisionerSection(t, "the engine's settings"), "/etc/containers/", at+"/etc/containers/")
+	var r *RegistryConfig
+	if len(registry) > 0 {
+		r = registry[0]
+	}
+	script := "set -eu\nTK_USER=agent\nTK_HOME=" + at + "/home\n" + string(shellAssignments(registryEnv(r))) +
 		"say() { printf '%s\\n' \"$*\"; }\ndie() { printf 'die: %s\\n' \"$*\"; exit 3; }\nchown() { :; }\npasta() { :; }\n" + section
 	out, err := exec.Command(sh, "-c", script).CombinedOutput()
 	if err != nil {

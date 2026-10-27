@@ -118,6 +118,12 @@ func fakeWslMain(state string, args []string) int {
 			fmt.Println("Das Windows-Subsystem fuer Linux hat keine installierten Distributionen.")
 			return 1
 		}
+		// ⚠ A PROCESS WSL REFUSES, WHEN THE CASE ASKS FOR ONE: the service's code,
+		// as a sandboxed caller meets it. WSL-200.
+		if how, ok := said("listing"); ok && strings.TrimSpace(how) == "denied" {
+			fmt.Fprintln(os.Stderr, "Wsl/EnumerateDistros/Service/E_ACCESSDENIED")
+			return 1
+		}
 		if how, ok := said("listing"); ok && strings.TrimSpace(how) == "utf16" {
 			for _, n := range registered {
 				for _, r := range n + "\r\n" {

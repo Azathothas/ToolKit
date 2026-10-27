@@ -2,6 +2,366 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: gc that cannot ask WSL cleans up neither half",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tif err != nil {\n\t\treturn CleanupPlan{Schema: CleanupSchema, DryRun: !apply, Entries: []CleanupEntry{}}, fmt.Errorf(\"%w: %w\", ErrRegistrationUnread, err)\n\t}\n",
+      "replace": "\t_ = err\n",
+      "run": "TestGCThatCannotAskWSLCleansNothing",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc that cannot ask WSL exits 2 with no plan",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_admin.go",
+      "find": "\tif errors.Is(err, toolkit.ErrRegistrationUnread) {\n\t\treturn exitCannot, err\n\t}\n",
+      "replace": "",
+      "run": "TestARefusedCleanupExitsTwoAndPrintsNoPlan",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a probe that could not pull is handed base.registry first",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "if errors.As(last, &nj) && b.applyRegistry(ctx) {",
+      "replace": "if errors.As(last, &nj) && false {",
+      "run": "TestAProbeThatCouldNotPullIsHandedBaseRegistryFirst",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only the owner writes base.registry before a refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\tif err := b.assertOwner(\"changed\", \"base ensure\"); err != nil {\n\t\treturn false\n\t}\n",
+      "replace": "",
+      "run": "TestAProbeThatCouldNotPullKeepsItsRefusalWhereNothingChanges",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry run that changed nothing asks the probe no second time",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\treturn strings.Contains(seen, \"registry mirrors: \") || strings.Contains(seen, \"engine proxy: \")\n",
+      "replace": "\treturn true\n",
+      "run": "TestAProbeThatCouldNotPullKeepsItsRefusalWhereNothingChanges",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the registry run is handed base.registry's drop-ins",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\t\tEnv: registryEnv(b.cfg.Base.Registry), Timeout: time.Minute, Stdout: out, Stderr: out,\n",
+      "replace": "\t\tEnv: map[string]string{}, Timeout: time.Minute, Stdout: out, Stderr: out,\n",
+      "run": "TestAProbeThatCouldNotPullIsHandedBaseRegistryFirst",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry drop-in that holds the same bytes is left alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.sh",
+      "find": "  if [ -n \"$tk_registry_sum\" ] && [ -f \"$1\" ] && [ \"$tk_registry_sum\" = \"$(sha256sum < \"$1\" 2>/dev/null)\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey|TestEnginesShWritesTheRegistryDropInsAndTakesThemAway",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a guest without sha256sum still gets the new drop-in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.sh",
+      "find": "[ -n \"$tk_registry_sum\" ] && [ -f \"$1\" ]",
+      "replace": "[ -f \"$1\" ]",
+      "run": "TestARegistryDropInIsWrittenWhereNoSumCanBeTaken",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base.registry survives loading",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\tcfg.Base.Registry = stored.Base.Registry\n",
+      "replace": "",
+      "run": "TestEveryStoredBaseFieldSurvivesLoading",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an empty base.registry loads as none",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif !stored.Base.Registry.empty() {\n",
+      "replace": "\tif stored.Base.Registry != nil {\n",
+      "run": "TestAnEmptyRegistryKeyLoadsAsNone",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base.registry is held where a configuration is read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif err := validateRegistry(c.Base.Registry); err != nil {\n\t\treturn err\n\t}\n",
+      "replace": "",
+      "run": "TestBaseRegistryIsHeldWhereItIsRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry is named without a scheme",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\tcase strings.Contains(v, \"://\"):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestBaseRegistryIsHeldWhereItIsRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry is spelled in lower case",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\t\tcase c >= 'a' && c <= 'z', c >= '0' && c <= '9',",
+      "replace": "\t\tcase c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',",
+      "run": "TestBaseRegistryIsHeldWhereItIsRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a proxy with a user or a password is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\tif u.User != nil {\n",
+      "replace": "\tif false {\n",
+      "run": "TestBaseRegistryIsHeldWhereItIsRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: no_proxy needs a proxy",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\tif len(r.NoProxy) > 0 && r.Proxy == \"\" {\n",
+      "replace": "\tif false {\n",
+      "run": "TestBaseRegistryIsHeldWhereItIsRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the mirrors drop-in names each mirror",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\t\t\tfmt.Fprintf(&b, \"\\n[[registry.mirror]]\\nlocation = %q\\n\", m)\n",
+      "replace": "\t\t\t_ = m\n",
+      "run": "TestBaseRegistryRendersTheTwoDropIns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the proxy drop-in carries the lower case names",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.go",
+      "find": "\"http_proxy=\" + r.Proxy, \"https_proxy=\" + r.Proxy, ",
+      "replace": "",
+      "run": "TestBaseRegistryRendersTheTwoDropIns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning carries mirrors.sh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tpayload = append(payload, mirrorsScript...)\n\tpayload = append(payload, '\\n')\n\treturn append(payload, provisionScript...)\n",
+      "replace": "\treturn append(payload, provisionScript...)\n",
+      "run": "TestTheProvisioningRunIsTheSharedTableThenTheProvisioner",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning is handed base.registry's drop-ins",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tfor k, v := range registryEnv(b.cfg.Base.Registry) {\n\t\treq.Env[k] = v\n\t}\n",
+      "replace": "",
+      "run": "TestProvisioningAndEveryEnsureAreHandedTheSameRegistryDropIns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every ensure is handed base.registry's drop-ins",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.go",
+      "find": "\tfor k, v := range registryEnv(b.cfg.Base.Registry) {\n\t\treq.Env[k] = v\n\t}\n",
+      "replace": "",
+      "run": "TestProvisioningAndEveryEnsureAreHandedTheSameRegistryDropIns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every ensure carries mirrors.sh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.go",
+      "find": "\tpayload = append(payload, mirrorsScript...)\n",
+      "replace": "",
+      "run": "TestProvisioningAndEveryEnsureAreHandedTheSameRegistryDropIns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning writes base.registry's drop-ins",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "apply_registry_settings || die \"base.registry's drop-ins could not be written\"\nchown -R",
+      "replace": "chown -R",
+      "run": "TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey|TestProvisioningAndEveryEnsureAreHandedTheSameRegistryDropIns",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every ensure writes base.registry's drop-ins",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.sh",
+      "find": "apply_registry_settings || die \"base.registry's drop-ins could not be written\"\n",
+      "replace": ":\n",
+      "run": "TestProvisioningAndEveryEnsureAreHandedTheSameRegistryDropIns|TestEnginesShWritesTheRegistryDropInsAndTakesThemAway",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry drop-in is written from the text it is handed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.sh",
+      "find": "  printf '%s' \"$2\" | base64 -d > \"$1.new\" || { rm -f \"$1.new\"; return 1; }\n",
+      "replace": "  : > \"$1.new\" || return 1\n",
+      "run": "TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey|TestEnginesShWritesTheRegistryDropInsAndTakesThemAway",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base without base.registry is told nothing",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.sh",
+      "find": "    [ -e \"$1\" ] || return 0\n",
+      "replace": "",
+      "run": "TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey|TestEnginesShWritesTheRegistryDropInsAndTakesThemAway",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base.registry taken away takes its drop-in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/mirrors.sh",
+      "find": "    rm -f \"$1\" || return 1\n",
+      "replace": "",
+      "run": "TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey|TestEnginesShWritesTheRegistryDropInsAndTakesThemAway",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status carries base.registry",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif !b.cfg.Base.Registry.empty() {\n\t\tst.Access.Registry = b.cfg.Base.Registry\n\t}\n",
+      "replace": "",
+      "run": "TestBaseStatusReportsTheRegistryKeyOnlyWhereItIsSet",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status prints base.registry",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\trenderRegistryRows(out, st.Access.Registry)\n",
+      "replace": "",
+      "run": "TestBaseStatusPrintsTheRegistryRowsOnlyWhereSet",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: config prints base.registry",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_admin.go",
+      "find": "\trenderRegistryRows(os.Stderr, cfg.Base.Registry)\n",
+      "replace": "",
+      "run": "TestConfigReportsTheRegistryKeyOnlyWhereItIsSet",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base cleans this machine's half",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tif !registered {\n\t\treturn r.CleanupHost(ctx, apply, policy)\n\t}\n",
+      "replace": "\t_ = registered\n",
+      "run": "TestGCChoosesThisMachinesHalfWhereTheBaseIsGone|TestTheHelpersGCWithNoBaseCleansThisMachinesHalf",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper's gc with no base cleans this machine's half",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tplan, err := h.runner.GC(r.Context(), req.Apply, policy, req.Images)\n",
+      "replace": "\tplan, err := h.runner.Cleanup(r.Context(), req.Apply, policy, req.Images)\n",
+      "run": "TestTheHelpersGCWithNoBaseCleansThisMachinesHalf",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base plans and removes nothing in a dry run",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tif !apply {\n\t\treturn plan, nil\n\t}\n",
+      "replace": "",
+      "run": "TestGCWithNoBaseCleansThisMachinesHalf",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base removes the host directories",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\thostDone := r.removeHostDirs(&plan, Of(remove, \"host-dir\"))\n",
+      "replace": "\thostDone := map[string]error{}\n",
+      "run": "TestGCWithNoBaseCleansThisMachinesHalf",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base removes the gone base's sessions",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tsessionDone := r.removeSessions(ctx, &plan, Of(remove, \"session\"))\n",
+      "replace": "\tsessionDone := map[string]error{}\n",
+      "run": "TestGCWithNoBaseCleansThisMachinesHalf",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base closes a record whose guest is gone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\t\tcase e.GuestDir != \"\" && gone(e):\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestGCWithNoBaseCleansThisMachinesHalf",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base closes a record whose directory is gone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\t\tcase e.HostDir != \"\" && !dirExists(e.HostDir):\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestGCWithNoBaseCleansThisMachinesHalf",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base closes a gone base's build record",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\t\tcase e.Kind == baseBuildKind && gone(e):\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestGCWithNoBaseCleansThisMachinesHalf",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base keeps a build's record while the lock is held",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tif errors.Is(err, errLockHeld) {\n",
+      "replace": "\tif errors.Is(err, errLockHeld) && false {\n",
+      "run": "TestGCWithNoBaseKeepsWhatACleanupWithABaseKeeps",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base reads the registrations again under the lock",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\t\tif registered[strings.ToLower(r.recordDistro(e))] {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "\t\t_ = registered\n",
+      "run": "TestABuildThatRegisteredItsBaseKeepsItsRecord",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc with no base closes a record whose owner is gone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tlost, err := CloseLostOwners(r.home)\n",
+      "replace": "\tlost, err := []string(nil), error(nil)\n",
+      "run": "TestGCWithNoBaseClosesARecordWhoseOwnerIsGone",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: every preset carries a stock host's figures",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/presets.go",
@@ -11037,10 +11397,10 @@
     },
     {
       "label": "wsl-toolkit: an instance with no base refuses an unknown gc --job",
-      "file": "cmd_admin.go",
-      "find": "\tif js, err := toolkit.ReadJobState(home, policy.Job); err == nil && js.Known {\n\t\treturn nil\n\t}\n",
-      "replace": "\tif true {\n\t\treturn nil\n\t}\n",
-      "run": "TestAnInstanceWithNoBaseStillRefusesAnUnknownJob",
+      "file": "internal/toolkit/cleanup_host.go",
+      "find": "\tnote, err := policy.Unmatched(targets)\n\tif err != nil {\n\t\treturn plan, err\n\t}\n",
+      "replace": "\tnote, _ := policy.Unmatched(targets)\n",
+      "run": "TestGCWithNoBaseStillRefusesAnUnknownJob|TestGCWithNoBaseKeepsWhatACleanupWithABaseKeeps",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },

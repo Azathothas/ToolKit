@@ -17046,7 +17046,7 @@ Exit 0, with the new case red without the fix.
 ## WSL-196. A registry mirror or proxy cannot be set from the host
 
 **Source** the 8.0.0 builder of `WSL-188`, 2026-10-26, workflow wf_874f9bf0-e3a, from its drives on scratch instances; row 9 of `WSL-188`, split as that entry's Approach says
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** M, **Status** done
 
 ---
 
@@ -17078,7 +17078,21 @@ Exit 0, with a case where the key reaches the drop-in and a base without it is u
 
 ## Closing
 
-Open.
+Done in `wsl-toolkit-v9.0.0`. `base.registry` names mirrors for each registry, a proxy and `no_proxy`. Decisions, each the session's under ruling 36:
+1. Two tool-owned drop-ins, `/etc/containers/registries.conf.d/99-wsl-toolkit-mirrors.conf` and `/etc/containers/containers.conf.d/99-wsl-toolkit-proxy.conf`. The Approach said provisioning's `99-wsl-toolkit.conf` or `10-wsl-toolkit.conf`. One file per setting lets a key taken away remove its file whole, and the account's drop-in is under its home, which root's engine does not read.
+2. Both live in `/etc`, so root's engine reads them too, including binfmt.sh's QEMU pull.
+3. Provisioning writes them, so a new base's first pull takes them. Every owner's `base ensure` writes them through engines.sh, so a working base takes a change with no rebuild. An owner's ensure whose probe was not judged writes them first and probes once more where one changed, because the probe runs before engines.sh. A guest's ensure never writes them.
+4. A proxy with a user or a password is refused. `config` and `base status` print the key, and podman hands the proxy to every container.
+5. A base without the key is byte for byte unchanged: no file, no line, no report field. `{}` loads as no key. A key taken away removes both files. A file that already holds the same bytes is left alone with no line.
+6. Values are validated where every key is: no scheme, lower case, no character that breaks TOML, and `no_proxy` needs `proxy`. The proxy environment carries both letter cases, because curl reads only the lower case one.
+
+Drives:
+- Builder: the drop-in carried mirror.gcr.io, `podman info` named it and a debug pull went to it. A dead proxy failed the account's and root's pulls with `proxyconnect`, a container saw all six names, and taking the key away removed both files.
+- This pass: with a dead proxy and the probe image removed, `base ensure` exited 2, not judged. With the key taken away, it removed the proxy drop-in, asked the probe again and exited 0.
+
+Proof: check-go exit 0. Linux proof proved tree 688e1bb (commit a9ccd3f), 41 of 41 rows red. The gate agrees except the worktree's hooks rule.
+
+Built on `r81/hostkeys`, repaired after an adversarial review whose seven findings were all fixed (`a9ccd3f`); the Linux proof went 41 of 41 red, every new row red on Windows too.
 
 
 ## WSL-197. The presets' measurements were taken on one host with a non-default `.wslconfig`
@@ -17206,7 +17220,7 @@ Open.
 ## WSL-200. `gc` cleans nothing on the host once the base is gone
 
 **Source** the operator's cleanup of 2026-10-27, after `base remove` of this host's default base
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -17238,4 +17252,26 @@ Exit 0, with a case where `gc --apply` on a home with no base removes its host l
 
 ## Closing
 
-Open.
+Done in `wsl-toolkit-v9.0.0`. With no base registered, `gc` plans this machine's half and `gc --apply` removes it. That covers job, incoming, upload and artifact directories, and the gone base's sessions. An ended session in a distribution that is still registered is asked of that guest, as with a base.
+
+It closes these records:
+- records whose directory is gone
+- records whose guest directory is in an unregistered distribution
+- a gone base's build record, only under the base's lock and only if the distribution is still unregistered there (WSL-150)
+- records whose owner was lost (WSL-121)
+
+These go beyond the Approach's list, by the session's decision: the job, upload and artifact directories and the lost-owner records are the same survey and policy the cleanup with a base uses. That keeps `resources` and `gc` in agreement.
+
+Decisions:
+- Runner.GC makes the choice for both the command and the helper, so a fake WSL proves it on any host. The command's old choice could be proved only where wsl.exe runs.
+- A WSL that cannot be asked cleans neither half. Called directly, it exits 2 with no plan, as before. Through the helper it exits 1 with the reason. Before, the helper fell through to the cleanup with a base, which also exited 1.
+- The command's own unknown-`--job` refusal became the survey's refusal.
+- The manual was made to match the code for ended sessions in registered distributions. I did not restrict the code, because the cleanup with a base removes them too.
+
+Break, recorded in docs/consumers.md: gc's output and exit change with no base. It names podbox (`gc`, `gc --apply`, `gc --job ID --apply`, `host dir` counting, `gc --json`) and dash.vpn (`base remove --yes` then `gc --apply`).
+
+Drive (builder, on a scratch home whose base was removed): `resources` listed a session, an incoming directory and a record. `gc --apply` removed them; the transfer under six hours went only with `--include-live`. `resources` then listed none.
+
+Proof: check-go exit 0. Linux proof proved tree 688e1bb (commit a9ccd3f), 41 of 41 rows red. The gate agrees except the worktree's hooks rule.
+
+Built on `r81/hostkeys`, repaired after an adversarial review whose seven findings were all fixed (`a9ccd3f`); the Linux proof went 41 of 41 red, every new row red on Windows too.

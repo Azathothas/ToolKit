@@ -45,12 +45,16 @@ var packagesScript []byte
 // names that knew six managers where the table knew twelve, and a distribution that
 // renamed a package had to be fixed in both. WSL-70.
 func provisionPayload() []byte {
-	payload := make([]byte, 0, len(packagesScript)+len(loginShellScript)+2+len(provisionScript))
+	payload := make([]byte, 0, len(packagesScript)+len(loginShellScript)+len(mirrorsScript)+3+len(provisionScript))
 	payload = append(payload, packagesScript...)
 	payload = append(payload, '\n')
 	// ⭐ loginshell.sh's functions come next, so the account is created with the
 	// shell every later `base ensure` holds it to. WSL-143.
 	payload = append(payload, loginShellScript...)
+	payload = append(payload, '\n')
+	// ⭐ AND mirrors.sh's, so a new base pulls through base.registry from its
+	// first pull, which is the health probe's. WSL-196.
+	payload = append(payload, mirrorsScript...)
 	payload = append(payload, '\n')
 	return append(payload, provisionScript...)
 }
@@ -185,6 +189,9 @@ type BaseAccessState struct {
 	RootEngine bool `json:"root_engine"`
 	RuntimeDir bool `json:"runtime_dir"`
 	Kvm        bool `json:"kvm"`
+	// Registry is base.registry as configured. ⚠ Absent where the key is, so an
+	// unchanged base's report carries no new field. WSL-196.
+	Registry *RegistryConfig `json:"registry,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -295,6 +302,9 @@ func (b *Base) configuredState() (BaseState, error) {
 			RootEngine: b.cfg.Base.RootEngine, RuntimeDir: b.cfg.Base.RuntimeDir, Kvm: b.cfg.Base.Kvm,
 		},
 		Naming: b.naming(),
+	}
+	if !b.cfg.Base.Registry.empty() {
+		st.Access.Registry = b.cfg.Base.Registry
 	}
 	for _, a := range b.cfg.Base.Adapters {
 		st.Access.Adapters = append(st.Access.Adapters, a.Name)
@@ -928,7 +938,25 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 			// Re-provisioning over a registry that refused the probe image ran a
 			// full upgrade, restarted WSL's VM under every job, and could end in a
 			// rebuild. This refuses and keeps the base as it is. WSL-174.
+			//
+			// ⛔ base.registry IS WRITTEN FIRST. The probe pulls before engines.sh
+			// runs, so a base that needs a mirror or a proxy to reach the registry
+			// never got the key, and the refusal said to wait for a registry only
+			// the key reaches. A change is probed once more. WSL-196.
 			var nj *ProbeNotJudgedError
+			if errors.As(last, &nj) && b.applyRegistry(ctx) {
+				b.log("base.registry's drop-ins changed, so the engine is asked once more")
+				report, err := b.verify(ctx)
+				if err == nil {
+					b.log("the engine answers: " + report.Engine)
+					for _, h := range report.Held {
+						b.log("another configuration's grant stays mounted: " + h)
+					}
+					return b.finishEnsure(ctx, st)
+				}
+				b.log("it still cannot: " + err.Error())
+				last = err
+			}
 			if errors.As(last, &nj) {
 				b.log("⛔ THE BASE WAS NOT JUDGED, so it is left as it is: " + nj.Error())
 				return st, b.notJudgedRefusal(nj)
@@ -1829,7 +1857,7 @@ func hasLine(out, line string) bool {
 // provisionRequest is the one provisioning run: the payload, as root, with the
 // configuration's settings in its environment.
 func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string, out io.Writer) ExecRequest {
-	return ExecRequest{
+	req := ExecRequest{
 		Distro: b.cfg.Base.Name,
 		User:   "root",
 		Script: provisionPayload(),
@@ -1849,6 +1877,11 @@ func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string,
 		Stdout:  out,
 		Stderr:  out,
 	}
+	// WSL-196: base.registry's two drop-ins, which engines.sh is handed too.
+	for k, v := range registryEnv(b.cfg.Base.Registry) {
+		req.Env[k] = v
+	}
+	return req
 }
 
 // baseMountPayloads renders explicit grants for /etc/fstab and for the

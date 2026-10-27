@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -261,43 +262,12 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	st, err := runner.Base().Status(ctx, false)
-	if err != nil {
-		return exitCannot, err
-	}
-	if !st.Registered {
-		home, err := toolkit.Home()
-		if err != nil {
-			return exitCannot, err
-		}
-		if err := unregisteredJobRefusal(home, policy); err != nil {
-			return exitCannot, err
-		}
-		logf("  %s is not registered, so there is nothing inside it to clean up", st.Name)
-		if *asJSON {
-			return exitOK, writeJSON(toolkit.CleanupPlan{Schema: toolkit.CleanupSchema, DryRun: !*apply, Entries: []toolkit.CleanupEntry{}})
-		}
-		return exitOK, nil
-	}
-	plan, err := runner.Cleanup(ctx, *apply, policy, *images)
+	// ⛔ WITH NO BASE, THIS MACHINE'S HALF IS STILL CLEANED UP. gc returned before
+	// it looked, so the records, incoming directories and sessions `resources`
+	// listed stayed. The runner chooses the half, as it does for the helper, and
+	// refuses there a job nothing in this instance belongs to. WSL-200, WSL-115.
+	plan, err := runner.GC(ctx, *apply, policy, *images)
 	return finishGC(plan, err, *asJSON)
-}
-
-// unregisteredJobRefusal refuses a --job that nothing in this instance belongs
-// to, for an instance whose base is not registered and so has no guest to ask.
-//
-// ⛔ THE REFUSAL WAS MADE ONLY FROM WHAT THE GUEST HOLDS. An instance with no
-// base returned before it was asked, so an id from another instance exited 0
-// there, which is WSL-115's own defect. A correctness review found it.
-func unregisteredJobRefusal(home string, policy toolkit.CleanupPolicy) error {
-	if policy.Job == "" {
-		return nil
-	}
-	if js, err := toolkit.ReadJobState(home, policy.Job); err == nil && js.Known {
-		return nil
-	}
-	_, err := policy.Unmatched(nil)
-	return err
 }
 
 // finishGC renders a cleanup and turns it into an exit code.
@@ -306,6 +276,11 @@ func unregisteredJobRefusal(home string, policy toolkit.CleanupPolicy) error {
 // beside the refusal reads as a cleanup that found nothing to do. WSL-115.
 func finishGC(plan toolkit.CleanupPlan, err error, asJSON bool) (int, error) {
 	if errors.Is(err, toolkit.ErrUnknownJob) || errors.Is(err, toolkit.ErrWorkspaceViaHelper) {
+		return exitCannot, err
+	}
+	// ⚠ A CLEANUP THAT COULD NOT ASK WHETHER THE BASE IS REGISTERED attempted
+	// nothing, and exits 2 with no plan, as it did when the command asked. WSL-200.
+	if errors.Is(err, toolkit.ErrRegistrationUnread) {
 		return exitCannot, err
 	}
 	if asJSON {
@@ -513,6 +488,7 @@ func cmdConfig(args []string) (int, error) {
 	}
 	fmt.Fprintf(os.Stderr, "  access      automount %s, interop %s, systemd %v, passwordless sudo %v, toolset %s\n",
 		automount, interop, cfg.Base.Systemd, cfg.Base.PasswordlessSudo, toolset)
+	renderRegistryRows(os.Stderr, cfg.Base.Registry)
 	mounts, err := cfg.ResolvedBaseMounts()
 	if err != nil {
 		return exitCannot, err
@@ -601,6 +577,15 @@ func renderJobDefaults(cfg toolkit.Config) {
 	}
 	for _, c := range j.Cache {
 		fmt.Fprintf(os.Stderr, "  cache       %s\n", c)
+	}
+}
+
+// renderRegistryRows writes base.registry, one row for each mirrored registry
+// and one for the proxy, and nothing where the key is not set. `config` and
+// `base status` both print it. WSL-196.
+func renderRegistryRows(out io.Writer, r *toolkit.RegistryConfig) {
+	for _, row := range toolkit.RegistryRows(r) {
+		fmt.Fprintf(out, "  %-11s %s\n", row[0], row[1])
 	}
 }
 

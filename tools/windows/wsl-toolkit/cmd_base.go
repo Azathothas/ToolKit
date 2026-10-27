@@ -483,6 +483,9 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	if a := st.Access; a.RootEngine || a.RuntimeDir || a.Kvm {
 		fmt.Fprintf(out, "  engines     root engine %v, runtime dir %v, kvm %v\n", a.RootEngine, a.RuntimeDir, a.Kvm)
 	}
+	// ⭐ ONLY WHERE base.registry IS SET, for the reason the engines row gives.
+	// WSL-196.
+	renderRegistryRows(out, st.Access.Registry)
 	for _, mount := range st.Access.Mounts {
 		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}

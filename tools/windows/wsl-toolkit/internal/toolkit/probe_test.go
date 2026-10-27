@@ -99,6 +99,15 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 		// ⚠ verify=unresolved-until-restart IS A SEALED BASE WHOSE RESOLVER ANSWERS
 		// ONLY ONCE IT WAS RESTARTED, as a start whose boot script refreshed it. WSL-188.
 		verify := answers["verify"]
+		// ⚠ verify=unpullable-until-registry IS A BASE THAT REACHES ITS REGISTRY
+		// ONLY THROUGH base.registry: its pull fails until the registry run was
+		// handed a drop-in. WSL-196.
+		if verify == "unpullable-until-registry" {
+			verify = "unpullable"
+			if ran, _ := os.ReadFile(filepath.Join(state, "registry.script")); assigned(ran, "TK_REGISTRY_MIRRORS_B64") != "" {
+				verify = "ok"
+			}
+		}
 		if verify == "unresolved-until-restart" {
 			verify = "unresolved"
 			if calls, _ := os.ReadFile(filepath.Join(state, "calls")); bytes.Contains(calls, []byte("wsl --terminate ")) {
@@ -128,6 +137,16 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 			fmt.Fprintln(os.Stderr, "verify-pull: "+unexpectedEOF)
 			return verifyNotJudged, true
 		}
+	// ⭐ base.registry's run on its own, when the case stages it: registry=changed
+	// says it wrote the mirrors, and registry=same says nothing. The script is
+	// kept, so a case can read what it was handed. WSL-196.
+	case bytes.Contains(script, []byte("printf '%s\\n' 'registry-complete'")) && answers["registry"] != "":
+		_ = os.WriteFile(filepath.Join(state, "registry.script"), script, 0o600)
+		if answers["registry"] == "changed" && assigned(script, "TK_REGISTRY_MIRRORS_B64") != "" {
+			fmt.Println("registry mirrors: " + MirrorsDropIn)
+		}
+		fmt.Println("registry-complete")
+		return 0, true
 	case bytes.Contains(script, []byte(`: "${TK_ROOT_ENGINE:?TK_ROOT_ENGINE is required}"`)):
 		// ⭐ engines.sh completes unless a case stages its failure. WSL-130.
 		if answers["engines"] == "refused" {

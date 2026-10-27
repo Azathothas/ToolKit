@@ -1204,7 +1204,10 @@ func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	plan, err := h.runner.Cleanup(r.Context(), req.Apply, policy, req.Images)
+	// ⛔ WITH NO BASE, THIS MACHINE'S HALF, through the choice the direct route
+	// makes. The cleanup with a base asks the guest first, and failed over its
+	// absence. WSL-200.
+	plan, err := h.runner.GC(r.Context(), req.Apply, policy, req.Images)
 	payload := map[string]any{"schema": HelperSchema, "plan": plan}
 	if err != nil {
 		payload["error"] = err.Error()

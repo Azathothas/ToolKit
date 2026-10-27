@@ -55,8 +55,8 @@ func (b *Base) ensureEngines(ctx context.Context) error {
 // prologue, which engines.sh installs for the start of each boot. One text, so
 // the check at a start and the check before a job cannot drift. WSL-178.
 func (b *Base) enginesRequest(out io.Writer) ExecRequest {
-	return ExecRequest{
-		Distro: b.cfg.Base.Name, User: "root", Script: enginesScript,
+	req := ExecRequest{
+		Distro: b.cfg.Base.Name, User: "root", Script: enginesPayload(),
 		Env: map[string]string{
 			"TK_USER":        b.cfg.Base.User,
 			"TK_SYSTEMD":     strconv.FormatBool(b.cfg.Base.Systemd),
@@ -72,6 +72,20 @@ func (b *Base) enginesRequest(out io.Writer) ExecRequest {
 		},
 		Timeout: 10 * time.Minute, Stdout: out, Stderr: out,
 	}
+	// WSL-196: base.registry's two drop-ins, which provisioning is handed too.
+	for k, v := range registryEnv(b.cfg.Base.Registry) {
+		req.Env[k] = v
+	}
+	return req
+}
+
+// enginesPayload is what every owner's ensure runs: mirrors.sh's functions, then
+// engines.sh, which calls them. WSL-196.
+func enginesPayload() []byte {
+	payload := make([]byte, 0, len(mirrorsScript)+1+len(enginesScript))
+	payload = append(payload, mirrorsScript...)
+	payload = append(payload, '\n')
+	return append(payload, enginesScript...)
 }
 
 // RuntimeDirPrologue is what names the engine's runtime directory in a command

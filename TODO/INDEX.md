@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 258  open 9  blocked 0  done 249
+total 258  open 7  blocked 0  done 251
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 4 | 0 | 115 | 119 |
-| P3 | 5 | 0 | 30 | 35 |
-| **all** | **9** | **0** | **249** | **258** |
+| P2 | 3 | 0 | 116 | 119 |
+| P3 | 4 | 0 | 31 | 35 |
+| **all** | **7** | **0** | **251** | **258** |
 
 ---
 
@@ -290,11 +290,11 @@ total 258  open 9  blocked 0  done 249
 | WSL-193 | P2 | S | done | An instance name that starts with `wsl-` doubles the prefix in its distribution name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-194 | P2 | S | done | A grant case fails under load and passes alone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-195 | P3 | S | done | `WSL_TOOLKIT_CACHE` skips msysHostPath, as `--home` did | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-196 | P3 | M | open | A registry mirror or proxy cannot be set from the host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-196 | P3 | M | done | A registry mirror or proxy cannot be set from the host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-197 | P3 | S | done | The presets' measurements were taken on one host with a non-default `.wslconfig` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-198 | P2 | M | open | On Alpine a restart mounts no grant, and a read-only grant is refused | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-199 | P3 | S | open | `engines.sh` calls `setpriv --reuid`, which BusyBox rejects | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-200 | P2 | S | open | `gc` cleans nothing on the host once the base is gone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-200 | P2 | S | done | `gc` cleans nothing on the host once the base is gone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

@@ -558,6 +558,10 @@ cat > "$REG_PATH" <<'CONF'
 unqualified-search-registries = []
 short-name-mode = "enforcing"
 CONF
+# ⭐ base.registry's mirrors and proxy, from mirrors.sh, which arrives ahead of
+# this script. Written here, so the health probe's first pull takes them. A base
+# without the key gets neither file and no line. WSL-196.
+apply_registry_settings || die "base.registry's drop-ins could not be written"
 chown -R "$TK_USER" "$TK_HOME/.config"
 # <<< the engine's settings: end
 
