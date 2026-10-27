@@ -126,6 +126,15 @@ account_put() {
     rm -f "$tmp"
     exit 1' sh "$1" "$2"
 }
+
+# account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
+# bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
+# followed a link the account placed there, and a named pipe there held base ensure.
+account_same() {
+  as_src=$(sha256sum < "$1") || return 1
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
+}
 # <<< the account's own writes: end
 
 # -- the collision, refused before anything is installed -------------------------------
@@ -531,6 +540,7 @@ if command -v herdr >/dev/null 2>&1 || [ -x /usr/local/bin/herdr ]; then
   # "herdr refused its omp integration" on a base with no collision at all, and the
   # same command by hand, without the override, exited 0.
   if [ "$OMP_SEPARATED" = yes ]; then
+    # linksafe: set -- builds the account's own command line, and as_account runs it
     set -- as_account env PI_CODING_AGENT_DIR="$OMP_AGENT_DIR" "$herdr_bin" integration install omp
   else
     set -- as_account "$herdr_bin" integration install omp

@@ -147,8 +147,16 @@ if [ "$systemd_up" = true ]; then
   if [ -S "/run/user/$uid/bus" ] && systemctl is-active --quiet "user@$uid.service" && write_manager write; then
     say "cgroup delegation: ${delegated:-none read} to $TK_USER's user manager, which holds a cgroup per container"
   else
-    write_manager remove || :
-    say "⚠ cgroup delegation: $TK_USER's user manager has no session bus, so its engine keeps cgroupfs and a limit can go unenforced"
+    # >>> the account's drop-in without a session bus: begin
+    # ⛔ cgroupfs IS SAID ONLY ONCE THE DROP-IN IS GONE. A drop-in the account could not
+    # remove still names the systemd manager, and the line said the engine kept cgroupfs
+    # over it. One the account cannot remove is named, as without systemd. WSL-201.
+    if write_manager remove; then
+      say "⚠ cgroup delegation: $TK_USER's user manager has no session bus, so its engine keeps cgroupfs and a limit can go unenforced"
+    else
+      say "⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, which still names the systemd manager, and $TK_USER's user manager has no session bus to serve it"
+    fi
+    # <<< the account's drop-in without a session bus: end
   fi
 else
   # ⚠ A BASE THAT NO LONGER RUNS SYSTEMD keeps no drop-in pointing its engine at

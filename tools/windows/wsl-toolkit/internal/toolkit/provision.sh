@@ -159,8 +159,12 @@ engine_transaction() {
           slirp4netns ca-certificates iproute2 nftables >/dev/null
       ;;
     dnf)
+      # ⛔ util-linux SUPPLIES runuser AND su, AND PROVISIONING BECOMES THE ACCOUNT. Fedora's
+      # image carries util-linux-core, which has neither, and podman pulls in neither.
+      # Measured on a first build of the fedora preset: provisioning stopped at the
+      # account's XDG directories, and the build was removed. WSL-201.
       dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs \
-        slirp4netns shadow-utils iproute tar >/dev/null
+        slirp4netns shadow-utils iproute tar util-linux >/dev/null
       ;;
     tdnf)
       tdnf install -y podman shadow-utils tar iproute2 >/dev/null
@@ -455,32 +459,46 @@ as_account() {
 # these paths, so a link at .config had root give a directory outside the home to the
 # account. WSL-201.
 #
-# ⚠ ROOT STILL GIVES BACK ONE THAT IS NOT THE ACCOUNT'S, AND FOLLOWS NO LINK TO DO IT.
-# Each is reached from inside its parent, entered with cd -P and read back with pwd -P.
-# chown -h then changes a link itself, never what it names.
+# ⚠ ROOT STILL GIVES BACK A DIRECTORY THAT IS NOT THE ACCOUNT'S, AND ONLY A DIRECTORY.
+# Root enters each with cd -P and reads it back with pwd -P. Where it stands is then the
+# directory at that path in the home, and root gives that directory, `.`. An older
+# release left .config/containers root's when its provisioning died before its chown -R,
+# and the account's own mktemp there then failed every run.
+#
+# ⛔ NEVER A NAME. chown -h on a name changed a hard link the account made there, and a
+# hard link is the file itself. So a hard link at .cache to a file of root's gave the
+# account that file. A directory cannot be hard-linked, and the one root changes is the
+# one it read back. WSL-201.
+# linksafe: root enters the home itself, and reads where it is
 tk_home_real=$(cd -P "$TK_HOME" && pwd -P) || die "the home $TK_HOME cannot be entered"
-for xdg_rel in .config .cache .local .local/share .local/state; do
-  case $xdg_rel in
-    */*) xdg_parent=/${xdg_rel%/*} ;;
-    *) xdg_parent= ;;
-  esac
+for xdg_rel in .config .cache .local .local/share .local/state .config/containers .config/containers/containers.conf.d; do
   (
-    cd -P "$TK_HOME$xdg_parent" 2>/dev/null || exit 0
-    [ "$(pwd -P)" = "$tk_home_real$xdg_parent" ] || exit 0
-    xdg_name=${xdg_rel##*/}
-    if [ -e "$xdg_name" ] || [ -L "$xdg_name" ]; then
-      chown -h "$TK_USER:$TK_GROUP" "$xdg_name"
-    fi
+    # linksafe: cd -P resolves every link, and pwd -P reads back that this is the home's own
+    cd -P "$TK_HOME/$xdg_rel" 2>/dev/null || exit 0
+    [ "$(pwd -P)" = "$tk_home_real/$xdg_rel" ] || exit 0
+    chown "$TK_USER:$TK_GROUP" .
   )
 done
+# ⛔ A NAME THAT IS NOT A DIRECTORY IS NAMED, AND LEFT AS IT IS. The verifier refuses
+# the base over it, and only the account may move a file of its home aside.
+xdg_code=0
 # shellcheck disable=SC2016  # the single quotes hold the account's own script
-as_account '
+xdg_said=$(as_account '
   for d do
+    if [ -L "$d" ] || [ -e "$d" ]; then
+      [ -d "$d" ] || { printf "%s" "$d"; exit 2; }
+    fi
     mkdir -p "$d" || exit 1
     [ -L "$d" ] || chmod 0700 "$d" || exit 1
   done' wtk-xdg \
-  "$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state" ||
-  die "$TK_USER could not make its XDG directories in $TK_HOME, so the verifier would refuse the base"
+  "$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state") ||
+  xdg_code=$?
+case $xdg_code in
+  0) ;;
+  2) die "$xdg_said is not a directory, and $TK_USER's XDG directory belongs there. Move it aside as $TK_USER, then run base ensure again" ;;
+  127) die "neither runuser nor su is installed, so nothing can act as $TK_USER in its home" ;;
+  *) die "$TK_USER could not make its XDG directories in $TK_HOME, so the verifier would refuse the base" ;;
+esac
 # <<< the account's XDG directories: end
 say "account home: $TK_HOME; persistent XDG directories: ready"
 

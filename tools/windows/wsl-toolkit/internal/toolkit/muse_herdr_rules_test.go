@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -465,6 +466,16 @@ func TestTheMuseFootprintCountsHerdrsRules(t *testing.T) {
 	}
 	bin, write := stubDir(t)
 	write("getent", "printf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n")
+	// ⭐ The account reads whose file it is, and here it is this process, on the system's
+	// PATH. ⛔ Root's head is found first on root's PATH, and records a read in the home.
+	// WSL-201.
+	write("runuser", "[ \"$1\" = -u ] && [ \"$2\" = herdr ] && [ \"$3\" = -- ] || exit 9\nshift 3\nexec \"$@\"\n")
+	realHead, err := exec.LookPath("head")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootHead := filepath.Join(t.TempDir(), "root-head")
+	write("head", "for a do case $a in \"$STUB_HOME\"/*) printf 'head %s\\n' \"$*\" >> "+shellQuote(rootHead)+" ;; esac; done\nexec "+shellQuote(realHead)+" \"$@\"\n")
 	// ⚠ THE DIFFERENCE BETWEEN TWO READS, because the probe also counts
 	// /usr/local/bin/muse, which a base this tool built may hold.
 	footprint := func(body []byte) int64 {
@@ -486,5 +497,8 @@ func TestTheMuseFootprintCountsHerdrsRules(t *testing.T) {
 	theirs := footprint(append([]byte("id = \"muse\"\n# the operator's own rules\n"), rules...))
 	if ours <= theirs {
 		t.Fatalf("the rules muse wrote for herdr count %d bytes, and a file of the operator's own %d; want only muse's counted", ours, theirs)
+	}
+	if b, _ := os.ReadFile(rootHead); len(b) != 0 {
+		t.Fatalf("root read the rules in the account's home itself:\n%s", b)
 	}
 }

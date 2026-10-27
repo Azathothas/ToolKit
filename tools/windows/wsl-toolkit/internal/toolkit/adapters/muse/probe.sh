@@ -22,6 +22,14 @@ as_account() {
     SHELL=/bin/bash LANG=C.UTF-8 PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/bin "$@"
 }
 
+# first_lines N PATH prints the first N lines of PATH, read by the account, when it is a
+# file. ⛔ Root's head followed a link the account placed there, and a named pipe there
+# held the probe. WSL-201.
+first_lines() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
+}
+
 # ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk. `base status` asks it of
 # an adapter the configuration no longer names, which keeps its files until `base
 # recreate`. POSIX `du -sk`, so it answers on any userland. WSL-109.
@@ -53,9 +61,10 @@ if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
   # ⚠ AND herdr's RULES FOR MUSE, when they are this adapter's. A file of the
   # operator's own at that path is not this adapter's to count. WSL-158.
   rules=''
-  if head -n 1 "$TK_HOME/.config/herdr/agent-detection/muse.toml" 2>/dev/null | grep -q "from wsl-toolkit's muse adapter"; then
+  if first_lines 1 "$TK_HOME/.config/herdr/agent-detection/muse.toml" | grep -q "from wsl-toolkit's muse adapter"; then
     rules=$TK_HOME/.config/herdr/agent-detection/muse.toml
   fi
+  # linksafe: footprint tests each path and reads its size with du, which follows no link
   printf 'footprint %s\n' "$(footprint "$WRAPPER" "$LAUNCHER" "$versions" "$TK_HOME/.config/muse" /var/lib/wsl-toolkit/muse "$rules")"
   exit 0
 fi
@@ -77,6 +86,7 @@ else
   problem "Muse is not installed for $TK_USER at $LAUNCHER"
 fi
 
+# linksafe: the launcher's path is the pattern, and grep reads the wrapper outside the home
 if [ -x "$WRAPPER" ] && grep -qxF "exec \"$LAUNCHER\" \"\$@\"" "$WRAPPER"; then
   printf 'wrapper %s\n' "$WRAPPER"
 else
@@ -102,7 +112,7 @@ if [ -z "$pane_path" ]; then
   problem "Muse is installed and a login shell cannot find it, so herdr cannot start it in a pane. Run: base ensure"
 else
   printf 'on_login_path %s\n' "$pane_path"
-  if head -3 "$pane_path" 2>/dev/null | grep -q "wsl-toolkit's muse adapter"; then
+  if first_lines 3 "$pane_path" | grep -q "wsl-toolkit's muse adapter"; then
     printf 'wrapper_on_login_path yes\n'
   else
     printf 'wrapper_on_login_path no\n'
@@ -174,7 +184,7 @@ fi
 # version other than the one these rules were measured against is a note naming it.
 HERDR_RULES=$TK_HOME/.config/herdr/agent-detection/muse.toml
 HERDR_RULES_MEASURED=2026.08.26.1
-if [ -f "$HERDR_RULES" ] && head -n 1 "$HERDR_RULES" | grep -q "from wsl-toolkit's muse adapter"; then
+if [ -f "$HERDR_RULES" ] && first_lines 1 "$HERDR_RULES" | grep -q "from wsl-toolkit's muse adapter"; then
   printf 'herdr_detection_rules installed\n'
   if command -v jq >/dev/null 2>&1; then
     # ⚠ THE WARNING GOES LAST, because it is herdr's own text and may carry a `|`.
@@ -238,6 +248,7 @@ fi
 # and `ready` are reads, so they answer without the fact, and `base ensure` carries it
 # on the state it answers. WSL-157.
 REPORTER_LOG=$TK_HOME/.local/state/wsl-toolkit/herdr-muse/log
+# >>> the probe's Muse session: begin
 if [ "${TK_PROBE_SESSION:-}" != 1 ]; then
   # A read: no session, and no fact that would read like a measurement.
   :
@@ -259,22 +270,25 @@ else
   # where root writes and turn the write onto any file. Muse's stderr goes to a file
   # root's own mktemp makes, outside it. WSL-157.
   errors=$(mktemp /tmp/wsl-toolkit-muse-probe-stderr.XXXXXX 2>/dev/null) || errors=
+  # ⛔ AND THE ACCOUNT ENTERS ITS SCRATCH DIRECTORY AND REMOVES IT. Root's cd and rm -rf
+  # there walked a directory the account owns, through any link it put there. WSL-202.
   if [ -z "$scratch" ] || [ -z "$errors" ] || ! as_account mkdir "$scratch/work" "$scratch/data" "$scratch/cache"; then
     printf 'herdr_reporter_session_start unmeasured: no scratch directory for a Muse session in /tmp\n'
-    [ -z "$scratch" ] || rm -rf "$scratch"
+    [ -z "$scratch" ] || as_account rm -rf "$scratch"
     [ -z "$errors" ] || rm -f "$errors"
   else
     deadline=
     command -v timeout >/dev/null 2>&1 && deadline='timeout 60'
-    # shellcheck disable=SC2086  # $deadline is a command and its argument, or nothing
-    session_out=$(cd "$scratch/work" && as_account XDG_DATA_HOME="$scratch/data" XDG_CACHE_HOME="$scratch/cache" \
+    # shellcheck disable=SC2086,SC2016  # $deadline is a command and its argument, or nothing; the single quotes hold the account's own script
+    session_out=$(as_account sh -c 'cd "$1" || exit 1; shift; exec "$@"' sh "$scratch/work" \
+      env XDG_DATA_HOME="$scratch/data" XDG_CACHE_HOME="$scratch/cache" \
       MUSE_NO_AUTO_UPDATE=1 $deadline "$LAUNCHER" exec --json --provider echo --no-session-log \
       'wsl-toolkit probe' </dev/null 2>"$errors")
     ran=$?
     said=$(head -1 "$errors" 2>/dev/null)
     # ⚠ EVERY RECORD CARRIES THE SESSION'S STREAM, and the hook's payload names the same id.
     session=$(printf '%s\n' "$session_out" | jq -rR 'fromjson? | select(.stream.kind? == "session") | .stream.id' 2>/dev/null | head -1)
-    rm -rf "$scratch"
+    as_account rm -rf "$scratch"
     rm -f "$errors"
     # ⚠ A HOOK MAY STILL BE RUNNING when `exec` returns, so a miss is read again for a
     # few seconds. The log is read as the account, whose file it is.
@@ -307,3 +321,4 @@ else
     fi
   fi
 fi
+# <<< the probe's Muse session: end

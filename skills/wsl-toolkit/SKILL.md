@@ -195,7 +195,8 @@ wsl-toolkit base grant --source . --mode rw
 ```
 
 Grants **one** Windows directory, live, under `/workspaces`. Use `--mode ro` when the
-work must not change it. ⛔ `base agent NAME` refuses a directory no grant covers, with
+work must not change it. ⛔ A `--target` inside another grant is refused, whichever
+configuration file made that grant. ⛔ `base agent NAME` refuses a directory no grant covers, with
 exit 125 and the `base grant` line that would cover it. **That refusal is the design
 working. Do not widen a grant to make a step pass.** Report it instead.
 

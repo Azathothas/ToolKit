@@ -109,7 +109,8 @@ func TestTheProvisionerInstallsWhatEachFamilysEngineNeeds(t *testing.T) {
 	dnf := engineCase{
 		family: "dnf",
 		want: []string{
-			"dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs slirp4netns shadow-utils iproute tar",
+			// ⛔ util-linux, for runuser and su: provisioning becomes the account. WSL-201.
+			"dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs slirp4netns shadow-utils iproute tar util-linux",
 			"dnf -y --setopt=install_weak_deps=False install passt",
 		},
 	}

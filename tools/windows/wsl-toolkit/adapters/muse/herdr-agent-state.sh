@@ -303,8 +303,11 @@ permission_message() {
 
 selftest() {
   st_fail=0
-  st_tmp=${TMPDIR:-/tmp}/herdr-muse-selftest.$$
-  mkdir -p "$st_tmp" || { printf 'selftest: no temporary directory\n' >&2; return 1; }
+  # ⛔ A DIRECTORY OF ITS OWN, MADE NEW. The muse adapter runs this as root, and a fixed
+  # name in /tmp with mkdir -p took a directory any account made there first. Root then
+  # wrote its bindings, lock and log through whatever that directory held. WSL-202.
+  st_tmp=$(mktemp -d "${TMPDIR:-/tmp}/herdr-muse-selftest.XXXXXX") ||
+    { printf 'selftest: no temporary directory\n' >&2; return 1; }
   STATE_DIR=$st_tmp
   BINDINGS=$st_tmp/bindings
   LOCK=$st_tmp/lock

@@ -25,13 +25,8 @@ cd /
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'pi adapter: %s\n' "$*" >&2; exit 3; }
-# same_file A B is true when B exists and holds A's bytes. ⚠ NOT cmp: cmp is
-# diffutils, which a base with no toolset does not carry, and a missing cmp read
-# as "the files differ" on every run. WSL-105.
-same_file() {
-  [ -f "$2" ] || return 1
-  [ "$(sha256sum < "$1")" = "$(sha256sum < "$2")" ]
-}
+# ⚠ NO same_file HERE. The one file pi compares is in the account's home, so the account
+# reads it, through account_same below. WSL-201.
 
 # -- what this adapter installs, and from where ------------------------------------
 # ⭐ PI'S OWN RELEASE FIRST, AND npm ONLY WHEN THAT RELEASE CANNOT BE FETCHED. Ruling
@@ -131,6 +126,15 @@ account_put() {
     fi
     rm -f "$tmp"
     exit 1' sh "$1" "$2"
+}
+
+# account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
+# bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
+# followed a link the account placed there, and a named pipe there held base ensure.
+account_same() {
+  as_src=$(sha256sum < "$1") || return 1
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
 }
 # <<< the account's own writes: end
 
@@ -403,7 +407,7 @@ if [ -n "${TK_ADAPTER_MODEL:-}${TK_ADAPTER_EFFORT:-}" ]; then
         | (if $model == "" then . else .defaultModel = $model end)
         | (if $effort == "" then . else .defaultThinkingLevel = $effort end)
       ' "$pi_settings" > "$settings_tmp" 2>/dev/null && [ -s "$settings_tmp" ]; then
-      if same_file "$settings_tmp" "$pi_settings"; then
+      if account_same "$settings_tmp" "$pi_settings"; then
         rm -f "$settings_tmp"
       else
         account_put "$pi_settings" 0600 < "$settings_tmp" ||

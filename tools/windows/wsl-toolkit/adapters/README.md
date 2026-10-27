@@ -165,24 +165,42 @@ value whose quote becomes code.
 `passwordless_sudo` off, or in a herdr pane under `private_net`, the account cannot act
 as root. So root's write through the link was one the account could not make. `WSL-201`
 
-⭐ **So every write in the home is the account's**, through the three helpers each
-installer carries between its `the account's own writes` markers:
+⭐ **So every write in the home is the account's**, through the helpers each installer
+carries between its `the account's own writes` markers:
 
 | helper | what it does |
 | --- | --- |
 | `as_account CMD...` | runs one command as the account, with a fresh environment |
 | `account_dirs MODE DIR...` | makes each directory as the account and gives it MODE. A directory that is a link keeps its own mode |
 | `account_put DEST MODE` | writes its standard input to a file of the account's own beside DEST, and renames it over DEST. A link at DEST is replaced, never written through |
+| `account_same SRC DEST` | is true when DEST, read by the account, is a file holding SRC's bytes |
 
 ⭐ Root builds what goes into a file outside the home, in its own temporary file, and
-hands it to `account_put` on standard input. Root may still compare a file in the home
-with one of its own, because a comparison writes nothing.
+hands it to `account_put` on standard input. ⛔ **Root reads nothing in the home
+either.** Its read followed a link the account placed there, and a named pipe there
+held `base ensure`. So `account_same` compares, and a probe reads a file there as the
+account. Root reads only its own file outside the home.
 
-⛔ **The suite refuses a new root write in the home.**
-`TestNoRootWriteLandsInTheAccountsHome` reads every script the executable carries. It
-refuses a `chown`, `install`, `mkdir`, `mv` or `cp` onto a path in the home, and a
-redirect onto one, outside `as_account`. A case per adapter plants a link at each path
-it writes and finds the link's target untouched.
+⛔ **The suite refuses a new root step in the home.**
+`TestNoRootWriteLandsInTheAccountsHome` reads every script the executable carries. A
+path is in the home when it is built on the home read from `getent`, on `/home/`, on
+`~user`, or on what the account answered. ⛔ It refuses every root command handed such
+a path, and a redirect from or onto one.
+
+⭐ **It passes a command an account route runs**, a message or a test, and what reads a
+path's link or size. It reads past a wrapper such as `env` or `sudo` to the command it
+runs. A pipeline into `xargs` or `read` that names the home is refused, and so is a
+here-document fed to anything but `cat`.
+
+⭐ **A root step the scan cannot judge carries a `# linksafe: REASON` comment.** It
+stands for every command on the next line. One that stands for nothing, or gives no
+reason, is refused.
+
+⚠ **The scan is still a heuristic in three ways.** It judges a command by its name, so a
+function named like a helper is trusted. It follows a path only through a variable, a
+`for` loop, `~user` or `/home/`, so a path read from a file or built by `eval` escapes
+it. It reads each script alone. So each adapter carries a case that plants a link at
+each path it writes, and finds the link's target untouched.
 
 ## The pins
 

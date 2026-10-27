@@ -308,6 +308,86 @@ if [ "$TK_GRANTS_MODE" = held ]; then
 fi
 
 # -- the targets the configuration names ------------------------------------------
+# >>> each target, where it names: begin
+# ⛔ ROOT MAKES A TARGET ONLY WHERE IT NAMES, AND CHMODS ONLY WHAT IT MADE. A target
+# inside another grant sat on a Windows directory mounted live, where the account can
+# make links. Root's mkdir -p and chmod 755 followed a link there, and its mount
+# resolved the target through it. A target that was already a directory had its mode
+# changed, the live mount of its own grant too. WSL-202.
+
+# under_drvfs TARGET: sets drvfs_above to the live DrvFS mount TARGET sits inside, or
+# to nothing. A mount at TARGET itself is its own grant's, and not above it.
+under_drvfs() {
+  drvfs_above=
+  while read -r _ud_source ud_target ud_type ud_options _ud_rest; do
+    case "$ud_type:$ud_options" in
+      drvfs:*|9p:*aname=drvfs*) ;;
+      *) continue ;;
+    esac
+    case "$1" in
+      "$ud_target"/*) drvfs_above=$ud_target; return 0 ;;
+    esac
+  done < /proc/mounts
+  return 0
+}
+
+# target_ready TARGET: makes TARGET where it names, and gives what it made mode 755.
+# ⭐ The deepest part of TARGET that is there is entered with cd -P and read back with
+# pwd -P. So a link on the way, or one at TARGET, is refused before anything is made.
+target_ready() {
+  under_drvfs "$1"
+  [ -z "$drvfs_above" ] ||
+    die "$1 sits inside $drvfs_above, a Windows directory mounted live, where the account can make links. Grant it at a target outside every other grant"
+  tr_have=$1
+  while [ ! -e "$tr_have" ] && [ ! -L "$tr_have" ]; do
+    tr_have=${tr_have%/*}
+    [ -n "$tr_have" ] || tr_have=/
+  done
+  tr_real=
+  if [ ! -L "$tr_have" ]; then
+    tr_real=$(cd -P "$tr_have" 2>/dev/null && pwd -P) || tr_real=
+  fi
+  [ "$tr_real" = "$tr_have" ] ||
+    die "$tr_have is a link or not a directory, so $1 would not be made where it names. Remove $tr_have, or grant at another target"
+  [ "$tr_have" != "$1" ] || return 0
+  mkdir -p "$1" || die "could not make $1"
+  chmod 755 "$1" || die "could not give $1 mode 755"
+}
+# <<< each target, where it names: end
+
+# nested_grant TARGET: sets nested_at to a target the ledger gives another configuration
+# file that nests with TARGET, one inside the other, and nested_by to that file in
+# base64. ⚠ Only while that grant is live or the block holds its line, so a stale row
+# refuses nothing. WSL-202.
+nested_grant() {
+  nested_at=
+  nested_by=
+  [ -f "$OWNERS" ] || return 0
+  while read -r ng_target ng_key ng_name _ng_rest; do
+    if [ -z "$ng_target" ] || [ "$ng_target" = "$1" ] || [ "$ng_key" = "$TK_GRANT_OWNER" ]; then
+      continue
+    fi
+    case "$1/" in
+      "$ng_target"/*) ;;
+      *) case "$ng_target/" in "$1"/*) ;; *) continue ;; esac ;;
+    esac
+    ng_live=
+    while read -r _ng_source ng_mounted ng_type ng_options _ng_more; do
+      [ "$ng_mounted" = "$ng_target" ] || continue
+      case "$ng_type:$ng_options" in
+        drvfs:*|9p:*aname=drvfs*) ng_live=yes ;;
+      esac
+    done < /proc/mounts
+    line_for "$ng_target" "$WORK/old-block"
+    if [ -n "$ng_live" ] || [ -n "$line_of" ]; then
+      nested_at=$ng_target
+      nested_by=$ng_name
+      return 0
+    fi
+  done < "$OWNERS"
+  return 0
+}
+
 : > "$WORK/targets"
 # The payload is a validated sequence of base64-target/mode pairs.
 # shellcheck disable=SC2086
@@ -315,9 +395,16 @@ set -- $TK_MOUNT_CHECKS
 while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || die "the explicit mount check table is incomplete"
   decode64 target "$1"
-  printf '%s %s\n' "$2" "$(cat "$WORK/target")" >> "$WORK/targets"
-  mkdir -p "$(cat "$WORK/target")"
-  chmod 755 "$(cat "$WORK/target")"
+  tk_target=$(cat "$WORK/target")
+  printf '%s %s\n' "$2" "$tk_target" >> "$WORK/targets"
+  # ⛔ A TARGET NESTED WITH ANOTHER FILE'S GRANT IS REFUSED, as validation refuses one
+  # nested in a grant of the same file. WSL-202.
+  nested_grant "$tk_target"
+  if [ -n "$nested_at" ]; then
+    decode64 nested_by "$nested_by"
+    die "$tk_target and $nested_at, which $(cat "$WORK/nested_by") grants, sit one inside the other, where the account can make links on the way. Grant it at a target outside every other grant"
+  fi
+  target_ready "$tk_target"
   shift 2
 done
 count=$(grep -c . "$WORK/targets" || :)

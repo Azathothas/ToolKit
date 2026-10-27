@@ -35,6 +35,13 @@ is_omp_wrapper() {
   as_account sh -c '[ -f "$1" ] && head -3 "$1"' sh "$1" 2>/dev/null |
     grep -qF "# wsl-toolkit omp adapter wrapper"
 }
+# first_lines N PATH prints the first N lines of PATH, read by the account, when it is a
+# file. ⛔ Root's head and sed followed a path the account's login shell named, as
+# is_omp_wrapper says. WSL-201.
+first_lines() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
+}
 # ⛔ A LOGIN SHELL, AND THAT IS THE WHOLE POINT OF THIS FUNCTION. as_account runs
 # `env -i`, which clears the environment on purpose so an install is reproducible,
 # and a plain `sh -c` under it therefore reports EVERY variable as unset. Measured
@@ -83,8 +90,10 @@ if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
   # ⚠ npm's package is counted where a launcher points into it, or where an omp from npm
   # left it. A release binary a refusal kept is counted too. Each is the adapter's.
   # WSL-138.
+  # linksafe: npm_package_dir reads where the launcher links with readlink, and opens nothing
   npm_dir=$(npm_package_dir "$shim")
   [ -n "$npm_dir" ] || npm_dir=$PREFIX/lib/node_modules/@oh-my-pi/pi-coding-agent
+  # linksafe: footprint tests each path and reads its size with du, which follows no link
   printf 'footprint %s\n' "$(footprint "$WRAPPER" "$PREFIX/bin/omp" "$PREFIX/bin/omp-npm" "$npm_dir" "$STAGE_DIR" "$TK_HOME/.omp")"
   exit 0
 fi
@@ -149,7 +158,7 @@ fi
 # its prefix last and rewrites that line. WSL-147. omp keeps its startup model and effort in its own configuration, so those survive; the account guard does not.
 # ⚠ A probe that only asked whether the name resolved called that base healthy.
 if [ -n "$pane_path" ]; then
-  if head -3 "$pane_path" 2>/dev/null | grep -q "wsl-toolkit's omp adapter"; then
+  if first_lines 3 "$pane_path" | grep -q "wsl-toolkit's omp adapter"; then
     printf 'wrapper_on_login_path yes\n'
   else
     printf 'wrapper_on_login_path no\n'
@@ -183,7 +192,8 @@ separated=no
 # ⛔ BY CONTENT, NOT BY PATH. npm's prefix for this account is $HOME/.local, so its
 # own shim and the wrapper share a filename and only the marker tells them apart.
 if [ -n "$omp_path" ] && is_omp_wrapper "$omp_path"; then
-  wrapped_dir=$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$omp_path" 2>/dev/null | head -1)
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  wrapped_dir=$(as_account sh -c '[ -f "$1" ] && exec sed -n "s/^PI_CODING_AGENT_DIR=//p" "$1"' sh "$omp_path" 2>/dev/null | head -1)
   if [ -n "$wrapped_dir" ]; then
     separated=yes
     agent_dir=$wrapped_dir

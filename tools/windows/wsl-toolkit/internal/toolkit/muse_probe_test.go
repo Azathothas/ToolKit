@@ -86,6 +86,15 @@ func TestTheMuseProbeAsksMuseWhetherItRunsTheReporter(t *testing.T) {
 	}
 	made := filepath.Join(root, "made")
 	write(filepath.Join(bin, "mktemp"), "#!/bin/sh\nout=$("+shellQuote(realMktemp)+" \"$@\") || exit $?\nprintf '%s\\n' \"$out\" >> "+shellQuote(made)+"\nprintf '%s\\n' \"$out\"\n", 0o755)
+	// ⛔ ROOT'S rm IS FOUND ON PATH TOO, and as_account's PATH does not hold it, so a
+	// removal of the account's scratch directory by root is recorded. The account's own
+	// rm -rf walks it as the account. WSL-202.
+	realRm, err := exec.LookPath("rm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootRm := filepath.Join(root, "root-rm")
+	write(filepath.Join(bin, "rm"), "#!/bin/sh\nfor a do\n  case $a in */wsl-toolkit-muse-probe.*) printf 'rm %s\\n' \"$*\" >> "+shellQuote(rootRm)+"; break ;; esac\ndone\nexec "+shellQuote(realRm)+" \"$@\"\n", 0o755)
 	// ⛔ IN plant MODE, THE ACCOUNT RACES ROOT. Right after the account makes the
 	// probe's scratch directories, a process of the account puts a link named stderr
 	// in its own directory, pointing at a file it cannot write. Root's shell must
@@ -208,6 +217,9 @@ exit 0
 	}
 	if _, err := os.Stat(scratch); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the probe left its scratch directory %s behind (%v)", scratch, err)
+	}
+	if b, _ := os.ReadFile(rootRm); len(b) != 0 {
+		t.Fatalf("root removed the account's scratch directory itself, through whatever it held:\n%s", b)
 	}
 
 	// ⛔ A MUSE THAT RAN NO HOOK OVER A FILE REGISTERING IT IS A NOTE NAMING ITS VERSION.

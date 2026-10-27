@@ -80,6 +80,7 @@ func TestTheAccountsEnvironmentIsReadThroughALoginShell(t *testing.T) {
 func TestTheIntegrationOverrideIsOnlyAppliedWhenSeparating(t *testing.T) {
 	script := ompScript(t)
 	if !strings.Contains(script, `if [ "$OMP_SEPARATED" = yes ]; then
+    # linksafe: set -- builds the account's own command line, and as_account runs it
     set -- as_account env PI_CODING_AGENT_DIR="$OMP_AGENT_DIR" "$herdr_bin" integration install omp
   else
     set -- as_account "$herdr_bin" integration install omp

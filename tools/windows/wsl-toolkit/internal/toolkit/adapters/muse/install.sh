@@ -112,6 +112,15 @@ account_put() {
     rm -f "$tmp"
     exit 1' sh "$1" "$2"
 }
+
+# account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
+# bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
+# followed a link the account placed there, and a named pipe there held base ensure.
+account_same() {
+  as_src=$(sha256sum < "$1") || return 1
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
+}
 # <<< the account's own writes: end
 
 # muse_version answers what the launcher says it is, and "" when it says nothing.
@@ -430,7 +439,7 @@ else
     rm -f "$hook_tmp"
     die "the herdr reporter failed its own self-test in this base, so it was not installed"
   fi
-  if same_file "$hook_tmp" "$HOOK"; then
+  if account_same "$hook_tmp" "$HOOK"; then
     rm -f "$hook_tmp"
   else
     account_put "$HOOK" 0755 < "$hook_tmp" || { rm -f "$hook_tmp"; die "the account could not write $HOOK"; }
@@ -477,7 +486,7 @@ else
                           else . end))
                    + [{"matcher":"","hooks":[{"type":"command","command":$hook}]}])))
     ' "$MUSE_SETTINGS" > "$settings_tmp" 2>/dev/null && [ -s "$settings_tmp" ]; then
-    if same_file "$settings_tmp" "$MUSE_SETTINGS"; then
+    if account_same "$settings_tmp" "$MUSE_SETTINGS"; then
       rm -f "$settings_tmp"
       say "Muse already reports to herdr on $(printf '%s' "$HOOK_EVENTS" | wc -w) events"
     else
@@ -509,11 +518,15 @@ HERDR_RULES_DIR=$TK_HOME/.config/herdr/agent-detection
 HERDR_RULES=$HERDR_RULES_DIR/muse.toml
 HERDR_RULES_MARK="from wsl-toolkit's muse adapter"
 herdr_rules_skip=
+# ⛔ THE ACCOUNT READS WHOSE FILE IT IS. Root's head followed a link the account placed
+# there. WSL-201.
+# shellcheck disable=SC2016  # the single quotes hold the account's own script
 if [ -z "${TK_FILE_HERDR_DETECTION_TOML_B64:-}" ]; then
   herdr_rules_skip='this adapter carries no rule file'
 elif ! herdr_present; then
   herdr_rules_skip='no herdr is installed in this base to read them. Add the herdr adapter to base.adapters'
-elif [ -f "$HERDR_RULES" ] && ! head -n 1 "$HERDR_RULES" | grep -q "$HERDR_RULES_MARK"; then
+elif [ -f "$HERDR_RULES" ] &&
+  ! as_account sh -c '[ -f "$1" ] && exec head -n 1 "$1"' sh "$HERDR_RULES" 2>/dev/null | grep -q "$HERDR_RULES_MARK"; then
   herdr_rules_skip="$HERDR_RULES is not this adapter's, so it is left as it is"
 fi
 if [ -n "$herdr_rules_skip" ]; then
@@ -526,7 +539,7 @@ else
   printf '%s' "$TK_FILE_HERDR_DETECTION_TOML_B64" > "$rules_encoded"
   base64 -d < "$rules_encoded" > "$rules_tmp" || die "herdr's detection rules for Muse did not decode"
   rm -f "$rules_encoded"
-  if same_file "$rules_tmp" "$HERDR_RULES"; then
+  if account_same "$rules_tmp" "$HERDR_RULES"; then
     rm -f "$rules_tmp"
     say "herdr's detection rules for Muse are in place at $HERDR_RULES"
   else

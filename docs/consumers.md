@@ -92,11 +92,31 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+### ⛔ What refusing a grant target inside another breaks, and what a caller does
+
+`WSL-202`. In `wsl-toolkit-v9.0.0`. It fixes a root write that followed a link the
+account made in a Windows directory a grant mounted. A break by the table above,
+because a configuration that loaded is now refused.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a configuration whose `base.mounts` targets nest, one inside another, is refused where it is read. Every command that reads it exits non-zero, naming the two | grants one target inside another in one file | grants each at a target outside every other grant, such as `/workspaces/NAME` |
+| `base grant` and `base ensure` refuse a target nested with a grant another configuration file holds, while that grant is live or the fstab block holds its line | nests a project file's grant with the home file's, or the other way round | grants at a target outside every other grant |
+| a target with a link on its way, or one under a live Windows mount, is refused before anything is made or mounted | linked a path under `/workspaces` to another directory, or mounted a Windows directory there itself | removes the link or the mount, or grants at another target |
+| root gives mode 755 only to a target it made. One already there keeps its mode | made a target itself with another mode, and relied on a grant to open it | makes it 0755 itself, or leaves it for the grant to make |
+| muse's reporter self-test makes its own directory, and the muse probe removes the account's scratch directory as the account | | nothing |
+
+⚠ **The rows it reaches, from the register.** The register names no consumer whose
+grants nest. pg-toolkit's row names a grant whose directory is gone, and does not read
+its targets. A pg-toolkit whose targets nest has its `base ensure` refused, naming the
+two.
+
 ### ⛔ What root writing nothing in the account's home breaks, and what a caller does
 
 `WSL-201`. In `wsl-toolkit-v9.0.0`. It fixes a write root made through a link the
 account placed. A break by the table above, because an adapter that finished there
-can now fail. A home that holds no such link changes nothing a caller reads.
+can now fail. ⚠ One row changes a home with no such link, the `chown -R` row. Every
+other row changes only a home holding one.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -104,7 +124,8 @@ can now fail. A home that holds no such link changes nothing a caller reads.
 | `PI_CONFIG_DIR` naming a directory outside the account's home stops the omp adapter where the account cannot make it. Root made it and gave it to the account | sets `PI_CONFIG_DIR` to a path outside the home | sets it to a path inside the home |
 | a link at muse's `trust.json` or at omp's separating wrapper is replaced by the file. Root wrote through it, as root's `install` already replaced the others | keeps one of those files somewhere else through a link | reads the file in the home after `base ensure` |
 | provisioning no longer runs `chown -R` over `~/.config`. A file root left there stays root's after a re-provisioning | relied on a re-provisioning to give the account a file root wrote under `~/.config` | gives it with `base exec --root` |
-| on a base without systemd, root no longer removes the account's engine drop-in where the account could not. `base ensure` names the file in a ⚠ line instead | | nothing |
+| provisioning gives back only a directory that stands at an XDG path itself. It gave what a link there named to the account, and made it 0700 | linked an XDG path to a directory of root's | links it to a directory the account owns |
+| on a base without systemd, root no longer removes the account's engine drop-in where the account could not. With no session bus, one the account could not remove is named, and `cgroupfs` is no longer claimed. `base ensure` names the file in a ⚠ line | reads the ⚠ line that says the engine keeps `cgroupfs` | reads the ⚠ line that names the drop-in too |
 
 ⚠ **The rows it reaches, from the register.** The register names no consumer that
 configures an adapter. pg-toolkit runs `base ensure`, and podbox runs `base ensure
