@@ -269,6 +269,7 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 		"TK_USER": "agent", "TK_GRANTS_MODE": mode,
 		"TK_FSTAB_B64": fstab64, "TK_MOUNT_CHECKS": checks, "TK_GRANT_TARGET": target,
 		"TK_GRANT_SOURCE": source64, "TK_GRANT_OWNER": b64(owner), "TK_GRANT_OWNER_NAME": b64(owner),
+		"TK_MOUNT_HELPER_B64": base64.StdEncoding.EncodeToString(mountHelperScript),
 	})
 }
 
@@ -289,8 +290,12 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 // WSL-188.
 //
 // ⚠ mount COMES UP rw WHATEVER ITS LINE SAYS while dir holds mount.drops-ro, as
-// BusyBox's was measured to, and a read-only remount then makes it ro, plain or
-// bind. Its log names which. WSL-188, WSL-198.
+// BusyBox's was measured to, and a read-only remount then makes it ro. Its log
+// names which. A plain remount is the filesystem's, so every mount of the same
+// source goes ro, and a bind one is its mount point's alone, both measured on
+// alpine. A plain one fails while dir holds remount.plain.fail. While dir holds
+// mount.second, a mount brings a second one of its source, as a bind of the grant
+// made before its remount would. WSL-188, WSL-198.
 //
 // ⛔ su PERMUTES, as BusyBox's and util-linux's were both measured to: -s and -c take
 // their value wherever they stand, a later -c replaces an earlier one, and what is
@@ -336,9 +341,19 @@ id() {
 mount() {
   if [ "$1" = -o ] && { [ "$2" = remount,ro ] || [ "$2" = remount,bind,ro ]; }; then
     printf 'mount -o %s %s\n' "$2" "$3" >> "$TK_TEST_DIR/log"
+    if [ "$2" = remount,ro ] && [ -e "$TK_TEST_DIR/remount.plain.fail" ]; then
+      printf 'the stand-in plain remount failed\n' >&2
+      return 1
+    fi
+    sr_from=
+    while read -r sr_source sr_target sr_rest; do
+      if [ "$sr_target" = "$3" ]; then sr_from=$sr_source; fi
+    done < "$TK_TEST_DIR/mounts"
     sr_keep=
     while read -r sr_source sr_target sr_type sr_options sr_rest; do
-      if [ "$sr_target" = "$3" ]; then sr_options="ro,${sr_options#*,}"; fi
+      if [ "$sr_target" = "$3" ] || { [ "$2" = remount,ro ] && [ "$sr_source" = "$sr_from" ]; }; then
+        sr_options="ro,${sr_options#*,}"
+      fi
       sr_keep="$sr_keep$sr_source $sr_target $sr_type $sr_options $sr_rest
 "
     done < "$TK_TEST_DIR/mounts"
@@ -362,6 +377,9 @@ mount() {
   done < "$TK_TEST_DIR/fstab"
   [ ! -e "$TK_TEST_DIR/mount.drops-ro" ] || sm_mode=rw
   printf '%s %s drvfs %s,noatime 0 0\n' "$sm_from" "$1" "$sm_mode" >> "$TK_TEST_DIR/mounts"
+  if [ -e "$TK_TEST_DIR/mount.second" ]; then
+    printf '%s /run/second drvfs %s,noatime 0 0\n' "$sm_from" "$sm_mode" >> "$TK_TEST_DIR/mounts"
+  fi
 }
 su_count=0
 su_drop() {
@@ -403,21 +421,11 @@ umount() {
 func grantsRun(t *testing.T, dir string, env map[string]string) (string, error) {
 	t.Helper()
 	sh, bin := grantsShell(t)
-	at := filepath.ToSlash(dir)
+	at := shellPath(t, dir)
 	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", at+"/fstab")
 	script = strings.ReplaceAll(script, "/proc/mounts", at+"/mounts")
 	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", at+"/owners")
 	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grants.lock", at+"/grants.lock")
-	// ⚠ WSL's helper is dir's mount.drvfs and the link is dir's bin/mount.drvfs.
-	// /bin/mount is BusyBox's while dir holds busybox, and the mounts file where it
-	// does not. Each is a file that is there, so any readlink resolves it. WSL-198.
-	mountBin := at + "/mounts"
-	if _, err := os.Stat(filepath.Join(dir, "busybox")); err == nil {
-		mountBin = at + "/busybox"
-	}
-	script = strings.Replace(script, "DRVFS_HELPER=/sbin/mount.drvfs\n", "DRVFS_HELPER="+at+"/mount.drvfs\n", 1)
-	script = strings.Replace(script, "DRVFS_LINK=/usr/local/bin/mount.drvfs\n", "DRVFS_LINK="+at+"/bin/mount.drvfs\n", 1)
-	script = strings.Replace(script, "MOUNT_BIN=/bin/mount\n", "MOUNT_BIN="+mountBin+"\n", 1)
 	script = strings.Replace(script, "set -eu\n", "set -eu\n"+grantsStandIns, 1)
 	run := filepath.Join(dir, "grants-run.sh")
 	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
@@ -426,6 +434,12 @@ func grantsRun(t *testing.T, dir string, env map[string]string) (string, error) 
 	cmd := exec.Command(sh, filepath.ToSlash(run))
 	cmd.Env = append(shellEnv(bin), "TK_TEST_DIR="+at)
 	for k, v := range env {
+		// ⛔ THE MOUNT HELPER IS WRITTEN UNDER dir, NEVER ON THE HOST RUNNING THE
+		// CASE. A caller hands the guest's text, as Go does, and any other text is
+		// handed on as it is. WSL-198.
+		if k == "TK_MOUNT_HELPER_B64" && v == base64.StdEncoding.EncodeToString(mountHelperScript) {
+			v = base64.StdEncoding.EncodeToString([]byte(mountHelperIn(t, dir)))
+		}
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	out, err := cmd.CombinedOutput()

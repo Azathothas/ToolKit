@@ -326,31 +326,6 @@ assert_grant_owner() {
 }
 # <<< the grant owner: end
 
-# >>> the boot script's grants: begin
-# grant_as_asked TARGET MODE: whether the live Windows mount at TARGET reads MODE.
-# The last row wins, as the mount on top does.
-grant_as_asked() {
-  awk -v t="$1" -v m="$2" '$2 == t && ($3 == "drvfs" || ($3 == "9p" && $4 ~ /aname=drvfs/)) { split($4, o, ","); f = o[1] } END { exit f != m }' /proc/mounts
-}
-# grant_wait TARGET MODE: wait for the boot script while TARGET is not as asked.
-#
-# ⛔ THE BOOT SCRIPT IS WAITED FOR WHILE A GRANT IS NOT YET AS ASKED, fifteen
-# seconds at most across every grant, until its log says it checked them. WSL
-# does not wait for a [boot] command. On alpine BusyBox brings a read-only grant
-# up writable, and the boot script makes it read-only. Read at once, a base about
-# to be right was refused and re-provisioned. A log that says the grants were
-# checked is not waited on. WSL-198.
-grant_waited=0
-grant_wait() {
-  while [ "$grant_waited" -lt 15 ] && ! grant_as_asked "$1" "$2" &&
-    ! grep -q '^grants checked' /run/wsl-toolkit-boot.log 2>/dev/null; do
-    sleep 1
-    grant_waited=$((grant_waited + 1))
-  done
-}
-# <<< the boot script's grants: end
-
-# >>> the explicit mounts: begin
 mount_count=0
 mount_decode="${TMPDIR:-/tmp}/wsl-toolkit-mount-check.$$"
 mount_allowlist="${TMPDIR:-/tmp}/wsl-toolkit-mount-allowlist.$$"
@@ -372,7 +347,6 @@ while [ "$#" -gt 0 ]; do
   fi
   rm -f "$mount_decode"
   printf '%s\n' "$target" >> "$mount_allowlist"
-  grant_wait "$target" "$mode"
   # ⛔ UNREACHABLE IS NOT ABSENT. A directory above the target that this account
   # cannot enter makes `[ -d ]` fail exactly as a missing mount does, and a fresh
   # build once reported a present mount as absent that way. Walked from the root
@@ -419,7 +393,6 @@ while [ "$#" -gt 0 ]; do
   printf 'mount %s %s\n' "$mode" "$target"
 done
 printf 'mount-count %s\n' "$mount_count"
-# <<< the explicit mounts: end
 
 # ⛔ A GRANT WHOSE WINDOWS DIRECTORY IS GONE can still be mounted until the next
 # restart. base status names it with its revoke, so it is allowed here and not

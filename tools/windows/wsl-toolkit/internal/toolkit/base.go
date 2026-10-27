@@ -64,6 +64,16 @@ var repairScript []byte
 //go:embed grants.sh
 var grantsScript []byte
 
+// mountHelperScript puts WSL's mount.drvfs where BusyBox's mount finds it, and
+// makes it hand on the `ro` BusyBox drops.
+//
+// ⛔ TWO RUNNERS FOR ONE TEXT. grants.sh runs it before it writes a block, so a
+// new base's first start mounts its grants. engines.sh runs it at every owner's
+// `base ensure`, so a base an earlier release granted gets it too. WSL-198.
+//
+//go:embed mount-helper.sh
+var mountHelperScript []byte
+
 //go:embed binfmt.sh
 var binfmtScript []byte
 

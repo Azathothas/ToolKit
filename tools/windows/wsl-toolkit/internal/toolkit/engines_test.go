@@ -187,7 +187,10 @@ func (h *enginesHost) run(rootEngine, runtimeDir, kvm bool) (string, time.Durati
 		"TK_ROOT_ENGINE="+b(rootEngine), "TK_RUNTIME_DIR="+b(runtimeDir), "TK_KVM="+b(kvm),
 		"TK_RUN_PREFIX="+filepath.ToSlash(h.dir)+"/tmp/wsl-toolkit-run-",
 		"TK_RUN_STATE_B64="+base64.StdEncoding.EncodeToString(staleRunStatePayload()),
-		"TK_BOOT_B64="+base64.StdEncoding.EncodeToString(bootScript))
+		"TK_BOOT_B64="+base64.StdEncoding.EncodeToString(bootScript),
+		// ⚠ The mount helper's paths are the case's own, so nothing is written on
+		// the host running it. WSL-198.
+		"TK_MOUNT_HELPER_B64="+base64.StdEncoding.EncodeToString([]byte(mountHelperIn(h.t, h.dir))))
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	start := time.Now()

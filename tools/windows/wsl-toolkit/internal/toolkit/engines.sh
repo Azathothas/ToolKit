@@ -9,6 +9,7 @@
 # false. TK_RUN_PREFIX names the engine's run directory, which the account's uid
 # ends, and TK_RUN_STATE_B64 is the check `run` sends for a stale one.
 # TK_BOOT_B64 is the text of the script WSL runs at every start. WSL-178.
+# TK_MOUNT_HELPER_B64 is mount-helper.sh's text, which this runs. WSL-198.
 #
 # ⭐ EVERY FILE HERE BELONGS TO ONE SETTING, and that setting turned off removes
 # it. The cgroup delegation and the run state's upkeep are the parts that are not
@@ -28,6 +29,7 @@ set -u
 : "${TK_RUN_PREFIX:?TK_RUN_PREFIX is required}"
 : "${TK_RUN_STATE_B64:?TK_RUN_STATE_B64 is required}"
 : "${TK_BOOT_B64:?TK_BOOT_B64 is required}"
+: "${TK_MOUNT_HELPER_B64:?TK_MOUNT_HELPER_B64 is required}"
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'engines: %s\n' "$*" >&2; exit 3; }
@@ -55,10 +57,10 @@ home=$(getent passwd "$TK_USER" 2>/dev/null | cut -d: -f6) || home=
 [ -n "$home" ] || home=/home/$TK_USER
 
 # >>> as the account: begin
-# as_account SCRIPT NAME ARG...: SCRIPT run by sh as the account, with NAME as its
-# $0 and each ARG one of its positional parameters, so a file in its home is
-# written by its owner rather than by root following whatever that directory
-# holds. Through runuser, or through su where there is no runuser.
+# as_account SCRIPT NAME ARG...: SCRIPT run by sh as the account. NAME is its $0,
+# and each ARG is one of its positional parameters. So a file in its home is
+# written by its owner, and not by root following whatever that directory holds.
+# It goes through runuser, or through su where there is no runuser.
 #
 # ⛔ NOT setpriv. BusyBox's has no --reuid, so every ensure on alpine printed its
 # usage, and root then removed the account's file itself. su is grants.sh's form,
@@ -281,6 +283,26 @@ else
     rm -f "$OLD_BOOT"
   fi
 fi
+
+# -- WSL's mount helper, WSL-198 --------------------------------------------------
+# >>> the mount helper's install: begin
+# ⛔ EVERY ENSURE PUTS IT IN PLACE, where /bin/mount is BusyBox's. grants.sh does
+# too, but only when a grant changes. So an alpine base an earlier release granted
+# would go on mounting no grant at a start. mount-helper.sh says why.
+#
+# ⚠ IT NEVER FAILS THE ENSURE. A helper that could not be written is named, and a
+# restart without it mounts no grant, which the verifier then names.
+if mh_file=$(mktemp 2>/dev/null); then
+  if printf '%s' "$TK_MOUNT_HELPER_B64" | base64 -d > "$mh_file" 2>/dev/null; then
+    sh "$mh_file" || say "⚠ mount helper: its install exited $?"
+  else
+    say "⚠ mount helper: its payload could not be decoded, so it was not written"
+  fi
+  rm -f "$mh_file"
+else
+  say "⚠ mount helper: no temporary file for its install, so it was not written"
+fi
+# <<< the mount helper's install: end
 
 # -- root's engine, WSL-130 ------------------------------------------------------
 # ⛔ ROOT'S PODMAN WANTS THE SYSTEMD CGROUP MANAGER BY DEFAULT, AND THAT NEEDS A

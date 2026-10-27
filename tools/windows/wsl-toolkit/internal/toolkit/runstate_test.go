@@ -375,21 +375,16 @@ func newBootScriptHost(t *testing.T) bootScriptHost {
 	} {
 		writeStandIn(t, h.bin, name, body)
 	}
-	if err := os.WriteFile(filepath.Join(d, "proc", "mounts"), []byte("none "+filepath.ToSlash(d)+"/mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(d, "proc", "mounts"), []byte("none "+shellPath(t, d)+"/mnt/wsl tmpfs rw 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return h
 }
 
 func (h bootScriptHost) script(seal string) string {
-	d := filepath.ToSlash(h.dir)
+	d := shellPath(h.t, h.dir)
 	s := "seal=" + seal + "\naccount=agent\n" + markedSection(h.t, bootScript, "the boot script")
 	for _, r := range [][2]string{
-		// ⚠ The grants' lock and WSL's mount helper are the case's own. WSL-198.
-		{"gb_helper=/sbin/mount.drvfs\n", "gb_helper=" + d + "/sbin/mount.drvfs\n"},
-		{"gb_link=/usr/local/bin/mount.drvfs\n", "gb_link=" + d + "/usr/local/bin/mount.drvfs\n"},
-		{"gb_mount_bin=/bin/mount\n", "gb_mount_bin=" + d + "/bin/mount\n"},
-		{"/var/lib/", d + "/var/lib/"},
 		{"/run/", d + "/run/"},
 		{"/usr/local/lib/", d + "/usr/local/lib/"},
 		{"/mnt/wsl", d + "/mnt/wsl"},

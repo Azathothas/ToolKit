@@ -92,6 +92,20 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+### ⚠ What a grant on Alpine that survives a restart changes, and what a caller does
+
+`WSL-198` and `WSL-199`. In `wsl-toolkit-v8.1.0`. A grant that works today keeps
+working. ⚠ An Alpine base gains a file of this tool's, and its start mounts what it
+did not mount before. Both are changes by the table above.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a base whose `/bin/mount` is BusyBox's, as on Alpine, gains `/usr/local/bin/mount.drvfs`. The grants step writes it before a block, and every owner's `base ensure` writes it. A file there that this tool did not write is left, with a ⚠ line. A link to WSL's helper is replaced | keeps its own file or link at that path | removes its own file, or keeps it and accepts that a start may mount no grant |
+| at each start of such a base, WSL's `mount -a` mounts every `drvfs` line of `/etc/fstab`. A grant comes back after the distribution stops, where none did, and `base ensure` no longer exits 2 over it. The distribution's own `drvfs` lines mount too | relied on a stop to drop every Windows directory from an Alpine base | revokes the grant, or removes its own line |
+| a read-only grant on such a base is read-only from its mount, at a start and live. A `drvfs` line that says `ro` is handed `ro` | | nothing |
+| a mount the helper leaves writable is remounted read-only, so the filesystem is read-only, and every mount of it. A bind remount is asked only where that fails. One that stays writable is unmounted, and its mount fails with 32 | relies on a second mount of a read-only grant staying writable | grants the directory read-write at another target |
+| `base ensure` on Alpine prints no `setpriv` usage block. It removes the account's engine drop-in as the account, through `su`, where root removed it | matched that usage block | nothing |
+
 ### ⛔ What the canonical default base name breaks, and what a caller does
 
 `WSL-167`, ruling 33. In `wsl-toolkit-v8.0.0`. A break by the table above, so the release
@@ -242,7 +256,7 @@ variable.
 | the account takes the next free uid where the image holds 1000, and its `/etc/subuid` and `/etc/subgid` ranges start past every other. A build that refused now succeeds | | nothing |
 | a grant's fstab line names the account's own ids, and the verifier refuses a grant mounted for another uid. An adopted base whose account is not 1000 is re-provisioned at its next ensure, and restarted | holds such a base with live grants | runs `base ensure --repair` when a restart is acceptable |
 | a live grant is read back through `su` where there is no `runuser`, as on Alpine. A read-back that runs no shell as the account refuses the grant in either mode, and names the tool that ran and its exit | relies on a read-only grant passing where nothing could read it back, or matches the refusal's words | matches `could not be read back` |
-| a read-only grant on Alpine is remounted read-only after its mount, where it was refused | | nothing |
+| a read-only grant on Alpine is remounted read-only after its mount, where it was refused. From `wsl-toolkit-v8.1.0` it is read-only from its mount, and the remount is the one the `WSL-198` section names | | nothing |
 | provisioning's engine settings are drop-ins, and the main files are left. The account's `containers.conf` an earlier release wrote goes | edited that tool-written file by hand | moves its settings to the main file or a drop-in of its own |
 | a sealed base keeps `/mnt/wsl` mounted for up to ten seconds at each start, while it waits for WSL's shared resolver. The verifier waits up to fifteen seconds for the unmount, because WSL does not wait for a `[boot]` command | relies on `/mnt/wsl` being closed the moment a start returns | waits for the boot log's `shared tmpfs unmounted` line, or for `fs.mnt-wsl-shared closed` in `base doors` |
 | a sealed base that cannot resolve `docker.io` is restarted by `base ensure`, and not re-provisioned. One that still cannot resolve after the restart exits 2, named by its resolver, and is kept | relies on that re-provisioning | runs `base ensure` again once the host's network answers |

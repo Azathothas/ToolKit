@@ -74,6 +74,8 @@ func grantsEnv(cfg Config, mode string, grant BaseMount) (map[string]string, err
 		"TK_FSTAB_B64": fstab, "TK_MOUNT_CHECKS": checks,
 		"TK_GRANT_TARGET": target64, "TK_GRANT_SOURCE": source64,
 		"TK_GRANT_OWNER": ownerKey, "TK_GRANT_OWNER_NAME": ownerName,
+		// WSL-198: the helper WSL's mount -a needs on alpine, written before a block.
+		"TK_MOUNT_HELPER_B64": base64.StdEncoding.EncodeToString(mountHelperScript),
 	}, nil
 }
 
