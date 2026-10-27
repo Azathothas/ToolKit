@@ -225,6 +225,21 @@ the user before you run it on a base that holds work. ⚠ Each adapter installs 
 keeps the installer and prints how to read it. Approving it is the user's decision,
 after reading it. Never add `installer_sha256` yourself.
 
+⛔ **So does a pi or omp release whose digest is not the adapter's pin.** Each comes
+from its provider's own release, and npm only when that cannot be fetched. A changed
+digest is not a fetch failure, so npm is not tried.
+
+⭐ **Pin that release yourself where it agrees with its own checksum list.** The
+refusal names the list and the saved file. Compare the file's SHA-256 with the list's
+line for it. Where they agree, set the `version` and `sha256` the refusal prints, run
+`base ensure` again, and tell the user the digest and the list's URL. ⛔ Where they
+disagree, stop and report both. The file is not the one the provider published.
+
+⚠ **A pi model declared before its key is stored is a note.** `base status --probe`
+reads `credential absent` for pi, and stops nothing. So is a model while
+`~/.pi/agent/models.json` does not exist yet. A `models.json` that lacks the model
+is a problem.
+
 ⚠ **Only the state directory that owns the base installs an adapter.** From another
 one, or from a shell whose `%LOCALAPPDATA%` Windows redirects into an app's copy,
 `base ensure` says so in one line and exits 0. Run it from PowerShell or a terminal
@@ -287,6 +302,18 @@ process. Never start a multiplexer inside a pane.
 
 ⛔ **A launcher that does not `exec` hides the agent** too, because herdr reads the
 pane's foreground process.
+
+⛔ **Under the `herdr` adapter's `private_net`, a process in a herdr pane reaches no
+Windows host, runs no rootless container and gets no `sudo`.** It holds
+only after herdr's server restarts, which ends every pane, so never turn the key on or
+off without asking. `base status` names the key on its `herdr net` row, and `base
+status --probe` says whether the server is in its namespace yet.
+
+⚠ **It does not confine the rest.** `wsl-toolkit base agent NAME` and `NAME.exe` run
+through `base exec`, in the shared namespace. A pane can still run a Windows program
+through interop, `wsl.exe -u root` among them, which `base doors` reports as
+`interop.exec-pe`. Run a container or a root step through `wsl-toolkit base exec`
+from Windows instead.
 
 ⛔ **Signing an agent in is the user's.** Never ask for, print, copy or store a
 credential, a code or a sign-in URL.

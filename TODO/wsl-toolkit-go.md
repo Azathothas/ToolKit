@@ -14068,7 +14068,7 @@ Exit 0, no herdr client left running and no window left open. Without `-RealWind
 ## WSL-135. The muse-code guide was never run as one ordered pass from an empty host
 
 **Source** `WSL-78`, which closed without it under ruling 23, and the old record's question 4
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -14121,7 +14121,29 @@ Every step's command exits as the guide says.
 
 ## Closing
 
-Open.
+**Closed on `r81/installers` at `5a2b056`, merged in `13e8139`, for 9.0.0, unblocked by ruling 36.** The ordered pass ran every step in order on a new base. Each sign-in stopped at its credential prompt. The four faults it was opened for are fixed, and the passes found three more.
+- Step 3 reads every adapter `healthy`, and exits 0. While pi's `models.json` does not exist, its model is a note naming step 5.
+- The pi probe reads a declared model whose provider has no key as a note, with `credential absent`. A `models.json` that lacks the model stays a problem.
+- Step 4 keeps its grant until step 10, and runs `base ensure` after it, so Muse trusts the grant.
+- Step 9 names exit 125.
+- The probe and step 5 check the key with `pi auth check --model`. pi answers `--provider` with `not_ready` for any name.
+- Step 10 closes step 8's workspace before it revokes, and reads the id again in a new session.
+
+```text
+scratch arch base wsl-toolkit-r81r, the muse-code profile, --instance r81r, every step in order:
+1  --version and man: exit 0
+3  base ensure: every adapter healthy, pi's note names step 5, exit 0
+4  base grant: exit 0, then base ensure: pre-trusted 1 workspace(s)
+5  --model with no models.json: exit 2; after it: not_ready, exit 1 (key); omp usage: No credentials found (sign-in)
+6  base status --probe: exit 0, pi credential absent with the note
+8  without step 4's ensure: agent start muse answered agent_not_ready at Muse's trust prompt, exit 1
+8  with it: agent start muse idle, exit 0; the pane shows Muse's login (credential)
+9  a bare muse launcher: exit 125; muse exec --json: missing meta credentials, exit 1
+10 revoke with the workspace open: target is busy, exit 1; the id read again, workspace close, revoke: exit 0
+linux-proof: proved tree becd49e (commit 5a2b056); the guide rows red on Windows too
+```
+
+⚠ The pass ran on `--instance r81r` with a state, SSH and launcher directory of its own. The default base `wsl-toolkit-jobs` holds this host's work, so it is not rebuilt for a pass. Every other part of each command is the guide's. The three sign-ins are the operator's.
 
 
 ## WSL-136. A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run
@@ -14263,7 +14285,7 @@ budget, met on the first 7.0.0 attempt above (exit 124).
 ## WSL-138. An adapter installs from npm where the provider publishes an official installer
 
 **Source** ruling 20, which has had no entry since it was made
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -14302,7 +14324,30 @@ Exit 0, then `base ensure` on a scratch base installs `pi` and `omp` the officia
 
 ## Closing
 
-Open.
+**Closed on `r81/installers` at `5a2b056`, merged in `13e8139`, for 9.0.0, decided by ruling 36.** The pi and omp adapters take each provider's own GitHub release by ruling 4's route. The file is saved, and its length and SHA-256 are printed. It is installed only while its digest is the one `install.sh` pins. A changed digest exits 2, keeps the file and names the release's own checksum list. Whoever reads the refusal pins the release where the two agree, by ruling 36. Where they disagree, nothing is pinned. npm is never tried over a changed digest. npm, at the same version, is taken only when the release cannot be fetched, or on a musl base. Once the release is in use, npm's package for that agent goes. A signal during the fetch ends the run with its own code. omp's release carries its own runtime, so it needs no Bun. The break is in `docs/consumers.md`.
+
+```text
+scratch arch base wsl-toolkit-r81r, the muse-code profile, this branch's build:
+ensure 1: pi saved 42645744 bytes, digest verified, installed 1.4.0 from its release
+ensure 1: omp's fetch failed, curl (56) Recv failure: Connection timed out; npm 18.13.1 and bun taken; exit 0
+ensure 2: omp saved 275986608 bytes, digest verified, installed 18.13.1; npm's @oh-my-pi/pi-coding-agent removed; exit 0
+base status --probe: pi and omp source release, every adapter healthy, exit 0
+ensure 3: nothing fetched, exit 0
+pi pinned to a wrong digest: refused, exit 2, file kept, npm not tried, pi still the 1.4.0 release
+pinned from the release's own SHA256SUMS line: exit 0, the kept file removed
+linux-proof --rows-since 5001ccd: proved tree becd49e (commit 5a2b056), 48 of 48 rows red
+```
+
+The installers were not taken. pi.dev/install.sh resolves the newest release from pi.dev's API and installs it with npm. omp.sh/install is the main branch's script. It resolves its build from build.stencil.so and prefers npm when Bun exists. A digest on either pins nothing it installs.
+
+Each digest is the line in its release's own `SHA256SUMS` or `SHA256SUMS.txt`, and GitHub's asset digest agrees. pi's x86_64 file and both omp files were measured on download. pi's aarch64 length is GitHub's asset size.
+
+```text
+PI_X86_64_PINNED_SHA256=f2e4e4329603223d03260cdb8bd5033dbdc1f73ba58ab8939db2e56546e115d2 https://github.com/earendil-works/pi/releases/download/v1.4.0/pi-linux-x64.tar.gz 42645744 bytes
+PI_AARCH64_PINNED_SHA256=fa5829c7ef83ffeaebba015715c8306220f89b2aa8a00154efbba98dd5440156 https://github.com/earendil-works/pi/releases/download/v1.4.0/pi-linux-arm64.tar.gz 42745801 bytes
+OMP_X86_64_PINNED_SHA256=ee2961c7da02e514a2475ee958c2fd85dbabf4d0907949ba5022edb2951f84b5 https://github.com/can1357/oh-my-pi/releases/download/v18.13.1/omp-linux-x64 275986608 bytes
+OMP_AARCH64_PINNED_SHA256=803db725f9e5bd177ce5274f7718081481f367829f773d984a0a9611f4713244 https://github.com/can1357/oh-my-pi/releases/download/v18.13.1/omp-linux-arm64 237423608 bytes
+```
 
 
 ## WSL-139. `base ensure` leaves older herdr nightly clients on disk
@@ -15094,7 +15139,7 @@ merge: TestOnlyEnsureStartsAMuseSessionAndItsAnswerCarriesTheFinding green once 
 ## WSL-158. Without the reporter, herdr shows a Muse pane as idle
 
 **Source** the old record's finding 27
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -15130,13 +15175,13 @@ A rule matches Muse's screen.
 
 ## Closing
 
-Open.
+**Closed from `r81/herdr` at `656bd2b`, merged in `f92bf85`, for 9.0.0, unblocked by ruling 36.** herdr reads a local rule file per agent, and a local file wins over its bundled and remote manifests. The muse adapter writes herdr's own Muse rules to `~/.config/herdr/agent-detection/muse.toml`, with Muse Code 1.4.13's prompt U+276F and the `max` effort added. `herdr agent explain` then names `idle_prompt`, where herdr's manifest 2026.08.26.1 answered `rule: none`. The reporter stays as the fallback for the approval screen. The probe says whether herdr loads the file, and names a newer remote manifest the file shadows. herdr installs before the agents that look for it. The Linux proof proved tree `9f6e92c` with every muse row red.
 
 
 ## WSL-159. An agent started through herdr runs in the shared network namespace
 
 **Source** the old record's finding 40 and question 3
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -15175,7 +15220,7 @@ Exit 0, then an agent's `ip link` shows the namespace.
 
 ## Closing
 
-Open.
+**Closed from `r81/herdr` at `656bd2b`, merged in `f92bf85`, for 9.0.0, decided by ruling 36 as an opt-in, off by default.** `"private_net": true` on the herdr adapter puts herdr's server, and every pane it starts, in a network namespace root makes and pasta links. An `nft` rule inside it refuses the Windows host, the private ranges and `100.64.0.0/10`. A drop-in adds it, and the server's unit keeps its bytes. Those panes give up rootless containers and sudo, and `base status` says so on its `herdr net` row. `base agent` and interop stay outside the namespace, measured. `base ensure` never restarts the server. A server not yet in the namespace is a note and an advisory restart, so ensure, ready and jobs pass. A link that is down is started again. Measured on a scratch base with herdr 0.9.5: a pane in its own namespace, the host's ICMP refused, the internet answering, and the key on and off with the server's process unchanged. check-go is green, and the Linux proof proved tree `9f6e92c` with 56 rows red.
 
 
 ## WSL-160. Three command groups keep two lists of their subcommands that nothing compares
@@ -17305,3 +17350,40 @@ Drive (builder, on a scratch home whose base was removed): `resources` listed a 
 Proof: check-go exit 0. Linux proof proved tree 688e1bb (commit a9ccd3f), 41 of 41 rows red. The gate agrees except the worktree's hooks rule.
 
 Built on `r81/hostkeys`, repaired after an adversarial review whose seven findings were all fixed (`a9ccd3f`); the Linux proof went 41 of 41 red, every new row red on Windows too.
+
+## WSL-201. An adapter's root write in the account's home follows a link the account placed
+
+**Source** the WSL-138 repair's report, which found it in omp's separation code and did not file it
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Every owner's `base ensure` runs each adapter's `install.sh` as root. Several of them write inside the account's home as root: `chown`, `install -d -o`, `cat >` and `mv`. Each follows a link the account placed there. Where `base.passwordless_sudo` is off, or in a herdr pane under `private_net`, the account is not root. A link at one of those paths then hands it a root-owned file, or has root overwrite one.
+
+## Premise
+
+Read in the adapters at main: omp's separating wrapper moves, writes and chowns as root in `~/.local/bin`. muse runs `install -d -o` on `~/.config/muse` and its hook and configuration directories, and chowns its trust file. herdr chowns its configuration's temporary file. `chown` and `install -d` follow a link to its target.
+
+## Approach
+
+Every write inside the account's home happens as the account, through the adapter's `as_account`, so a link can reach only what the account could already write. Root writes outside the home alone. A case plants a link at each such path, runs the script, and finds the link's target untouched. A check refuses a new root write under the home.
+
+## Consumers
+
+None outside the base. The files keep their paths, owners and modes.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case per adapter where a link planted at each path it writes leaves the link's target untouched.
+
+---
+
+## Closing
+
+Open.

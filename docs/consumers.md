@@ -140,6 +140,40 @@ did not mount before. Both are changes by the table above.
 | a mount the helper leaves writable is remounted read-only, so the filesystem is read-only, and every mount of it. A bind remount is asked only where that fails. One that stays writable is unmounted, and its mount fails with 32 | relies on a second mount of a read-only grant staying writable | grants the directory read-write at another target |
 | `base ensure` on Alpine prints no `setpriv` usage block. It removes the account's engine drop-in as the account, through `su`, where root removed it | matched that usage block | nothing |
 
+### ⛔ What pi and omp from their own releases break, and what a caller does
+
+`WSL-138` and `WSL-135`. In `wsl-toolkit-v9.0.0`. A break by the table above,
+because two exit meanings change. A configuration that names pi and omp with no
+`version` keeps working, and its next `base ensure` moves each to its release.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| pi and omp install from each provider's own GitHub release, at the version and digests each adapter's `install.sh` pins. An unpinned pi or omp that npm installed moves to that release at the owner's next `base ensure`. It was left at its version | relies on a pi or omp from npm that is newer than the pin | sets `version` and `sha256` on that entry, from the release's own checksum list |
+| `sha256` beside `version` on a pi or omp entry is checked against the release file. It was accepted and never read. A digest that is not the release file's stops `base ensure` with exit 2 | wrote a digest that is not the release file's, such as npm's integrity value | writes each architecture's line from the release's `SHA256SUMS` or `SHA256SUMS.txt` |
+| once the release is in use, npm's package for that agent under `~/.local/lib/node_modules` is removed | runs npm's copy by its path in that package | runs `pi` or `omp` by name |
+| a declared pi model whose provider holds no key reads `healthy` with a note. It was a problem: `base ensure` exited 2 and `base status --probe` exited 1 there. Both exit 0 | read either exit as "pi holds no key yet" | reads `facts.credential` in `base status --probe --json` |
+| a pi model reads `healthy` with a note while `~/.pi/agent/models.json` does not exist. A new base built from the muse-code profile exited 2 there | read that exit as "the provider is not declared yet" | reads the note |
+| the pi and omp probes add the facts `source` and `credential`, and notes. A dropped adapter's footprint counts a release file a refusal kept, and npm's package | | reads them, or nothing |
+
+⚠ **The rows it reaches, from the register.** No consumer in the register configures
+a pi or omp adapter. podbox runs `base status --probe` and `base ensure --probe`, and
+pg-toolkit runs `base ensure`. Their exits change only on a base whose configuration
+names pi.
+
+### ⚠ What the private ranges and herdr's adapters change, and what a caller does
+
+`WSL-159` and `WSL-158`. In `wsl-toolkit-v9.0.0`. The first row fixes a false pass, a
+break by the table above. The others change what a base holds, and no flag or exit.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `base exec --private-net` and `base shell --private-net` refuse `100.64.0.0/10` beside the private ranges. Tailscale gives the Windows host an address there | reaches a Tailscale peer, or another address in that range, from a private namespace | runs that step without `--private-net` |
+| a base with the `muse` and `herdr` adapters gets `~/.config/herdr/agent-detection/muse.toml`, which herdr reads before its own Muse rules. herdr then reports Muse panes from it | reads herdr's Muse pane states, and relies on herdr's own rules for them | reads `herdr_detection_rules` in `base status --probe --json`, or replaces the file with one of its own, which is then left alone |
+| `base ensure` installs `herdr` before every other adapter, wherever `base.adapters` lists it | reads the order of the adapter lines in the ensure's log | reads each adapter's own line |
+
+⚠ **A base without `private_net` answers what it answered before.** herdr's probe
+prints the namespace's facts only where the key is or was used.
+
 ### ⛔ What the canonical default base name breaks, and what a caller does
 
 `WSL-167`, ruling 33. In `wsl-toolkit-v8.0.0`. A break by the table above, so the release

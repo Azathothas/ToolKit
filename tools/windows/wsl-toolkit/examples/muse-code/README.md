@@ -99,6 +99,15 @@ adapters carry the measured times with their conditions: `WSL-76`, `WSL-77`,
 
 The last lines print the state. Every adapter must read `healthy`.
 
+⭐ **On a new base, pi reads `healthy` with one note.** The profile starts pi on
+`muse-gateway/muse-spark-1.3-contributor`, and step 5 declares that provider. Until
+then pi's `models.json` does not exist, and the note names step 5. It stops nothing,
+so `base ensure` exits 0. `WSL-135`
+
+⭐ **pi and omp come from their own releases.** Each adapter saves the release's file
+and prints its length and SHA-256. It installs the file only while that digest is the
+one it pins. npm is used only when the release cannot be fetched. `WSL-138`
+
 ---
 
 ## 4. Grant one project
@@ -116,20 +125,21 @@ The grant is live. No restart is needed. The base sees the directory under
 wsl-toolkit base exec -c 'ls /workspaces'
 ```
 
+⛔ **Then run `base ensure` once more, so Muse trusts the grant.** Muse asks whether to
+trust a directory on its first start there, and it blocks until a person answers.
+`base ensure` answers yes for each grant, and for nothing else. A grant made after the
+last ensure is still asked about, and step 8's `agent start` then exits 1. `WSL-135`
+
+```powershell
+wsl-toolkit base ensure
+```
+
 ⛔ **A directory no grant covers is refused.** The refusal prints the `base grant` line
 that would cover it. That is the profile working.
 
 ⚠ **Use `--mode ro` for a directory an agent must not change.**
 
-Take a grant away by the path the base sees it at:
-
-```powershell
-wsl-toolkit base revoke --target /workspaces/demoproj
-```
-
-⛔ **`base revoke` takes `--target` alone.** A grant is named by where the base sees
-it, not by the Windows directory. The mount goes at once. An empty directory is left
-behind and reaches nothing.
+⛔ **Keep this grant until step 10.** Steps 8 and 9 work in it.
 
 ---
 
@@ -209,10 +219,18 @@ chmod 600 ~/.pi/agent/auth.json && unset k
 Check it:
 
 ```bash
-pi auth check --provider muse-gateway
+pi auth check --model muse-gateway/muse-spark-1.3-contributor
 ```
 
 It answers `ready`.
+
+⚠ **Check by model.** pi answers `--provider` with `not_ready` for any name, one it
+does not know included. `--model` answers `invalid` for a provider nothing declares.
+
+⭐ **Until the key is stored, pi's model is a note and not a problem.** pi lists only
+the models of a provider it holds a key for. So `base status --probe` reads
+`credential absent`, and its note names `pi auth check`. It stops nothing. A model
+`models.json` does not declare is still a problem. `WSL-135`
 
 ⚠ **The type is `api_key`.** Another word is accepted by `jq` and read by pi as no
 credential at all. ⚠ **The file is merged**, so a provider already in it is kept.
@@ -323,8 +341,37 @@ muse exec --json "Answer with only the number of files git tracks here."
 The launcher runs the agent in the base, at the guest path this directory is granted
 at. Every argument is the agent's. The exit code is the agent's.
 
-⛔ **An agent's own screen needs a terminal, so `muse` with no argument answers exit 2
-from Windows.** Use a herdr pane for the screen.
+⛔ **An agent's own screen needs a terminal, so `muse` with no argument answers exit 125
+from Windows.** That is the tool's own refusal, as for every command that forwards an
+agent's code. `WSL_TOOLKIT_TOOL_EXIT` moves it. Use a herdr pane for the screen.
+`WSL-135`
+
+---
+
+## 10. Take the grant away
+
+When the work is done, close the workspace step 8 made, then revoke the grant by the
+path the base sees it at:
+
+```powershell
+wsl-toolkit base herdr -- workspace close $made.result.workspace.workspace_id
+wsl-toolkit base revoke --target /workspaces/demoproj
+```
+
+⛔ **Close the workspace first.** Its pane's shell sits in the granted directory, so
+the mount is busy. `base revoke` then exits 1 and leaves the configuration unchanged.
+
+⚠ **`$made` is step 8's.** Run this in the PowerShell session that ran step 8. In a new
+one, read the id of the workspace labelled `work` again, and close that:
+
+```powershell
+$id = ((wsl-toolkit base herdr -- workspace list | ConvertFrom-Json).result.workspaces | Where-Object label -eq work).workspace_id
+wsl-toolkit base herdr -- workspace close $id
+```
+
+⛔ **`base revoke` takes `--target` alone.** A grant is named by where the base sees
+it, not by the Windows directory. The mount goes at once. An empty directory is left
+behind and reaches nothing.
 
 ---
 
@@ -362,6 +409,7 @@ each value is written, and how to change it by hand.
 | `toolset: developer` | the commands the base installs as root, `jq` among them, which the adapters read their configuration with |
 | no standing grant | the base is built once and each project is granted when it is worked on. A base left running reaches no checkout at all |
 | `herdr` on `nightly` | `herdr --machine` needs a development build on both sides |
+| no `private_net` on `herdr` | the agents keep rootless containers and `sudo`. ⭐ `"private_net": true` trades both for panes whose network refuses the Windows host. `base agent` and interop stay outside it. `WSL-159` |
 
 ---
 

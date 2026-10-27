@@ -76,12 +76,24 @@ fi
 # The one path this checks and writes the download at. A case in the suite points it
 # into a temporary directory, and nothing else sets it.
 HERDR_BIN=${TK_HERDR_BIN:-/usr/local/bin/herdr}
+# The two directories this writes its own files and its units in. A case in the suite
+# points each into a temporary directory, and nothing else sets them. WSL-159.
+LIB_DIR=${TK_HERDR_LIB_DIR:-/usr/local/lib/wsl-toolkit}
+UNIT_DIR=${TK_HERDR_UNIT_DIR:-/etc/systemd/system}
 # The release the installed binary came from, which probe.sh reports and this machine's
 # half reads to fetch the Windows client of the same build.
-HERDR_RELEASE_FILE=/usr/local/lib/wsl-toolkit/herdr-release
+HERDR_RELEASE_FILE=$LIB_DIR/herdr-release
 DOOR_DIR=/etc/wsl-toolkit/ssh
-DOOR_WRAPPER=/usr/local/lib/wsl-toolkit/sshd-stdio
+DOOR_WRAPPER=$LIB_DIR/sshd-stdio
 UNIT=wsl-toolkit-herdr.service
+# What base.adapters' private_net adds, and removes when it goes. WSL-159.
+NET_UNIT=wsl-toolkit-herdr-net.service
+NET_SCRIPT=$LIB_DIR/herdr-private-net
+NET_DROPIN=$UNIT_DIR/$UNIT.d/private-net.conf
+# The namespace's name, and the directory `ip netns` keeps it in. A case in the suite
+# points the directory into a temporary one, and nothing else sets it.
+NETNS=wsl-toolkit-herdr
+NETNS_DIR=${TK_NETNS_DIR:-/run/netns}
 
 # ⛔ MEASURED ON THE ARCH PRESET ONLY, AND ANYTHING ELSE IS REFUSED. The package
 # that carries sshd, whether installing it starts a listener, and whether its sshd
@@ -198,19 +210,136 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 UNIT
-if same_file "$unit_tmp" "/etc/systemd/system/$UNIT"; then
+if same_file "$unit_tmp" "$UNIT_DIR/$UNIT"; then
   rm -f "$unit_tmp"
 else
-  mv "$unit_tmp" "/etc/systemd/system/$UNIT"
-  chmod 0644 "/etc/systemd/system/$UNIT"
+  mv "$unit_tmp" "$UNIT_DIR/$UNIT"
+  chmod 0644 "$UNIT_DIR/$UNIT"
   systemctl daemon-reload
-  say "wrote /etc/systemd/system/$UNIT"
+  say "wrote $UNIT_DIR/$UNIT"
 fi
+
+# -- the private network namespace -----------------------------------------------------
+# ⭐ base.adapters' private_net PUTS THE SERVER, AND SO EVERY AGENT IT STARTS, IN A
+# NETWORK NAMESPACE OF ITS OWN. The internet stays reachable, and the Windows host and
+# the private ranges are refused. private-net.sh says how root makes it. WSL-159.
+#
+# ⭐ THE SERVER'S OWN UNIT ABOVE IS THE SAME BYTES EITHER WAY. The key adds a drop-in
+# beside it, a unit that links the namespace, and the script that unit runs. A base
+# without the key has none of the three, and one whose key went has all three removed.
+#
+# ⛔ IT COSTS SOMETHING, AND EVERY READ SAYS WHAT. Those agents give up rootless
+# containers and sudo. base status prints it on a line of its own, and probe.sh as a
+# note.
+net_changed=
+# ⚠ THE DROP-IN ALONE DECIDES WHERE THE SERVER'S NEXT START IS, so only a change to it
+# is one the running server waits for.
+dropin_changed=
+# ⚠ A CHANGED SCRIPT CARRIES CHANGED RULES, and a running namespace takes them below.
+script_changed=
+# place_file NAME_B64 DEST MODE writes one carried file where it belongs, when its
+# bytes differ, and sets pf_placed when it wrote it. ⚠ It always answers 0, so set -e
+# stays in force inside it: a function called as a condition runs without it.
+place_file() {
+  pf_placed=
+  pf_tmp=$(mktemp)
+  pf_encoded=$(mktemp)
+  printf '%s' "$1" > "$pf_encoded"
+  if ! base64 -d "$pf_encoded" > "$pf_tmp"; then
+    rm -f "$pf_encoded" "$pf_tmp"
+    die "$2 could not be decoded"
+  fi
+  rm -f "$pf_encoded"
+  if same_file "$pf_tmp" "$2"; then
+    rm -f "$pf_tmp"
+    return 0
+  fi
+  install -d -m 0755 "${2%/*}"
+  chmod "$3" "$pf_tmp"
+  mv "$pf_tmp" "$2"
+  net_changed=1
+  pf_placed=1
+  say "wrote $2"
+}
+if [ "${TK_ADAPTER_PRIVATE_NET:-}" = 1 ]; then
+  : "${TK_FILE_PRIVATE_NET_SH_B64:?TK_FILE_PRIVATE_NET_SH_B64 is required with private_net}"
+  : "${TK_FILE_WSL_TOOLKIT_HERDR_NET_SERVICE_B64:?TK_FILE_WSL_TOOLKIT_HERDR_NET_SERVICE_B64 is required with private_net}"
+  : "${TK_FILE_PRIVATE_NET_CONF_B64:?TK_FILE_PRIVATE_NET_CONF_B64 is required with private_net}"
+  missing=
+  for tool in pasta nft ip; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+  done
+  if [ -n "$missing" ]; then
+    say "installing what the private network namespace needs:$missing"
+    # ⛔ -Syu, NOT -S, for the reason the packages step above gives. WSL-188.
+    pacman -Syu --noconfirm --needed passt nftables iproute2 >/dev/null
+  fi
+  for tool in pasta nft ip; do
+    command -v "$tool" >/dev/null 2>&1 || die "$tool is still absent after the package step, and private_net needs it"
+  done
+  place_file "$TK_FILE_PRIVATE_NET_SH_B64" "$NET_SCRIPT" 0755
+  script_changed=$pf_placed
+  place_file "$TK_FILE_WSL_TOOLKIT_HERDR_NET_SERVICE_B64" "$UNIT_DIR/$NET_UNIT" 0644
+  place_file "$TK_FILE_PRIVATE_NET_CONF_B64" "$NET_DROPIN" 0644
+  dropin_changed=$pf_placed
+else
+  # ⭐ THE DROP-IN GOES FIRST AND ALWAYS, so the server's next start is in the shared
+  # namespace. ⛔ The namespace's own unit goes only once no process is left in it.
+  # Stopping it under a running server would take that server's only way out.
+  if [ -e "$NET_DROPIN" ]; then
+    rm -f "$NET_DROPIN"
+    rmdir "${NET_DROPIN%/*}" 2>/dev/null || :
+    # ⛔ RELOADED AT ONCE, BEFORE THE STOP BELOW. Until systemd reads the units again,
+    # the running server still requires the namespace's unit. A stop of that unit then
+    # stops the server too, and ends every pane.
+    systemctl daemon-reload
+    dropin_changed=1
+    say "removed $NET_DROPIN, because private_net is off"
+  fi
+  if [ -e "$UNIT_DIR/$NET_UNIT" ] || [ -e "$NET_SCRIPT" ]; then
+    if [ -n "$(ip netns pids wsl-toolkit-herdr 2>/dev/null || :)" ]; then
+      say "the herdr server's namespace still holds it, so $NET_UNIT stays until the server restarts and the next base ensure"
+    else
+      systemctl stop "$NET_UNIT" >/dev/null 2>&1 || :
+      rm -f "$UNIT_DIR/$NET_UNIT" "$NET_SCRIPT"
+      net_changed=1
+      say "removed $NET_UNIT and its script, because private_net is off"
+    fi
+  fi
+fi
+[ -z "$net_changed" ] || systemctl daemon-reload
+
+# ⭐ A NAMESPACE A PROCESS IS IN IS KEPT CURRENT, AND NO PANE ENDS FOR IT. WSL-159.
+# - Its link is started again when it is down. The unit relinks the same namespace,
+#   and starting a unit the server requires does not restart the server.
+# - A changed script writes its rules into the namespace in place. pasta keeps its
+#   link, and the rules otherwise wait for WSL's VM to restart.
+if [ "${TK_ADAPTER_PRIVATE_NET:-}" = 1 ] && [ -e "$NETNS_DIR/$NETNS" ]; then
+  if [ -n "$(ip netns pids "$NETNS" 2>/dev/null || :)" ] && ! systemctl is-active --quiet "$NET_UNIT"; then
+    if systemctl start "$NET_UNIT"; then
+      say "started $NET_UNIT again, which links the herdr server's namespace and ends no pane"
+    else
+      say "$NET_UNIT did not start, so the herdr server's namespace has no way out"
+    fi
+  elif [ -n "$script_changed" ]; then
+    if "$NET_SCRIPT" rules; then
+      say "wrote the changed rules into the running namespace $NETNS"
+    else
+      say "the changed rules did not reach the running namespace $NETNS, which keeps the rules it had until it restarts"
+    fi
+  fi
+fi
+
 systemctl enable "$UNIT" >/dev/null 2>&1 || die "systemctl could not enable $UNIT"
 # ⛔ A RUNNING SERVER IS NEVER RESTARTED HERE. Stopping it ends every pane and every
 # agent in it, and an ensure run to change something else must not do that.
 if systemctl is-active --quiet "$UNIT"; then
   say "the herdr server is running, and is left running"
+  # ⚠ SO A CHANGED private_net WAITS FOR THE NEXT START, and the probe says which
+  # namespace the server is in until then. WSL-159.
+  if [ -n "$dropin_changed" ]; then
+    say "the running herdr server keeps the network namespace it started in until it restarts, which ends every pane. When no pane is needed, run: base exec --root -c 'systemctl restart $UNIT'"
+  fi
 else
   systemctl start "$UNIT" || die "systemctl could not start $UNIT"
   say "started the herdr server"
@@ -220,7 +349,7 @@ fi
 # ⭐ NOTHING LISTENS. The client's ProxyCommand starts `sshd -i` through wsl.exe for
 # one connection, so the only way in is a process that can already run wsl.exe as
 # this Windows account, holding the one key below.
-install -d -m 0755 /etc/wsl-toolkit "$DOOR_DIR" /usr/local/lib/wsl-toolkit
+install -d -m 0755 /etc/wsl-toolkit "$DOOR_DIR" "$LIB_DIR"
 if [ ! -f "$DOOR_DIR/ssh_host_ed25519_key" ]; then
   ssh-keygen -q -t ed25519 -N '' -C "$TK_DISTRO" -f "$DOOR_DIR/ssh_host_ed25519_key"
   say "generated the door's host key"

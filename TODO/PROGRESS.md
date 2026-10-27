@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z; it ends on wsl-toolkit-v8.0.0
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 8.0.0 published from 5e0bdcf, installed and driven
-entries         total 258  open 5  blocked 0  done 253
+entries         total 259  open 2  blocked 0  done 257
 this session    ruling 31, then rulings 32 to 35
 ```
 
@@ -61,7 +61,7 @@ Ruling 36, from 2026-10-27: every leftover of 8.0.0 is finished here, with nothi
 back. This host is cleaned: podman's machine pruned and compacted, the old default base
 removed with its state, and `wsl-toolkit-jobs` built by the muse-code guide in order.
 `WSL-197` and `WSL-134` are done. The guide's ordered pass found four faults, filed in
-`WSL-135` and built with `WSL-138` in 8.1.0.
+`WSL-135` and built with `WSL-138` for 9.0.0. Every branch but `TOOL-40` is merged.
 
 ## The work order, set by the operator on 2026-10-21
 
@@ -95,9 +95,10 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
 11. **One base under a canonical name**, ruling 32: `WSL-167`, then `WSL-193`.
     **Closed:** both in 8.0.0.
 12. **Unblocked by ruling 36**: `WSL-134`, `WSL-135`, `WSL-138`, `WSL-158` and `WSL-159`.
-    Each entry's Decision says how.
+    **Closed:** all five, merged for 9.0.0.
 13. **Next**: `WSL-197` on a stock host, then `WSL-198`, `WSL-199`, `WSL-196`, `WSL-200`
-    and `TOOL-40`, released as `wsl-toolkit-v8.1.0` with the five above.
+    `TOOL-40` and `WSL-201`, released as `wsl-toolkit-v9.0.0` with the five above. `WSL-200` is a
+    break, so the release is a major one.
 
 ## Open questions for the operator
 
