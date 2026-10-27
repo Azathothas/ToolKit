@@ -113,9 +113,10 @@ host is reported as skipped, and CI's ubuntu job proves it.
 ⭐ **A row that changes a file `internal/toolkit` embeds needs no compile.**
 `repo mutate` hands the changed bytes to the binary its baseline built.
 `internal/embedswap` puts them in the embedding variable and in the file before
-any case runs. Only a red run is kept, and anything else is proved the old way.
-A new embedded file goes in the tables of `internal/toolkit/mutate_embed_test.go`,
-and `TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing. ⚠ A fake
+any case runs. A red run is kept, and so is a skip its baseline made too.
+Anything else is proved the old way. A new embedded file goes in the tables of
+`internal/toolkit/mutate_embed_test.go`, and
+`TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing. ⚠ A fake
 an `init` starts reads the row's bytes too, because a package variable takes
 them first. `TOOL-40`.
 
