@@ -38,8 +38,12 @@ func SharedWrites(fset *token.FileSet, files []*ast.File, allowed map[string]boo
 		for _, d := range f.Decls {
 			if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.VAR {
 				for _, s := range g.Specs {
+					// ⚠ NOT THE BLANK IDENTIFIER. `var _ = f()` names no
+					// variable, and every `_ = x` would read as setting it.
 					for _, n := range s.(*ast.ValueSpec).Names {
-						vars[n.Name] = true
+						if n.Name != "_" {
+							vars[n.Name] = true
+						}
 					}
 				}
 			}

@@ -2,6 +2,24 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a fake that takes a mutation row again leaves the file it holds",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "err == nil && bytes.Equal(was, body) {",
+      "replace": "err == nil && bytes.Equal(was, body) && file == \"\" {",
+      "run": "TestAFileThatHoldsTheBytesIsNotWrittenAgain",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the parallel reading names no blank variable",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\t\t\tif n.Name != \"_\" {",
+      "replace": "\t\t\t\t\t\tif n.Name != \"\" {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a mutation row's bytes reach what takes them before the file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/embedswap/embedswap.go",

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 // row hands the protocol's variables a row's bytes, and answers the file.
@@ -58,6 +59,38 @@ func TestTheBytesReachWhatTakesThemAndThenTheFile(t *testing.T) {
 	}
 	if got := read(t, file); got != "the row's bytes\n" {
 		t.Errorf("the file was left %q, so a case that reads it saw the old script", got)
+	}
+}
+
+// TestAFileThatHoldsTheBytesIsNotWrittenAgain: a case starts this binary again
+// as a fake, and the fake takes the same row.
+//
+// ⛔ ONE WRITE. A second empties the file and fills it again, while a case of
+// the first process may be reading it.
+func TestAFileThatHoldsTheBytesIsNotWrittenAgain(t *testing.T) {
+	body := []byte("the row's bytes\n")
+	file := row(t, "verify.sh", body)
+	if err := os.WriteFile(file, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ A TIME NO WRITE CAN LEAVE, so the check needs no clock tick to pass.
+	old := time.Unix(1_000_000_000, 0)
+	if err := os.Chtimes(file, old, old); err != nil {
+		t.Fatal(err)
+	}
+	took := false
+	if err := Take(func(string, []byte) error { took = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if !took {
+		t.Error("the fake did not take the bytes, so its variable held the old script")
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(old) {
+		t.Errorf("the file was written again, at %s", info.ModTime())
 	}
 }
 

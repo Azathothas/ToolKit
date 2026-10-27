@@ -23,12 +23,21 @@ import (
 // tools/repo's harness hands this binary the changed bytes instead of compiling
 // the package again. A compile of this package and its cases is most of a row.
 // internal/embedswap reads the harness's variables. TOOL-40.
-func init() {
+//
+// ⛔ A VARIABLE, NOT AN init. Go sets every package variable before any init
+// runs, and several inits here start a fake and stop. A fake an earlier file's
+// init started read the old script. TestAFakeAnInitStartsReadsTheRowsBytes.
+var _ = takeMutationRow()
+
+// takeMutationRow hands this binary the bytes a mutation row names.
+func takeMutationRow() bool {
 	// ⚠ NOT FATAL. A binary that could not take the bytes leaves the file as it
 	// was, and the harness compiles the row instead.
 	if err := embedswap.Take(takeEmbedded); err != nil {
 		fmt.Fprintf(os.Stderr, "the embedded file a mutation row named was not taken: %v\n", err)
+		return false
 	}
+	return true
 }
 
 // embeddedBytes is every file this package embeds as a []byte, by its pattern.

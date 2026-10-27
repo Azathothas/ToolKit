@@ -115,15 +115,17 @@ host is reported as skipped, and CI's ubuntu job proves it.
 `internal/embedswap` puts them in the embedding variable and in the file before
 any case runs. Only a red run is kept, and anything else is proved the old way.
 A new embedded file goes in the tables of `internal/toolkit/mutate_embed_test.go`,
-and `TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing. `TOOL-40`
+and `TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing. ⚠ A fake
+an `init` starts reads the row's bytes too, because a package variable takes
+them first. `TOOL-40`.
 
 ⭐ **A case that sets nothing shared calls `parallelCase`, and runs beside the
 others like it.** ⛔ A case that calls `t.Setenv`, changes the working directory
 or sets a package variable stays serial, through any helper it calls.
 `TestNoParallelCaseSetsWhatAnotherReads` reads that from the source, with
-`internal/parallelread`. ⚠ A case
-with a bound a loaded host can break stays serial too, as a child that must
-never stall for 2 s.
+`internal/parallelread`. ⚠ A case with a bound a loaded host can break stays
+serial too, as a child that must never stall for 2 s. A case waits on what it
+needs, never on a sleep.
 
 ⚠ **A case that runs the acceptance suite's own PowerShell needs `pwsh`.** On
 Windows a missing one fails the case. Elsewhere it skips, as in the Linux proof's

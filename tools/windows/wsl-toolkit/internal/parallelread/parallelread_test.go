@@ -23,6 +23,8 @@ import (
 
 var seam = 1
 
+var _ = seam
+
 var guarded struct {
 	mu sync.Mutex
 	v  int
@@ -43,6 +45,7 @@ func TestClean(t *testing.T) {
 	seam := 3
 	seam++
 	guarded.v = seam
+	_ = seam
 }
 func TestSerial(t *testing.T) { helper(t); swap() }
 `
