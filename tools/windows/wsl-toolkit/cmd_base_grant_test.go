@@ -106,3 +106,37 @@ func TestAFileThatCannotBeWrittenTakesBackWhatTheStepDid(t *testing.T) {
 		}
 	}
 }
+
+// TestAGrantLineNamesWhatKeepsItUnmounted reads the line `base grant`, `base revoke` and
+// `config` print for a grant. WSL-106, WSL-202.
+//
+// ⭐ A GRANT INSIDE ANOTHER IS NEVER MOUNTED, so its line says so with the revoke that
+// clears it, as a gone grant's does. A grant that mounts adds nothing.
+func TestAGrantLineNamesWhatKeepsItUnmounted(t *testing.T) {
+	for _, c := range []struct {
+		mount toolkit.BaseMount
+		want  string
+	}{
+		{toolkit.BaseMount{Target: "/workspaces/a/b", Inside: "/workspaces/a"}, ". ⛔ It sits inside /workspaces/a, so it is not mounted. Run: "},
+		{toolkit.BaseMount{Target: "/workspaces/gone", Missing: true}, ". ⛔ The directory no longer exists. Run: "},
+	} {
+		got := goneMark(c.mount)
+		if !strings.HasPrefix(got, c.want) || !strings.HasSuffix(got, "base revoke --target "+c.mount.Target) {
+			t.Errorf("the line for %+v adds %q, want %q and its revoke", c.mount, got, c.want)
+		}
+	}
+	if got := goneMark(toolkit.BaseMount{Target: "/workspaces/a"}); got != "" {
+		t.Errorf("a grant that mounts adds %q", got)
+	}
+	// ⭐ `base status` WITHOUT --probe SAYS IT TOO. Its report ends before its problems,
+	// so it exited 1 over a nested grant and named nothing.
+	st := toolkit.BaseState{Name: "wsl-toolkit-grants", Access: toolkit.BaseAccessState{Mounts: []toolkit.BaseMount{
+		{Source: `C:\outer`, Target: "/workspaces/a", Mode: "rw"},
+		{Source: `C:\inner`, Target: "/workspaces/a/b", Mode: "ro", Inside: "/workspaces/a"},
+	}}}
+	out := captureStderr(t, func() { renderBaseState(st, false) })
+	if !strings.Contains(out, "ro /workspaces/a/b <- C:\\inner. ⛔ It sits inside /workspaces/a, so it is not mounted. Run: ") ||
+		strings.Contains(out, "/workspaces/a <- C:\\outer.") {
+		t.Errorf("base status without --probe does not mark the nested grant alone:\n%s", out)
+	}
+}

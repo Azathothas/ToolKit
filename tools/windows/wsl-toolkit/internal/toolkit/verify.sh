@@ -409,6 +409,45 @@ for gone_b64 in ${TK_MOUNT_GONE:-}; do
   printf '%s\n' "$gone_target" >> "$mount_allowlist"
 done
 
+# >>> the block's nesting: begin
+# ⛔ NO LINE OF THE BLOCK MOUNTS INSIDE ANOTHER. The outer grant is a Windows directory
+# where the account can make links, and WSL's mount -a at every start resolved the inner
+# target through whatever link stood there. A block an earlier release wrote can hold
+# such a pair. base ensure writes the block without the inner line, and this names a
+# block until then, with the revoke that clears it. WSL-202.
+if [ -r /etc/fstab ]; then
+  nest_pair=$(awk '
+    $0 == "# wsl-toolkit mounts begin" { inb = 1; next }
+    $0 == "# wsl-toolkit mounts end" { inb = 0; next }
+    inb && NF >= 2 && $1 !~ /^#/ { t[++n] = $2 }
+    END {
+      for (i = 1; i <= n; i++)
+        for (j = 1; j <= n; j++)
+          if (i != j && index(t[i], t[j] "/") == 1) { print t[i], t[j]; exit }
+    }' /etc/fstab)
+  if [ -n "$nest_pair" ]; then
+    nest_inner=${nest_pair%% *}
+    nest_outer=${nest_pair#* }
+    nest_by=
+    if [ -r /var/lib/wsl-toolkit/grant-owners ]; then
+      while read -r nest_target _nest_key nest_name _nest_rest; do
+        if [ "$nest_target" = "$nest_inner" ]; then
+          nest_by=$(printf '%s' "$nest_name" | base64 -d 2>/dev/null) || nest_by=
+        fi
+      done < /var/lib/wsl-toolkit/grant-owners
+    fi
+    if [ -n "$nest_by" ]; then
+      nest_fix="Run: wsl-toolkit --config $nest_by base revoke --target $nest_inner"
+    else
+      nest_fix="Run base ensure, which writes the block without it, or remove its line from /etc/fstab"
+    fi
+    printf 'verify: the fstab block mounts %s inside %s, a Windows directory where the account can make links, at every start. %s\n' \
+      "$nest_inner" "$nest_outer" "$nest_fix" >&2
+    exit 3
+  fi
+fi
+# <<< the block's nesting: end
+
 # With drive automount disabled, every live DrvFS mount must be one of the
 # configured targets. This catches a grant removed from configuration but still
 # present in the running guest, forcing ensure to rewrite fstab and restart.

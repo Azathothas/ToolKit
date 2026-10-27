@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // -- WSL-201: root writes nothing in the account's home -------------------------------
@@ -45,6 +47,8 @@ type shCommand struct {
 	pattern bool
 	// waiver is the id of the `# linksafe:` comment that stands for this command, or 0.
 	waiver int
+	// scope is the shell the command runs in: 0 for the script, or a subshell's id.
+	scope int
 }
 
 // shDoc is a here-document's body. A quoted delimiter keeps it as written.
@@ -68,6 +72,14 @@ type shScript struct {
 	cmds    []shCommand
 	waivers []shWaiver
 	pipes   int
+	// parents holds the shell each subshell runs inside, by its id. The script's own is -1.
+	parents []int
+}
+
+// subshell answers a new subshell's id, inside the shell parent.
+func (s *shScript) subshell(parent int) int {
+	s.parents = append(s.parents, parent)
+	return len(s.parents) - 1
 }
 
 // The kinds of word a redirection takes.
@@ -84,16 +96,18 @@ const shBreaks = " \t\n;&|<>()"
 // shCommands reads src into its simple commands. A command substitution's own commands
 // are read as commands too.
 func shCommands(src string, line int) *shScript {
-	s := &shScript{}
-	s.read(src, line, 0)
+	s := &shScript{parents: []int{-1}}
+	s.read(src, line, 0, 0)
 	return s
 }
 
-// read reads src, which starts on line, and gives each command it finds the waiver
-// inherit unless a comment of its own stands for it.
-func (s *shScript) read(src string, line, inherit int) {
+// read reads src, which starts on line in the shell scope, and gives each command it
+// finds the waiver inherit unless a comment of its own stands for it. ⭐ A ( opens a
+// subshell and a substitution runs in one, so a cd in either ends where it closes.
+func (s *shScript) read(src string, line, inherit, scope int) {
 	s.pipes++
 	cur := shCommand{line: line, pipe: s.pipes, waiver: inherit}
+	scopes := []int{scope}
 	var word strings.Builder
 	inWord := false
 	redirect := shWord
@@ -136,6 +150,7 @@ func (s *shScript) read(src string, line, inherit int) {
 				cur.waiver = waiver
 				lineWaiver, lineWaiverAt, waiver = waiver, cur.line, 0
 			}
+			cur.scope = scopes[len(scopes)-1]
 			s.cmds = append(s.cmds, cur)
 		}
 		if !piped {
@@ -184,7 +199,7 @@ func (s *shScript) read(src string, line, inherit int) {
 				body = src[i+1 : j-1]
 			}
 			for _, inner := range shSubstitutions(body) {
-				s.read(inner, line, sub())
+				s.read(inner, line, sub(), s.subshell(scopes[len(scopes)-1]))
 			}
 			word.WriteString(strings.ReplaceAll(body, `\$`, "\x00"))
 			line += strings.Count(body, "\n")
@@ -198,7 +213,7 @@ func (s *shScript) read(src string, line, inherit int) {
 			}
 			// ⚠ ARITHMETIC IS NOT A COMMAND, and its words are numbers and names.
 			if !strings.HasPrefix(inner, "(") {
-				s.read(inner, line, sub())
+				s.read(inner, line, sub(), s.subshell(scopes[len(scopes)-1]))
 			}
 			word.WriteString(src[i:j])
 			line += strings.Count(inner, "\n")
@@ -272,10 +287,14 @@ func (s *shScript) read(src string, line, inherit int) {
 		case c == '(':
 			end(false)
 			depth++
+			scopes = append(scopes, s.subshell(scopes[len(scopes)-1]))
 			i++
 		case c == ')':
 			if depth > 0 {
+				// The command before it ran in the subshell, which closes after it.
+				end(false)
 				depth--
+				scopes = scopes[:len(scopes)-1]
 			} else {
 				// ⭐ A ) THAT CLOSES NOTHING ENDS A CASE PATTERN, every alternative of it.
 				flush()
@@ -439,8 +458,9 @@ var (
 	shLeads = shSet("if", "then", "else", "elif", "fi", "do", "done", "while", "until", "!", "{", "}",
 		"local", "export", "readonly", "exec")
 	// shAccountRoutes run what they are handed as the account. ⚠ Read by their names.
+	// runuser and su are routes only by their user word, which shRunsAsAccount reads.
 	shAccountRoutes = shSet("as_account", "account_dirs", "account_put", "account_same", "account_env",
-		"is_omp_wrapper", "first_lines", "write_manager", "runuser", "su")
+		"account_read", "is_omp_wrapper", "first_lines", "write_manager")
 	// shReaders write nothing and open no file they are handed: messages, tests, a
 	// case, and what reads a path's own name, its link or its size. ⚠ By their names.
 	shReaders = shSet("say", "die", "problem", "printf", "echo", "[", "test", ":", "true", "false",
@@ -643,7 +663,7 @@ func shAccountSupplied(value string) bool {
 	if !strings.Contains(value, "$(") {
 		return false
 	}
-	for _, route := range []string{"as_account", "account_env", "runuser", "first_lines"} {
+	for _, route := range []string{"as_account", "account_env", "account_read", "runuser", "first_lines"} {
 		if strings.Contains(value, route) {
 			return true
 		}
@@ -688,6 +708,47 @@ func shHomeNames(cmds []shCommand) shHome {
 	return h
 }
 
+// shRunsAsAccount is whether runuser or su, handed args, runs as the account: whether its
+// user word is $TK_USER.
+//
+// ⛔ BY THE USER WORD, NOT BY THE NAME. Trusted by name, `runuser -u root -- chown x
+// "$TK_HOME/.config"` passed the scan as the account's own step. A review found it.
+func shRunsAsAccount(args []string) bool {
+	takes := shSet("-g", "--group", "-G", "--supp-group", "-s", "--shell", "-c", "--command",
+		"-w", "--whitelist-environment", "--session-command")
+	account := func(w string) bool { return w == "$TK_USER" || w == "${TK_USER}" }
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-u" || a == "--user":
+			return i+1 < len(args) && account(args[i+1])
+		case strings.HasPrefix(a, "--user="):
+			return account(strings.TrimPrefix(a, "--user="))
+		case a == "--":
+			return false
+		case takes[a]:
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			return account(a)
+		}
+	}
+	return false
+}
+
+// shRelative is whether a word names a path relative to where its shell stands. ⚠ A
+// number is not one, nor a word that starts with a variable, a ~ or an option.
+func shRelative(w string) bool {
+	if w == "" || strings.Trim(w, "0123456789") == "" {
+		return false
+	}
+	switch w[0] {
+	case '/', '$', '-', 0, 1:
+		return false
+	}
+	return true
+}
+
 // shRecursive is whether a command's arguments ask it to go down a tree.
 func shRecursive(args []string) bool {
 	for _, a := range args {
@@ -698,18 +759,25 @@ func shRecursive(args []string) bool {
 	return false
 }
 
-// judge answers why root's command k of s reaches into the home, or nothing.
-func (h shHome) judge(s *shScript, k int) []string {
+// judge answers why root's command k of s reaches into the home, or nothing. inHome
+// says its shell stands inside the home, where a relative name is a path there.
+func (h shHome) judge(s *shScript, k int, inHome bool) []string {
 	c := s.cmds[k]
 	show := func(w string) string { return strings.NewReplacer("\x00", "$", "\x01", "~").Replace(w) }
+	place := func(w string) int {
+		if inHome && shRelative(w) {
+			return placeInside
+		}
+		return h.place(w)
+	}
 	var why []string
 	for _, o := range c.outs {
-		if h.place(o) != placeNone {
+		if place(o) != placeNone {
 			why = append(why, "root's redirect onto "+show(o))
 		}
 	}
 	for _, in := range c.ins {
-		if h.place(in) != placeNone {
+		if place(in) != placeNone {
 			why = append(why, "root's read of "+show(in))
 		}
 	}
@@ -722,7 +790,7 @@ func (h shHome) judge(s *shScript, k int) []string {
 	if name != "" {
 		base = path.Base(name)
 	}
-	route := shAccountRoutes[base]
+	route := shAccountRoutes[base] || (base == "runuser" || base == "su") && shRunsAsAccount(args)
 	for _, d := range c.docs {
 		// ⭐ cat WRITES THE TEXT WHERE ITS REDIRECT SAYS, and that redirect is judged above.
 		if !d.quoted && h.place(d.body) != placeNone && !route && base != "cat" {
@@ -732,7 +800,8 @@ func (h shHome) judge(s *shScript, k int) []string {
 	if name == "" || route {
 		return why
 	}
-	if h.place(name) != placeNone {
+	// ⚠ A NAME WITHOUT A SLASH IS LOOKED UP ON PATH, wherever the shell stands.
+	if h.place(name) != placeNone || strings.Contains(name, "/") && place(name) != placeNone {
 		return append(why, "root runs "+show(name)+", a program in the account's home")
 	}
 	if shConsumers[base] {
@@ -745,7 +814,7 @@ func (h shHome) judge(s *shScript, k int) []string {
 	}
 	worst := placeNone
 	for _, a := range args {
-		worst = max(worst, h.place(a))
+		worst = max(worst, place(a))
 	}
 	if worst == placeHome && shHomeItself[base] && !shRecursive(args) {
 		worst = placeNone
@@ -762,12 +831,39 @@ func (h shHome) judge(s *shScript, k int) []string {
 // run. ⭐ A command an account route runs is the account's. Its redirect is still root's,
 // because root's shell opens that file. A command a waiver stands for is left out, and
 // stale answers each waiver that stood for nothing the scan refuses.
+//
+// ⛔ A cd INTO THE HOME PUTS ITS SHELL THERE UNTIL THAT SHELL CLOSES, so a relative name
+// is a path in the home. A waiver on the cd silenced every later step in the subshell,
+// and `chown -R agent .` after a waived `cd -P "$TK_HOME/.config"` passed. A review
+// found it.
 func rootHomeWrites(src string) (found, stale []string, h shHome) {
 	s := shCommands(src, 1)
 	h = shHomeNames(s.cmds)
 	used := map[int]bool{}
+	// at holds where each shell's cd left it: in the home or not. A shell no cd has
+	// moved stands where the shell around it does.
+	at := map[int]bool{}
+	inHome := func(scope int) bool {
+		for ; scope >= 0; scope = s.parents[scope] {
+			if v, ok := at[scope]; ok {
+				return v
+			}
+		}
+		return false
+	}
 	for k, c := range s.cmds {
-		why := h.judge(s, k)
+		here := inHome(c.scope)
+		why := h.judge(s, k, here)
+		if _, name, args := shSplit(c.words); name == "cd" {
+			to := ""
+			for _, a := range args {
+				if !strings.HasPrefix(a, "-") {
+					to = a
+					break
+				}
+			}
+			at[c.scope] = h.place(to) != placeNone || here && shRelative(to)
+		}
 		if len(why) == 0 {
 			continue
 		}
@@ -928,6 +1024,13 @@ func TestTheHomeWriteScanReadsWhatRootWrites(t *testing.T) {
 		home + `"$TK_HOME/.local/bin/muse" --version`,
 		home + "p=$(runuser -l agent -c 'command -v pi')\nhead -3 \"$p\"",
 		home + "s=$(as_account mktemp -d /tmp/s.XXXXXX)\nrm -rf \"$s\"",
+		// ⛔ runuser and su as root, which the scan trusted by name. A review found it.
+		home + `runuser -u root -- chown agent "$TK_HOME/.config"`,
+		home + `su -c "chown agent $TK_HOME/.config" root`,
+		// ⛔ A relative name after a waived cd into the home, which the waiver silenced.
+		home + "( # linksafe: cd -P resolves every link\n  cd -P \"$TK_HOME/.config\" || exit 0\n  chown -R agent .\n)",
+		home + "# linksafe: the cd alone is reviewed\ncd \"$TK_HOME\"\nchown agent .config",
+		home + "( # linksafe: the cd alone is reviewed\n  cd \"$TK_HOME\" || exit 0\n  cd .config\n  rm -f x\n)",
 	}
 	for _, src := range refused {
 		if found, _, _ := rootHomeWrites(src); len(found) == 0 {
@@ -948,8 +1051,15 @@ func TestTheHomeWriteScanReadsWhatRootWrites(t *testing.T) {
 		home + "account_put \"$TK_HOME/.local/bin/omp\" 0755 <<WRAPPER\nexec \"$TK_HOME/.local/bin/omp-npm\"\nWRAPPER",
 		home + "real=$(readlink -f \"$TK_HOME/.local/bin/muse\")\nk=$(du -sk \"$TK_HOME/.config/muse\" | cut -f1)",
 		home + "case $real in\n  \"$TK_HOME\"/.local/share/*) v=$(dirname \"$real\") ;;\nesac",
-		home + "# linksafe: root enters the home itself and reads where it stands\nh=$(cd -P \"$TK_HOME\" && pwd -P)",
-		home + "( # linksafe: cd -P resolves every link, and pwd -P reads it back\n  cd -P \"$TK_HOME/.config\" || exit 0\n  chown agent .\n)",
+		// ⭐ A cd ends where its shell closes: a substitution, or a subshell.
+		home + "# linksafe: root enters the home itself and reads where it stands\nh=$(cd -P \"$TK_HOME\" && pwd -P)\nmkdir -p work",
+		home + "( # linksafe: cd -P resolves every link, and pwd -P reads it back\n  cd -P \"$TK_HOME/.config\" || exit 0\n" +
+			"  # linksafe: `.` is the directory pwd -P read back\n  chown agent .\n)\nmkdir -p work",
+		home + "( # linksafe: the cd alone is reviewed\n  cd \"$TK_HOME\" || exit 0\n  cd /tmp\n  rm -f x\n)",
+		// ⭐ runuser and su as the account, by their user word.
+		home + `runuser -u "$TK_USER" -- chown agent "$TK_HOME/.config"`,
+		home + `su -s /bin/sh -c "chown agent $TK_HOME/.config" "$TK_USER"`,
+		home + "t=$(mktemp)\naccount_read jq . \"$TK_HOME/.config/x\" > \"$t\"",
 		home + "p=$(runuser -l agent -c 'command -v pi')\nfirst_lines 3 \"$p\" | grep -q mark",
 		home + "case $ws in '~') ws=$TK_HOME ;; esac",
 	}
@@ -1603,7 +1713,7 @@ func TestProvisioningGivesTheAccountNoFileAHardLinkNames(t *testing.T) {
 	refused := map[string]string{inode(t, roots): "the file .cache is a hard link to", inode(t, state): ".local/state"}
 	containers := inode(t, filepath.Join(home, ".config", "containers"))
 	out, changed, ok := provisionHome(t, dir, home, outside, false)
-	if ok || !strings.Contains(out, "die: "+filepath.Join(home, ".cache")+" is not a directory, and agent's XDG directory belongs there") {
+	if ok || !strings.Contains(out, "die: "+filepath.Join(home, ".cache")+" is not a directory, and a directory of agent's belongs there") {
 		t.Fatalf("a hard link at .cache did not stop the provisioner naming it:\n%s", out)
 	}
 	handsWrote(t, filepath.Join(dir, "root-hands"), out)
@@ -1661,6 +1771,163 @@ func TestProvisioningNamesAnAccountNothingCanBecome(t *testing.T) {
 	}
 }
 
+// TestProvisioningNamesAFileWhereTheEngineSettingsGo runs the provisioner's XDG
+// directories over a home with a file at .config/containers, and then at its drop-in
+// directory. WSL-201.
+//
+// ⛔ THE ACCOUNT CHECKED THE FIVE XDG NAMES ALONE. A file, a pipe or a dangling link at
+// either directory the engine's settings go in failed a later step, with a message that
+// named neither the path nor the remedy, so the owner's ensure stayed stuck. Both are
+// named now, as the others are.
+func TestProvisioningNamesAFileWhereTheEngineSettingsGo(t *testing.T) {
+	sh, bin := grantsShell(t)
+	for _, rel := range []string{".config/containers", ".config/containers/containers.conf.d"} {
+		dir := t.TempDir()
+		home, standIns := filepath.Join(dir, "home"), filepath.Join(dir, "bin")
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(home, filepath.FromSlash(rel))), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, filepath.FromSlash(rel)), []byte("a file of the account's\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(standIns, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// ⭐ Root's chown changes nothing here, and runuser is the account: the host itself.
+		if err := os.WriteFile(filepath.Join(standIns, "chown"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		at := shellPath(t, home)
+		script := "set -eu\nTK_USER=agent\nTK_GROUP=agent\nTK_HOME=" + at + "\n" +
+			"say() { printf '%s\\n' \"$*\"; }\ndie() { printf 'die: %s\\n' \"$*\"; exit 3; }\n" +
+			"runuser() { shift 3; \"$@\"; }\n" +
+			markedSection(t, provisionScript, "as the account") +
+			markedSection(t, provisionScript, "the account's XDG directories")
+		file := filepath.Join(dir, "xdg.sh")
+		if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(sh, filepath.ToSlash(file))
+		cmd.Env = append(os.Environ(), "PATH="+standIns+string(os.PathListSeparator)+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		out, err := cmd.CombinedOutput()
+		want := "die: " + at + "/" + rel + " is not a directory, and a directory of agent's belongs there. Move it aside as agent, then run base ensure again"
+		if err == nil || !strings.Contains(string(out), want) {
+			t.Errorf("a file at %s answered %v, want %q:\n%s", rel, err, want, out)
+		}
+		if b, _ := os.ReadFile(filepath.Join(home, filepath.FromSlash(rel))); string(b) != "a file of the account's\n" {
+			t.Errorf("the account's file at %s was changed: %q", rel, b)
+		}
+	}
+}
+
+// accountReaders are the adapter scripts' sections that hold account_read, and the call
+// each case makes of a reader built on it. $1 is root's own file, and $2 the account's.
+var accountReaders = []struct{ adapter, script, section, call string }{
+	{"muse", "install.sh", "the account's own writes", `account_same "$1" "$2" && echo same || echo differs`},
+	{"herdr", "install.sh", "the account's own writes", `account_same "$1" "$2" && echo same || echo differs`},
+	{"omp", "install.sh", "the account's own writes", `account_same "$1" "$2" && echo same || echo differs`},
+	{"pi", "install.sh", "the account's own writes", `account_same "$1" "$2" && echo same || echo differs`},
+	{"muse", "probe.sh", "the account's reads", `first_lines 1 "$2"; echo read`},
+	{"omp", "probe.sh", "the account's reads", `first_lines 1 "$2"; echo read`},
+	{"pi", "probe.sh", "the account's reads", `first_lines 1 "$2"; echo read`},
+}
+
+// TestAnAccountReadThatHangsIsStopped runs account_same and first_lines where the
+// account's read of a file never returns, as one of a named pipe or of its own FUSE
+// mount does. WSL-201.
+//
+// ⛔ THE ACCOUNT'S READ HELD base ensure UNTIL THE ADAPTER'S 20-MINUTE LIMIT. It won the
+// race after the `[ -f ]` test with a named pipe, or served the file from its own FUSE
+// mount and never answered. Root's timeout runs runuser now, so the read stops and reads
+// as nothing. ⭐ The case stands in a reader that sleeps, and a second for the bound.
+func TestAnAccountReadThatHangsIsStopped(t *testing.T) {
+	sh, bin := grantsShell(t)
+	if _, err := exec.LookPath("timeout"); err != nil {
+		t.Skip("no timeout on PATH, and the bound is taken only where the userland carries one")
+	}
+	dir := t.TempDir()
+	standIns, hangs := filepath.Join(dir, "bin"), filepath.Join(dir, "hangs")
+	for _, d := range []string{standIns, hangs} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// ⭐ runuser is the account: the host, with readers that never answer first on its PATH.
+	write := func(p, body string) {
+		t.Helper()
+		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// ⚠ FOUND BESIDE ITSELF, as the shell spells it. A Windows path in PATH is split at
+	// its drive's colon.
+	write(filepath.Join(standIns, "runuser"), "#!/bin/sh\nshift 3\nPATH=${0%/*}/../hangs:$PATH\nexport PATH\nexec \"$@\"\n")
+	for _, reader := range []string{"sha256sum", "head"} {
+		write(filepath.Join(hangs, reader), "#!/bin/sh\nexec sleep 20\n")
+	}
+	src, dest := filepath.Join(dir, "src"), filepath.Join(dir, "dest")
+	write(src, "the adapter's bytes\n")
+	write(dest, "the adapter's bytes\n")
+	for _, r := range accountReaders {
+		body, err := adapterScript(r.adapter, r.script)
+		if err != nil {
+			t.Fatal(err)
+		}
+		section := strings.ReplaceAll(markedSection(t, body, r.section), "timeout 30 ", "timeout 1 ")
+		script := "as_account() { runuser -u agent -- \"$@\"; }\n" + section + r.call + "\n"
+		file := filepath.Join(dir, r.adapter+"-"+r.script)
+		write(file, script)
+		cmd := exec.Command(sh, filepath.ToSlash(file), shellPath(t, src), shellPath(t, dest))
+		cmd.Env = append(os.Environ(), "PATH="+standIns+string(os.PathListSeparator)+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		start := time.Now()
+		out, err := cmd.CombinedOutput()
+		took := time.Since(start)
+		if err != nil || took > 12*time.Second {
+			t.Errorf("%s/%s: a read that never answers held its reader %s (%v):\n%s", r.adapter, r.script, took.Round(time.Second), err, out)
+		}
+		if r.script == "install.sh" && !strings.Contains(string(out), "differs") {
+			t.Errorf("%s/%s: a read that was stopped read as the same file:\n%s", r.adapter, r.script, out)
+		}
+	}
+}
+
+// TestEveryAccountReadInTheAdaptersIsBounded reads every adapter script for a read of a
+// file the account owns that does not go through account_read. WSL-201.
+//
+// ⛔ ONE UNBOUNDED READ IS ENOUGH TO HOLD base ensure, so the class is held, not the sites
+// it was found at: jq, sha256sum, head, sed, cat, grep and readlink run by as_account, a
+// script of its own that reads a file it tests, and the login shell that reads its
+// profile.
+func TestEveryAccountReadInTheAdaptersIsBounded(t *testing.T) {
+	unbounded := regexp.MustCompile(`\bas_account (jq|sha256sum|head|sed|cat|grep|readlink)\b|\bas_account sh -c '\[ -f |\bas_account sh -lc\b`)
+	seen := 0
+	err := fs.WalkDir(adapterTree, "adapters", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".sh") {
+			return err
+		}
+		body, err := adapterTree.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		for i, line := range strings.Split(string(body), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				continue
+			}
+			if unbounded.MatchString(line) {
+				t.Errorf("%s:%d reads a file of the account's without a bound. Run it through account_read:\n%s", p, i+1, line)
+			}
+			seen += strings.Count(line, "account_read ")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen == 0 {
+		t.Fatal("no adapter script reads through account_read, so this case is reading scripts that moved")
+	}
+}
+
 // TestEnginesShLeavesTheAccountsDropInToTheAccount runs engines.sh's removal of the
 // account's engine drop-in, on a base without systemd, where the account cannot be
 // become. WSL-201.
@@ -1698,56 +1965,85 @@ func TestEnginesShLeavesTheAccountsDropInToTheAccount(t *testing.T) {
 	}
 }
 
+// enginesBus runs engines.sh's choice of the account's drop-in by its session bus, as root
+// over dir's home, and answers what it said. bus says whether the session bus answers and
+// the user manager is active, and become stands in for runuser.
+func enginesBus(t *testing.T, dir string, bus bool, become string) string {
+	t.Helper()
+	sh, bin := grantsShell(t)
+	at := shellPath(t, dir)
+	dropIn := filepath.Join(dir, "home", ".config", "containers", "containers.conf.d", "50-wsl-toolkit-cgroup.conf")
+	if err := os.MkdirAll(filepath.Dir(dropIn), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dropIn, []byte("[engine]\ncgroup_manager = \"systemd\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	section := strings.ReplaceAll(markedSection(t, enginesScript, "the account's drop-in, by its session bus"),
+		`[ -S "/run/user/$uid/bus" ]`, "[ "+strconv.FormatBool(bus)+" = true ]")
+	script := "say() { printf '  * %s\\n' \"$*\"; }\n" + become + "su() { return 1; }\nsystemctl() { return 0; }\n" +
+		"TK_USER=agent\nuid=1000\ndelegated=\nhome=" + at + "/home\n" +
+		markedSection(t, enginesScript, "as the account") +
+		markedSection(t, enginesScript, "the account's engine drop-in") + section
+	file := filepath.Join(t.TempDir(), "bus.sh")
+	if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(sh, filepath.ToSlash(file))
+	cmd.Env = shellEnv(bin)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the drop-in's branch failed: %v\n%s", err, out)
+	}
+	return string(out)
+}
+
 // TestEnginesShSaysCgroupfsOnlyOnceTheDropInIsGone runs engines.sh's branch for a
 // systemd base whose user manager has no session bus. WSL-201.
 //
 // ⛔ IT SAID THE ENGINE KEPT cgroupfs WHILE THE DROP-IN STILL NAMED systemd. The
 // account's removal failed, the failure was ignored, and the line went on as if the
 // drop-in were gone. One the account cannot remove is named, as without systemd.
+// ⚠ AND NOTHING IS CLAIMED OF WHAT IT HOLDS. A removal fails where nothing can become the
+// account, whether or not a drop-in is there.
 func TestEnginesShSaysCgroupfsOnlyOnceTheDropInIsGone(t *testing.T) {
-	sh, bin := grantsShell(t)
 	dir := t.TempDir()
 	at := shellPath(t, dir)
 	dropIn := filepath.Join(dir, "home", ".config", "containers", "containers.conf.d", "50-wsl-toolkit-cgroup.conf")
-	run := func(become string) string {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(dropIn), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(dropIn, []byte("[engine]\ncgroup_manager = \"systemd\"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		script := "say() { printf '  * %s\\n' \"$*\"; }\n" + become + "su() { return 1; }\n" +
-			"TK_USER=agent\nhome=" + at + "/home\n" +
-			markedSection(t, enginesScript, "as the account") +
-			markedSection(t, enginesScript, "the account's engine drop-in") +
-			markedSection(t, enginesScript, "the account's drop-in without a session bus")
-		file := filepath.Join(t.TempDir(), "bus.sh")
-		if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		cmd := exec.Command(sh, filepath.ToSlash(file))
-		cmd.Env = shellEnv(bin)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("the bus-less branch failed: %v\n%s", err, out)
-		}
-		return string(out)
-	}
-	out := run("runuser() { return 1; }\n")
-	if !strings.Contains(out, "agent could not remove "+at+"/home/.config/containers/containers.conf.d/50-wsl-toolkit-cgroup.conf, which still names the systemd manager") ||
-		strings.Contains(out, "keeps cgroupfs") {
-		t.Fatalf("a drop-in the account could not remove read as gone:\n%s", out)
+	out := enginesBus(t, dir, false, "runuser() { return 1; }\n")
+	if !strings.Contains(out, "agent could not remove "+at+"/home/.config/containers/containers.conf.d/50-wsl-toolkit-cgroup.conf, and its user manager has no session bus") ||
+		strings.Contains(out, "keeps cgroupfs") || strings.Contains(out, "still names") {
+		t.Fatalf("a drop-in the account could not remove read as gone, or was said to name a manager:\n%s", out)
 	}
 	if _, err := os.Stat(dropIn); err != nil {
 		t.Fatalf("the drop-in is gone, and nobody could remove it: %v", err)
 	}
-	out = run("runuser() { shift 3; \"$@\"; }\n")
+	out = enginesBus(t, dir, false, "runuser() { shift 3; \"$@\"; }\n")
 	if !strings.Contains(out, "so its engine keeps cgroupfs") || strings.Contains(out, "could not remove") {
 		t.Fatalf("a drop-in the account removed did not read as cgroupfs:\n%s", out)
 	}
 	if _, err := os.Stat(dropIn); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the account's removal left the drop-in: %v", err)
+	}
+}
+
+// TestEnginesShSaysAWriteThatFailedBesideALiveBus runs engines.sh's branch for a systemd
+// base whose session bus answers. WSL-201.
+//
+// ⛔ THE WRITE WAS A THIRD TEST BESIDE THE BUS, so a write that failed beside a live bus
+// went to the bus-less branch, and both its lines blamed a session bus that answered.
+// The bus is read once, and a write that failed is said as one.
+func TestEnginesShSaysAWriteThatFailedBesideALiveBus(t *testing.T) {
+	dir := t.TempDir()
+	at := shellPath(t, dir)
+	out := enginesBus(t, dir, true, "runuser() { return 1; }\n")
+	if !strings.Contains(out, "agent could not write "+at+"/home/.config/containers/containers.conf.d/50-wsl-toolkit-cgroup.conf") ||
+		strings.Contains(out, "no session bus") {
+		t.Fatalf("a write that failed beside a live bus was not said as one:\n%s", out)
+	}
+	out = enginesBus(t, dir, true, "runuser() { shift 3; \"$@\"; }\n")
+	if !strings.Contains(out, "cgroup delegation: none read to agent's user manager") || strings.Contains(out, "could not") {
+		t.Fatalf("a write beside a live bus did not move the engine to the user manager:\n%s", out)
 	}
 }
 
@@ -1801,7 +2097,7 @@ func TestTheMuseProbeLeavesItsScratchToTheAccount(t *testing.T) {
 		"as_account() { env PATH=" + shellQuote(account) + " \"$@\"; }\n" +
 		"TK_PROBE_SESSION=1\nHOOK=" + shellQuote(hook) + "\nLAUNCHER=" + shellQuote(launcher) +
 		"\nREPORTER_LOG=" + shellQuote(logFile) + "\nMUSE_SETTINGS=/nowhere\nregistered=SessionStart\nversion=9.9.9\n" +
-		markedSection(t, probe, "the probe's Muse session")
+		markedSection(t, probe, "the account's reads") + markedSection(t, probe, "the probe's Muse session")
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

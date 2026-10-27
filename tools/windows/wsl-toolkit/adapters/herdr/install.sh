@@ -153,13 +153,26 @@ account_put() {
     exit 1' sh "$1" "$2"
 }
 
+# account_read CMD ARG... is as_account CMD ARG..., stopped after 30 seconds where the
+# userland carries timeout. ⛔ A FILE OF THE ACCOUNT'S CAN HOLD ITS READER. A named pipe
+# swapped in after the `[ -f ]` test, or a file of its own FUSE mount that never answers,
+# held base ensure until the adapter's own limit. ⭐ Root's timeout runs runuser, so
+# nothing on the account's PATH decides the bound. ⚠ The hang is bounded, not removed:
+# a read stopped reads as nothing. WSL-201.
+account_read() (
+  if command -v timeout >/dev/null 2>&1; then
+    runuser() { timeout 30 runuser "$@"; }
+  fi
+  as_account "$@"
+)
+
 # account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
 # bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
 # followed a link the account placed there, and a named pipe there held base ensure.
 account_same() {
   as_src=$(sha256sum < "$1") || return 1
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
+  [ "$as_src" = "$(account_read sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
 }
 # <<< the account's own writes: end
 

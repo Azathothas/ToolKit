@@ -127,13 +127,26 @@ account_put() {
     exit 1' sh "$1" "$2"
 }
 
+# account_read CMD ARG... is as_account CMD ARG..., stopped after 30 seconds where the
+# userland carries timeout. ⛔ A FILE OF THE ACCOUNT'S CAN HOLD ITS READER. A named pipe
+# swapped in after the `[ -f ]` test, or a file of its own FUSE mount that never answers,
+# held base ensure until the adapter's own limit. ⭐ Root's timeout runs runuser, so
+# nothing on the account's PATH decides the bound. ⚠ The hang is bounded, not removed:
+# a read stopped reads as nothing. WSL-201.
+account_read() (
+  if command -v timeout >/dev/null 2>&1; then
+    runuser() { timeout 30 runuser "$@"; }
+  fi
+  as_account "$@"
+)
+
 # account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
 # bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
 # followed a link the account placed there, and a named pipe there held base ensure.
 account_same() {
   as_src=$(sha256sum < "$1") || return 1
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
+  [ "$as_src" = "$(account_read sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
 }
 # <<< the account's own writes: end
 
@@ -152,7 +165,7 @@ account_same() {
 # ⭐ `sh -lc` reads /etc/profile and the account's own profile, which is how the
 # agent itself will get the variable when herdr starts it.
 account_env() {
-  as_account sh -lc "printf '%s' \"\${$1:-}\"" 2>/dev/null
+  account_read sh -lc "printf '%s' \"\${$1:-}\"" 2>/dev/null
 }
 
 PI_CODING_AGENT_DIR=$(account_env PI_CODING_AGENT_DIR)
@@ -221,7 +234,7 @@ fi
 # planted there would hold base ensure until its timeout.
 is_omp_wrapper() {
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  as_account sh -c '[ -f "$1" ] && head -3 "$1"' sh "$1" 2>/dev/null |
+  account_read sh -c '[ -f "$1" ] && head -3 "$1"' sh "$1" 2>/dev/null |
     grep -qF "# wsl-toolkit omp adapter wrapper"
 }
 
@@ -240,7 +253,7 @@ omp_from_release() {
   if [ -z "$OMP_ASSET" ] || [ ! -f "$OMP_TARGET" ]; then
     return 1
   fi
-  [ "$(as_account sha256sum "$OMP_TARGET" 2>/dev/null | cut -d' ' -f1)" = "$OMP_WANT" ]
+  [ "$(account_read sha256sum "$OMP_TARGET" 2>/dev/null | cut -d' ' -f1)" = "$OMP_WANT" ]
 }
 
 # omp_release_install fetches omp's release binary, checks it and installs it. It answers
@@ -402,7 +415,7 @@ if [ "$omp_from" = npm ]; then
   command -v npm >/dev/null 2>&1 ||
     die "omp's release could not be fetched, and npm is not installed in this base for the fallback. Run base ensure again when the release can be fetched, or set base.toolset to developer or later"
   want=$OMP_PACKAGE@$OMP_RELEASE
-  case $(as_account readlink -f "$OMP_TARGET" 2>/dev/null || :) in
+  case $(account_read readlink -f "$OMP_TARGET" 2>/dev/null || :) in
     */node_modules/*) ;;
     *) installed= ;;
   esac
@@ -413,7 +426,7 @@ if [ "$omp_from" = npm ]; then
     # wrapper is moved aside first, and it comes back when npm fails.
     aside=
     if [ -e "$OMP_LAUNCHER" ] || [ -L "$OMP_LAUNCHER" ]; then
-      case $(as_account readlink -f "$OMP_LAUNCHER" 2>/dev/null || :) in
+      case $(account_read readlink -f "$OMP_LAUNCHER" 2>/dev/null || :) in
         */node_modules/*) ;;
         *)
           aside=$PREFIX/bin/.omp.before-npm

@@ -113,13 +113,26 @@ account_put() {
     exit 1' sh "$1" "$2"
 }
 
+# account_read CMD ARG... is as_account CMD ARG..., stopped after 30 seconds where the
+# userland carries timeout. ⛔ A FILE OF THE ACCOUNT'S CAN HOLD ITS READER. A named pipe
+# swapped in after the `[ -f ]` test, or a file of its own FUSE mount that never answers,
+# held base ensure until the adapter's own limit. ⭐ Root's timeout runs runuser, so
+# nothing on the account's PATH decides the bound. ⚠ The hang is bounded, not removed:
+# a read stopped reads as nothing. WSL-201.
+account_read() (
+  if command -v timeout >/dev/null 2>&1; then
+    runuser() { timeout 30 runuser "$@"; }
+  fi
+  as_account "$@"
+)
+
 # account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
 # bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
 # followed a link the account placed there, and a named pipe there held base ensure.
 account_same() {
   as_src=$(sha256sum < "$1") || return 1
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
+  [ "$as_src" = "$(account_read sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
 }
 # <<< the account's own writes: end
 
@@ -353,7 +366,7 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
   # ⛔ THE ACCOUNT READS AND WRITES IT. Root's jq read whatever a link there named, and
   # root's redirect and chown followed it. WSL-201.
   if [ -f "$trust_file" ]; then
-    as_account jq -e 'has("schema_version") and has("projects")' "$trust_file" >/dev/null 2>&1 ||
+    account_read jq -e 'has("schema_version") and has("projects")' "$trust_file" >/dev/null 2>&1 ||
       die "$trust_file is not a Muse trust store this adapter understands; it is left exactly as it is"
   else
     printf '{\n  "schema_version": 1,\n  "projects": {}\n}\n' | account_put "$trust_file" 0600 ||
@@ -366,7 +379,7 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
     [ -n "$ws" ] || continue
     case $ws in '~') ws=$TK_HOME ;; esac
     # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
-    if as_account jq -e --arg w "$ws" '.projects | has($w)' "$trust_file" >/dev/null 2>&1; then
+    if account_read jq -e --arg w "$ws" '.projects | has($w)' "$trust_file" >/dev/null 2>&1; then
       IFS=:
       continue
     fi
@@ -375,7 +388,7 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
     # ⭐ Only the one key is added. schema_version and every other project keep their
     # values, because the document is edited rather than rebuilt.
     # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
-    if as_account jq --arg w "$ws" '.projects += {($w): {"decision":"trusted"}}' "$trust_file" > "$tmp" 2>/dev/null &&
+    if account_read jq --arg w "$ws" '.projects += {($w): {"decision":"trusted"}}' "$trust_file" > "$tmp" 2>/dev/null &&
         jq -e 'has("schema_version") and has("projects")' "$tmp" >/dev/null 2>&1 &&
         account_put "$trust_file" 0600 < "$tmp"; then
       rm -f "$tmp"
@@ -459,7 +472,7 @@ else
     printf '{"schema_version":1}\n' | account_put "$MUSE_SETTINGS" 0600 ||
       die "the account could not write $MUSE_SETTINGS"
   fi
-  if ! as_account jq -e 'type == "object" and has("schema_version")' "$MUSE_SETTINGS" >/dev/null 2>&1; then
+  if ! account_read jq -e 'type == "object" and has("schema_version")' "$MUSE_SETTINGS" >/dev/null 2>&1; then
     die "$MUSE_SETTINGS is not a Muse settings document: Muse reads only a JSON object carrying schema_version, and refuses to start over any other. It was left untouched. Read it, then run base ensure again"
   fi
   # ⛔ THE TEMPORARY FILE STAYS ROOT'S until the account writes the result over its own.
@@ -476,7 +489,7 @@ else
   # writes, so our entry is recognised wherever the account's home is; a group of the
   # operator's own keeps every hook of theirs.
   # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
-  if as_account jq --arg hook "$HOOK" --arg mark "$HOOK_MARK" --arg events "$HOOK_EVENTS" '
+  if account_read jq --arg hook "$HOOK" --arg mark "$HOOK_MARK" --arg events "$HOOK_EVENTS" '
       def ours: (.command // "") | endswith($mark);
       ($events | split(" ")) as $names
       | .hooks = ((.hooks // {}) | reduce $names[] as $n (.;
@@ -526,7 +539,7 @@ if [ -z "${TK_FILE_HERDR_DETECTION_TOML_B64:-}" ]; then
 elif ! herdr_present; then
   herdr_rules_skip='no herdr is installed in this base to read them. Add the herdr adapter to base.adapters'
 elif [ -f "$HERDR_RULES" ] &&
-  ! as_account sh -c '[ -f "$1" ] && exec head -n 1 "$1"' sh "$HERDR_RULES" 2>/dev/null | grep -q "$HERDR_RULES_MARK"; then
+  ! account_read sh -c '[ -f "$1" ] && exec head -n 1 "$1"' sh "$HERDR_RULES" 2>/dev/null | grep -q "$HERDR_RULES_MARK"; then
   herdr_rules_skip="$HERDR_RULES is not this adapter's, so it is left as it is"
 fi
 if [ -n "$herdr_rules_skip" ]; then

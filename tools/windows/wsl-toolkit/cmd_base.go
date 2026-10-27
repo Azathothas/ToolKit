@@ -492,8 +492,11 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	if st.Access.HerdrPrivateNet {
 		fmt.Fprintf(out, "  herdr net   %s\n", toolkit.HerdrPrivateNetSummary)
 	}
+	// ⭐ A GRANT NOTHING MOUNTS SAYS SO ON ITS OWN LINE, with its revoke. Without --probe
+	// the report ends before its problems, and `base status` exited 1 naming nothing.
+	// WSL-106, WSL-202.
 	for _, mount := range st.Access.Mounts {
-		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
+		fmt.Fprintf(out, "  grant       %s %s <- %s%s\n", mount.Mode, mount.Target, mount.Source, goneMark(mount))
 	}
 	if len(st.Adapters) == 0 {
 		// ⚠ NOT READ BACK IS SAID, AND WHY. Under --probe the adapters are read only

@@ -132,6 +132,11 @@ type BaseMount struct {
 	// by ResolvedBaseMounts from the disk and never read from a file, and
 	// Config.Write leaves it out of the one it stores. WSL-106.
 	Missing bool `json:"missing,omitempty"`
+	// Inside is the target of another grant this one sits inside, or empty. ⛔ It is
+	// decided by ResolvedBaseMounts from the targets and never read from a file, and
+	// Config.Write leaves it out of the one it stores. Such a grant is never mounted.
+	// WSL-202.
+	Inside string `json:"inside,omitempty"`
 }
 
 const (
@@ -213,19 +218,6 @@ func NormalizeBaseToolset(value string) (string, error) {
 }
 
 // normalizeBaseMountTarget confines explicit host mounts to one guest subtree.
-// nestedTargetsError refuses the first of targets, in their order, that sits inside
-// another. Each is a normalized target. WSL-202.
-func nestedTargetsError(targets []string) error {
-	for _, inner := range targets {
-		for _, outer := range targets {
-			if strings.HasPrefix(inner, outer+"/") {
-				return fmt.Errorf("base.mounts nests %q inside %q. The outer grant is a Windows directory where the account can make links, so a target inside it is refused. Grant it at another --target", inner, outer)
-			}
-		}
-	}
-	return nil
-}
-
 func normalizeBaseMountTarget(value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
 		return "", errors.New("base.mounts target cannot be empty")
@@ -248,6 +240,28 @@ func normalizeBaseMountTarget(value string) (string, error) {
 		}
 	}
 	return clean, nil
+}
+
+// nestedTargetsError refuses the first of targets, in their order, that sits inside
+// another. Each is a normalized target. PlanGrant asks it of a new grant. WSL-202.
+func nestedTargetsError(targets []string) error {
+	for _, inner := range targets {
+		if outer := outermostAround(inner, targets); outer != "" {
+			return fmt.Errorf("base.mounts nests %q inside %q. The outer grant is a Windows directory where the account can make links, so a target inside it is refused. Grant it at another --target", inner, outer)
+		}
+	}
+	return nil
+}
+
+// outermostAround answers the shortest of targets that target sits inside, or "".
+func outermostAround(target string, targets []string) string {
+	outer := ""
+	for _, t := range targets {
+		if strings.HasPrefix(target, t+"/") && (outer == "" || len(t) < len(outer)) {
+			outer = t
+		}
+	}
+	return outer
 }
 
 const (
@@ -773,7 +787,6 @@ func (c Config) Validate() error {
 		return errors.New(`base.shared_tmpfs "off" requires base.automount to be "off": closing the shared tmpfs while the Windows drives are mounted costs the resolver and seals nothing`)
 	}
 	seenTargets := map[string]bool{}
-	var targets []string
 	for i, mount := range c.Base.Mounts {
 		if strings.TrimSpace(mount.Source) == "" {
 			return fmt.Errorf("base.mounts[%d].source cannot be empty", i)
@@ -786,18 +799,16 @@ func (c Config) Validate() error {
 			return fmt.Errorf("base.mounts contains target %q more than once", target)
 		}
 		seenTargets[target] = true
-		targets = append(targets, target)
 		if _, err := NormalizeBaseMountMode(mount.Mode); err != nil {
 			return fmt.Errorf("base.mounts[%d]: %w", i, err)
 		}
 	}
-	// ⛔ NO TARGET SITS INSIDE ANOTHER. The outer grant is a Windows directory, where the
-	// account can make links, so root's mkdir, chmod and mount of the inner one followed
-	// a link the account put on the way. grants.sh refuses one nested in another
-	// configuration file's grant, through the ledger. WSL-202.
-	if err := nestedTargetsError(targets); err != nil {
-		return err
-	}
+	// ⛔ A TARGET INSIDE ANOTHER IS NOT REFUSED HERE, AND IT IS NEVER MOUNTED. The outer
+	// grant is a Windows directory, where the account can make links, so root's mkdir,
+	// chmod and mount of the inner one followed a link the account put on the way.
+	// Refused at load, a file an earlier release wrote could not run `base revoke`, the
+	// one command that clears it. So ResolvedBaseMounts marks it, as WSL-106 marks a gone
+	// source. PlanGrant refuses beside it, and every mount leaves it out. WSL-202.
 	if err := validateAdapters(c); err != nil {
 		return err
 	}
@@ -953,6 +964,16 @@ func (c Config) ResolvedBaseMounts() ([]BaseMount, error) {
 		}
 		out = append(out, BaseMount{Source: filepath.Clean(resolved), Target: target, Mode: mode})
 	}
+	// ⛔ A GRANT INSIDE ANOTHER IS MARKED, NOT REFUSED, for the reason a gone source is.
+	// Refused, the configuration did not load, and `base revoke --target INNER` could not
+	// run. WSL-202.
+	targets := make([]string, len(out))
+	for i := range out {
+		targets[i] = out[i].Target
+	}
+	for i := range out {
+		out[i].Inside = outermostAround(out[i].Target, targets)
+	}
 	return out, nil
 }
 
@@ -977,6 +998,33 @@ func GoneGrantsError(mounts []BaseMount) error {
 		return nil
 	}
 	return fmt.Errorf("%w, so it cannot be mounted: %s", ErrGrantSourceGone, strings.Join(lines, "; "))
+}
+
+// ErrGrantNested is what a grant inside another grant is refused with where it would
+// be mounted. WSL-202.
+var ErrGrantNested = errors.New("a grant sits inside another grant")
+
+// NestedGrantsError names each grant that sits inside another, with the revoke that
+// clears it. Nil when none does. WSL-202.
+//
+// ⭐ IT NAMES THE COMMAND, for the reason GoneGrantsError does.
+func NestedGrantsError(mounts []BaseMount) error {
+	var lines []string
+	for _, m := range mounts {
+		if m.Inside != "" {
+			lines = append(lines, nestedGrantLine(m))
+		}
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w, where the account can make links, so it is not mounted: %s", ErrGrantNested, strings.Join(lines, "; "))
+}
+
+// nestedGrantLine is one nested grant, said with its revoke.
+func nestedGrantLine(m BaseMount) string {
+	return fmt.Sprintf("%s sits inside %s, a Windows directory the account can make links in. Run: %s",
+		m.Target, m.Inside, ToolCommand("base revoke --target "+m.Target))
 }
 
 // ToolCommand is a command line for this tool under the instance this process
@@ -1159,6 +1207,7 @@ func (c Config) Fingerprint() string {
 	// a grant whose directory went away does not change the fingerprint.
 	for i := range resolved {
 		resolved[i].Missing = false
+		resolved[i].Inside = ""
 	}
 	base.Mounts = resolved
 	payload := struct {
@@ -1301,9 +1350,10 @@ func (c Config) Write() error {
 	// The state file is elsewhere, so store the resolved path and preserve what
 	// the configuration means rather than only how it was spelled.
 	// ⚠ Missing is the disk's answer today and not part of the grant, so it is
-	// not stored.
+	// not stored. ⚠ Nor is Inside, which the reader decides again. WSL-202.
 	for i := range resolved {
 		resolved[i].Missing = false
+		resolved[i].Inside = ""
 	}
 	c.Base.Mounts = resolved
 	b, err := json.MarshalIndent(c, "", "  ")

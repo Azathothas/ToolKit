@@ -27,12 +27,24 @@ as_account() {
     SHELL=/bin/bash LANG=C.UTF-8 npm_config_prefix="$PREFIX" \
     PATH="$PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin" "$@"
 }
+# >>> the account's reads: begin
+# account_read CMD ARG... is as_account CMD ARG..., stopped after 30 seconds where the
+# userland carries timeout. ⛔ A FILE OF THE ACCOUNT'S CAN HOLD ITS READER: a named pipe
+# swapped in after a `[ -f ]` test, or a file of its own FUSE mount that never answers.
+# ⭐ Root's timeout runs runuser. ⚠ The hang is bounded, not removed. WSL-201.
+account_read() (
+  if command -v timeout >/dev/null 2>&1; then
+    runuser() { timeout 30 runuser "$@"; }
+  fi
+  as_account "$@"
+)
+
 # is_omp_wrapper PATH is true when PATH is the adapter's separating wrapper. ⛔ The account
 # reads it, and only once it is a regular file. Root reading a FIFO the account planted
 # there would hold the probe until its timeout.
 is_omp_wrapper() {
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  as_account sh -c '[ -f "$1" ] && head -3 "$1"' sh "$1" 2>/dev/null |
+  account_read sh -c '[ -f "$1" ] && head -3 "$1"' sh "$1" 2>/dev/null |
     grep -qF "# wsl-toolkit omp adapter wrapper"
 }
 # first_lines N PATH prints the first N lines of PATH, read by the account, when it is a
@@ -40,8 +52,9 @@ is_omp_wrapper() {
 # is_omp_wrapper says. WSL-201.
 first_lines() {
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  as_account sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
+  account_read sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
 }
+# <<< the account's reads: end
 # ⛔ A LOGIN SHELL, AND THAT IS THE WHOLE POINT OF THIS FUNCTION. as_account runs
 # `env -i`, which clears the environment on purpose so an install is reproducible,
 # and a plain `sh -c` under it therefore reports EVERY variable as unset. Measured
@@ -53,7 +66,7 @@ first_lines() {
 # ⭐ `sh -lc` reads /etc/profile and the account's own profile, which is how the
 # agent itself will get the variable when herdr starts it.
 account_env() {
-  as_account sh -lc "printf '%s' \"\${$1:-}\"" 2>/dev/null
+  account_read sh -lc "printf '%s' \"\${$1:-}\"" 2>/dev/null
 }
 
 # ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk. `base status` asks it of
@@ -109,13 +122,13 @@ omp_real=$PREFIX/bin/omp
 if is_omp_wrapper "$omp_real"; then
   omp_real=$PREFIX/bin/omp-npm
 fi
-case $(as_account readlink -f "$omp_real" 2>/dev/null || :) in
+case $(account_read readlink -f "$omp_real" 2>/dev/null || :) in
   */node_modules/*) source=npm ;;
   *)
     # ⭐ A PREBUILT omp IS ONE ELF FILE, and it carries its own runtime. ⛔ Read only once it
     # is a regular file, so a FIFO there holds nothing.
     # shellcheck disable=SC2016  # the single quotes hold the account's own script
-    if [ "$(as_account sh -c '[ -f "$1" ] && head -c 4 "$1"' sh "$omp_real" 2>/dev/null | od -An -c | tr -d ' \n')" = '177ELF' ]; then
+    if [ "$(account_read sh -c '[ -f "$1" ] && head -c 4 "$1"' sh "$omp_real" 2>/dev/null | od -An -c | tr -d ' \n')" = '177ELF' ]; then
       source=release
     else
       source=other
@@ -193,7 +206,7 @@ separated=no
 # own shim and the wrapper share a filename and only the marker tells them apart.
 if [ -n "$omp_path" ] && is_omp_wrapper "$omp_path"; then
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  wrapped_dir=$(as_account sh -c '[ -f "$1" ] && exec sed -n "s/^PI_CODING_AGENT_DIR=//p" "$1"' sh "$omp_path" 2>/dev/null | head -1)
+  wrapped_dir=$(account_read sh -c '[ -f "$1" ] && exec sed -n "s/^PI_CODING_AGENT_DIR=//p" "$1"' sh "$omp_path" 2>/dev/null | head -1)
   if [ -n "$wrapped_dir" ]; then
     separated=yes
     agent_dir=$wrapped_dir

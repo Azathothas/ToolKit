@@ -317,8 +317,9 @@ func (c Config) Portable() Config {
 		return c
 	}
 	for i := range resolved {
-		// ⚠ The disk's answer today, which the reader takes again.
+		// ⚠ The disk's answer today, which the reader takes again, and Inside too.
 		resolved[i].Missing = false
+		resolved[i].Inside = ""
 	}
 	c.Base.Mounts = resolved
 	return c

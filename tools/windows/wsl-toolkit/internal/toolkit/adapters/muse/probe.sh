@@ -22,13 +22,26 @@ as_account() {
     SHELL=/bin/bash LANG=C.UTF-8 PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/bin "$@"
 }
 
+# >>> the account's reads: begin
+# account_read CMD ARG... is as_account CMD ARG..., stopped after 30 seconds where the
+# userland carries timeout. ⛔ A FILE OF THE ACCOUNT'S CAN HOLD ITS READER: a named pipe
+# swapped in after a `[ -f ]` test, or a file of its own FUSE mount that never answers.
+# ⭐ Root's timeout runs runuser. ⚠ The hang is bounded, not removed. WSL-201.
+account_read() (
+  if command -v timeout >/dev/null 2>&1; then
+    runuser() { timeout 30 runuser "$@"; }
+  fi
+  as_account "$@"
+)
+
 # first_lines N PATH prints the first N lines of PATH, read by the account, when it is a
 # file. ⛔ Root's head followed a link the account placed there, and a named pipe there
 # held the probe. WSL-201.
 first_lines() {
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  as_account sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
+  account_read sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
 }
+# <<< the account's reads: end
 
 # ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk. `base status` asks it of
 # an adapter the configuration no longer names, which keeps its files until `base
@@ -163,11 +176,11 @@ fi
 if [ -f "$MUSE_SETTINGS" ] && command -v jq >/dev/null 2>&1; then
   # ⛔ A SETTINGS FILE MUSE WILL NOT READ STOPS MUSE, not only the reporter: it refuses
   # to start over one that is not an object carrying schema_version.
-  if ! as_account jq -e 'type == "object" and has("schema_version")' "$MUSE_SETTINGS" >/dev/null 2>&1; then
+  if ! account_read jq -e 'type == "object" and has("schema_version")' "$MUSE_SETTINGS" >/dev/null 2>&1; then
     problem "$MUSE_SETTINGS is not a JSON object carrying schema_version, and Muse refuses to start over it"
   fi
   # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
-  registered=$(as_account jq -r --arg h "$HOOK" \
+  registered=$(account_read jq -r --arg h "$HOOK" \
     '[(.hooks // {}) | to_entries[] | select(any(.value[]?.hooks[]?; (.command // "") == $h)) | .key] | sort | join(",")' \
     "$MUSE_SETTINGS" 2>/dev/null)
   printf 'herdr_reporter_events %s\n' "${registered:-none}"
@@ -189,7 +202,7 @@ if [ -f "$HERDR_RULES" ] && first_lines 1 "$HERDR_RULES" | grep -q "from wsl-too
   if command -v jq >/dev/null 2>&1; then
     # ⚠ THE WARNING GOES LAST, because it is herdr's own text and may carry a `|`.
     loaded=$(as_account herdr server agent-manifests --json 2>/dev/null |
-      as_account jq -r '.result.manifests[]? | select(.agent == "muse") | "\(.source_kind)|\(.local_override_shadowing_remote // false)|\(.cached_remote_version // "")|\(.warning // "it gave no warning")"' 2>/dev/null | head -n 1)
+      account_read jq -r '.result.manifests[]? | select(.agent == "muse") | "\(.source_kind)|\(.local_override_shadowing_remote // false)|\(.cached_remote_version // "")|\(.warning // "it gave no warning")"' 2>/dev/null | head -n 1)
     kind=${loaded%%|*}
     rest=${loaded#*|}
     shadowing=${rest%%|*}
@@ -295,7 +308,7 @@ else
     reached=no
     if [ "$ran" -eq 0 ] && [ -n "$session" ]; then
       for _ in 1 2 3 4; do
-        if as_account grep -qF "SessionStart for $session " "$REPORTER_LOG" 2>/dev/null; then
+        if account_read grep -qF "SessionStart for $session " "$REPORTER_LOG" 2>/dev/null; then
           reached=yes
           break
         fi
