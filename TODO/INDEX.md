@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 265  open 1  blocked 0  done 264
+total 265  open 0  blocked 0  done 265
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 1 | 0 | 124 | 125 |
+| P2 | 0 | 0 | 125 | 125 |
 | P3 | 0 | 0 | 36 | 36 |
-| **all** | **1** | **0** | **264** | **265** |
+| **all** | **0** | **0** | **265** | **265** |
 
 ---
 
@@ -301,7 +301,7 @@ total 265  open 1  blocked 0  done 264
 | WSL-203 | P2 | S | done | A package manager that hangs holds the build with no bound | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-204 | P2 | S | done | Provisioning's limit cuts a bounded package manager try short with no name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-205 | P2 | S | done | A stand-in a case wrote can be busy when it runs, so the go job fails by chance | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-206 | P2 | S | open | `base status` without `--probe` exits 1 and names nothing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-206 | P2 | S | done | `base status` without `--probe` exits 1 and names nothing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

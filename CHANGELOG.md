@@ -23,10 +23,34 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-10-27
 
+### 2026-10-27T21:44:31Z: `wsl-toolkit` is 9.0.1: `base status` names what its exit counts
+
+**Record:** `WSL-206` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and `DOC-16` in
+[`TODO/docs.md`](TODO/docs.md). The 9.0.0 drive found both.
+**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v9.0.1` from this commit.
+
+- ⭐ **`base status` without `--probe` names its problems, `WSL-206`.** It printed none while its
+  exit code counted them, so a fresh alpine base answered 1 and said nothing. Each problem now
+  prints with the command that repairs it.
+- ⭐ **The manual's `base.registry` and shared tmpfs examples load, `DOC-16`.** Each now carries
+  the schema line a configuration file needs.
+
 ### 2026-10-27T20:19:20Z: `wsl-toolkit` is 9.0.0, a major: `gc` with no base, pi and omp from their releases, the private ranges, and root writes the account cannot steer
 
 **Record:** `WSL-134`, `WSL-135`, `WSL-138`, `WSL-158`, `WSL-159`, `WSL-196` to `WSL-205`, `TOOL-40`, ruling 36. Every break has its section in [`docs/consumers.md`](docs/consumers.md).
-**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v9.0.0` from this commit.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v9.0.0` from `395c1aa`, **22 assets** with a cosign
+bundle each and `SHA256SUMS`. All 19 release jobs green: the whole mutation table in 12 shards,
+herdr 0.9.5 on four targets, the publish, and the smoke that fetches the release and drives it.
+Amended 2026-10-27T21:44:31Z: the drive below found `WSL-206` and `DOC-16`, fixed in 9.0.1.
+
+⭐ **Driven after the publish.** `selfupdate` put 9.0.0 on this host, its SHA-256 verified, and
+`text-tool` was replaced from the same release. The owner's `base ensure` moved pi and omp to
+their pinned releases in 714 s, and `base status --probe` answers healthy. After a `wsl
+--shutdown`, `base ensure` took 33 s, and the grant, herdr and a container answered. On a scratch
+alpine base, the engine read the registry mirror, and a new nested grant was refused. An earlier
+release's nested grant stayed unmounted, and `base status` and `base ensure` named its revoke. The
+XDG directories were the account's at 0700, and grants came back after a stop, read-only where
+asked. A helper switch to debian rebuilt once, and `gc` with no base removed this machine's half.
 
 ⭐ **Ruling 36: nothing waits on the operator that a session can do.** 8.0.0 handed back a WSL
 shutdown, the base rename, a stock-host run and a register question. This release finishes

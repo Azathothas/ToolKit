@@ -17562,7 +17562,7 @@ linux-proof --rows-since 5feb917: proved tree 445d7e7 (commit 3d74c61), 179 of 1
 ## WSL-206. `base status` without `--probe` exits 1 and names nothing
 
 **Source** the 9.0.0 drive, where a fresh alpine base's status exited 1 with no problem line, and the `WSL-202` repair's notes
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -17594,4 +17594,9 @@ Exit 0, with a case where a status without `--probe` prints its problem and the 
 
 ## Closing
 
-Open.
+**Closed on main at `69244a8`, for 9.0.1.** `renderProblems` prints a base's problems and each remediation with its command, and both paths of `renderBaseState` call it. Without `--probe` it follows `usable not checked`. `TestBaseStatusWithoutProbeNamesItsProblems` renders a base whose disk is not sparse, and finds the problem, its heading and its command. The exit code is unchanged.
+
+```text
+linux-proof --rows-since 395c1aa: proved tree 2453533 (commit 69244a8), 1 row red
+repo mutate on Windows: 1 of 1 guards proved
+```
