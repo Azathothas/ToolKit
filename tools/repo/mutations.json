@@ -2,11 +2,380 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "mutate: a green handed-in run and a red compile are BROKEN",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\t\treturn agreeHanded(handed.v, v)",
+      "replace": "\t\treturn v",
+      "run": "TestAGreenHandedInRunAndARedCompileAreBroken",
+      "args": []
+    },
+    {
+      "label": "mutate: a handed-in run that took the bytes is the first of two runs",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tif handed.took {\n",
+      "replace": "\tif handed.took && v.State == \"ok\" {\n",
+      "run": "TestAHandedInRunThatStayedGreenIsTheFirstOfTwo",
+      "args": []
+    },
+    {
+      "label": "mutate: a run a process could not take is compiled",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "&& errors.Is(markErr, fs.ErrNotExist)",
+      "replace": "&& (errors.Is(markErr, fs.ErrNotExist) || markErr == nil)",
+      "run": "TestARunAProcessCouldNotTakeIsCompiled",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a child of the case process takes a row and writes no receipt",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\tif os.Getenv(TakenEnv) != \"\" {\n",
+      "replace": "\tif os.Getenv(TakenEnv) == \"-\" {\n",
+      "run": "TestAChildTakesTheBytesAndWritesNoReceipt",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the case process marks its children once it took a row",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\treturn os.Setenv(TakenEnv, \"1\")",
+      "replace": "\treturn nil",
+      "run": "TestTheCaseProcessMarksItsChildren",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a process that cannot take its row leaves the missed mark",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\t\t\t_ = os.WriteFile(with+MissedSuffix, []byte(err.Error()+\"\\n\"), 0o600)",
+      "replace": "\t\t\t_ = with",
+      "run": "TestAProcessThatCannotReadTheBytesSaysSo",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a test binary that cannot take its row stops",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\t\tos.Exit(MissedExit)",
+      "replace": "\t\t_ = MissedExit",
+      "run": "TestABinaryThatCannotTakeItsRowStops",
+      "args": []
+    },
+    {
+      "label": "mutate: a handed-in run's bytes are removed when it ends",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "\tdefer os.RemoveAll(dir)",
+      "replace": "\tdefer func() { _ = dir }()",
+      "run": "TestEachHandedInRunHasItsOwnBytes",
+      "args": []
+    },
+    {
+      "label": "mutate: each handed-in run has a bytes file of its own",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "\tdir, err := os.MkdirTemp(wk.slot.dir, \"embed-\")",
+      "replace": "\tdir, err := filepath.Join(wk.slot.dir, \"embed\"), os.MkdirAll(filepath.Join(wk.slot.dir, \"embed\"), 0o700)",
+      "run": "TestEachHandedInRunHasItsOwnBytes",
+      "args": []
+    },
+    {
+      "label": "mutate: a handed-in run is told the digest its file was staged with",
+      "module": "tools/repo",
+      "file": "internal/mutate/embed.go",
+      "find": "embedStagedEnv + \"=\" + stagedDigest(body)",
+      "replace": "embedStagedEnv + \"=\" + stagedDigest(changed)",
+      "run": "TestEachHandedInRunHasItsOwnBytes",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a receipt is written only over the bytes the row was staged over",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/embedswap/embedswap.go",
+      "find": "\tif Digest(was) != os.Getenv(StagedEnv) {",
+      "replace": "\tif Digest(was) == \"-\" {",
+      "run": "TestAFileNotAsStagedTakesNoReceipt",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: what an initializer runs is read through the functions it calls",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\tfor _, c := range f.calls {",
+      "replace": "\t\tfor _, c := range f.calls[:0] {",
+      "run": "TestTheEmbedReadingRefusesWhatWouldKeepOldBytes",
+      "args": []
+    },
+    {
+      "label": "check: a case named in any letter Go accepts is listed",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\tif !token.IsIdentifier(ln) {",
+      "replace": "\t\tif !token.IsIdentifier(ln) || strings.ContainsFunc(ln, func(r rune) bool { return r > 127 }) {",
+      "run": "TestAListedCaseMayBeNamedInAnyLetter",
+      "args": []
+    },
+    {
+      "label": "check: a case's prefix pattern ends on a whole letter",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "alt = regexp.QuoteMeta(name[:need+size])",
+      "replace": "alt = regexp.QuoteMeta(name[:need+min(size, 1)])",
+      "run": "TestEveryCaseIsDealtToOneProcess",
+      "args": []
+    },
+    {
+      "label": "check: a split package's cases are counted from what its processes ran",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\tif bad := unevenlyRun(names, counts); bad != \"\" {",
+      "replace": "\t\tif bad := \"\"; bad != \"\" {",
+      "run": "TestASplitPackageWhoseCasesNeverStartedIsAFinding",
+      "args": []
+    },
+    {
+      "label": "check: a listed case that never started is a finding",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\tif total[n] != 1 {",
+      "replace": "\t\tif total[n] > 1 {",
+      "run": "TestACaseThatDidNotStartOnceIsAFinding",
+      "args": []
+    },
+    {
+      "label": "check: a case that started and was not listed is a finding",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\tif !listed[name] {",
+      "replace": "\t\tif !listed[name] && false {",
+      "run": "TestACaseThatDidNotStartOnceIsAFinding",
+      "args": []
+    },
+    {
+      "label": "check: a failing case's lines follow its result, as testFailure reads them",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "held[e.Test] = append([]string{e.Output}, held[e.Test]...)",
+      "replace": "held[e.Test] = append(held[e.Test], e.Output)",
+      "run": "TestAFailureInOneProcessIsAFinding",
+      "args": []
+    },
+    {
+      "label": "check: a root spelled short or through a link keeps the split",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\tif r, err := filepath.EvalSymlinks(root); err == nil {",
+      "replace": "\tif r, err := filepath.EvalSymlinks(root); err == nil && r == \"\" {",
+      "run": "TestAShortOrLinkedRootKeepsTheSplit",
+      "args": []
+    },
+    {
+      "label": "check: a package directory spelled short or through a link keeps the split",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\tif a, err := filepath.EvalSymlinks(at); err == nil {",
+      "replace": "\tif a, err := filepath.EvalSymlinks(at); err == nil && a == \"\" {",
+      "run": "TestAShortOrLinkedRootKeepsTheSplit",
+      "args": []
+    },
+    {
+      "label": "check: a directory outside the root is never read as split",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\tif err != nil || rel == \"..\" || strings.HasPrefix(rel, \"..\"+string(filepath.Separator)) {",
+      "replace": "\tif err != nil {",
+      "run": "TestAShortOrLinkedRootKeepsTheSplit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that assigns a package variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tfor _, l := range x.Lhs {\n\t\t\t\t\tset(l, l)\n\t\t\t\t}",
+      "replace": "\t\t\t\tfor range x.Lhs {\n\t\t\t\t}",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that ranges into a package variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\tif x.Tok == token.ASSIGN {",
+      "replace": "\t\t\tif x.Tok == token.ILLEGAL {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that increments a package variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\tset(x.X, x.X)",
+      "replace": "\t\t\t_ = x",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that takes a package variable's address is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\tif x.Op == token.AND {",
+      "replace": "\t\t\tif x.Op == token.OR {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that calls a method on a package variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\tif v := r.root(x.X); v != nil && !r.readsOnly(sel) {",
+      "replace": "\t\t\tif v := r.root(x.X); v != nil && false {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a method that only reads is not read as a write",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\tif reads, ok := readOnly[obj.Pkg().Path()+\".\"+obj.Name()]; ok && reads(fn.Name()) {",
+      "replace": "\t\t\tif reads, ok := readOnly[obj.Pkg().Path()+\".\"+obj.Name()]; ok && reads(fn.Name()) && false {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a method of the package read is never read as a read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\tif !ok || fn.Pkg() == r.p.Types {",
+      "replace": "\tif !ok {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that deletes, clears or copies into a package variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tcase \"delete\", \"clear\", \"copy\", \"append\":",
+      "replace": "\t\t\t\tcase \"append\":",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that sets the environment or moves the working directory is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tif fn.Pkg() != nil && fn.Pkg() != r.p.Types && processState[fn.Name()] {",
+      "replace": "\t\t\t\tif fn.Pkg() != nil && fn.Pkg() != r.p.Types && processState[fn.Name()] && false {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the parallel reading follows a case's functions to any depth",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\tif d, ok := r.decls[o]; ok {",
+      "replace": "\t\t\tif d, ok := r.decls[o]; ok && false {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a call through an interface reaches the package's methods of that name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tfor _, d := range r.byName[o.Name()] {",
+      "replace": "\t\t\t\tfor _, d := range r.byName[o.Name()+\"-\"] {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a function stored in a package variable is followed from it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\t*into = append(*into, r.stored[o]...)",
+      "replace": "\t\t\t\t_ = into",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a type a case names brings its methods",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tfor _, d := range r.methods[o] {",
+      "replace": "\t\t\t\tfor _, d := range r.methods[nil] {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a parallel case that sets another package's variable is found",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\tv, _ := r.p.Info.Uses[x.Sel].(*types.Var)",
+      "replace": "\t\t\tv := (*types.Var)(nil)",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a local of a package variable's name is not the variable",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\treturn v != nil && v.Pkg() != nil && v.Parent() == v.Pkg().Scope()",
+      "replace": "\treturn v != nil && v.Pkg() != nil",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a case made parallel by a helper at any depth is read as parallel",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\tfor _, n := range reached {\n\t\t\tif r.facts(n).parallel {",
+      "replace": "\t\tfor _, n := range reached[:1] {\n\t\t\tif r.facts(n).parallel {",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a case that calls t.Parallel is read as parallel",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "fn.Pkg().Path() == \"testing\" && fn.Name() == \"Parallel\"",
+      "replace": "fn.Pkg().Path() == \"testing\" && fn.Name() == \"Parallel-\"",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a generic function a case calls is followed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\to = o.Origin()",
+      "replace": "\t\t\t_ = o.Origin()",
+      "run": "TestTheParallelReadingFindsWhatACaseSets",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a package with an external test package is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\tif len(meta.XTestGoFiles) > 0 || len(meta.CgoFiles) > 0 {",
+      "replace": "\tif len(meta.CgoFiles) > 0 {",
+      "run": "TestAPackageWithAnExternalTestPackageIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an allowed method allows that method alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/parallelread/parallelread.go",
+      "find": "\t\t\t\tif !allowed[s.what] && !allowed[what] {",
+      "replace": "\t\t\t\tif !allowed[s.what] {",
+      "run": "TestAnAllowedMethodIsNotAFinding",
+      "args": []
+    },
+    {
       "label": "check: a split package's cases run again on every go check",
       "module": "tools/check",
       "file": "internal/checks/gotest.go",
-      "find": "goBin, \"test\", \"-count=1\", \"-run\", patterns[i], pkg)",
-      "replace": "goBin, \"test\", \"-run\", patterns[i], pkg)",
+      "find": "exec.Command(goBin, \"test\", \"-json\", \"-count=1\", \"-run\", patterns[i], pkg)",
+      "replace": "exec.Command(goBin, \"test\", \"-json\", \"-run\", patterns[i], pkg)",
       "run": "TestASplitPackagesCasesRunAgainOnEveryCheck",
       "args": []
     },
@@ -14,27 +383,9 @@
       "label": "mutate: a skip its baseline made is kept from a handed-in run",
       "module": "tools/repo",
       "file": "internal/mutate/embed.go",
-      "find": "&& v.State != \"SKIPPED\" {",
-      "replace": "&& v.State != \"\" {",
+      "find": "\tfinal := v.State == \"ok\" || v.State == \"SKIPPED\"",
+      "replace": "\tfinal := v.State == \"ok\"",
       "run": "TestASkipItsBaselineMadeIsKeptFromAHandedInRun",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a fake that takes a mutation row again leaves the file it holds",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/embedswap/embedswap.go",
-      "find": "err == nil && bytes.Equal(was, body) {",
-      "replace": "err == nil && bytes.Equal(was, body) && file == \"\" {",
-      "run": "TestAFileThatHoldsTheBytesIsNotWrittenAgain",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: the parallel reading names no blank variable",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/parallelread/parallelread.go",
-      "find": "\t\t\t\t\t\tif n.Name != \"_\" {",
-      "replace": "\t\t\t\t\t\tif n.Name != \"\" {",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
       "args": []
     },
     {
@@ -50,8 +401,8 @@
       "label": "wsl-toolkit: a mutation row's bytes reach the file a case reads from disk",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/embedswap/embedswap.go",
-      "find": "\treturn os.WriteFile(file, body, 0o600)\n}",
-      "replace": "\treturn nil\n}",
+      "find": "\tif err := os.WriteFile(file, body, 0o600); err != nil {",
+      "replace": "\tif err := os.WriteFile(file, was, 0o600); err != nil {",
       "run": "TestTheBytesReachWhatTakesThemAndThenTheFile",
       "args": []
     },
@@ -92,56 +443,11 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: a parallel case that sets the environment is found",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/parallelread/parallelread.go",
-      "find": "\t\t\t\tcase \"Setenv\", \"Unsetenv\", \"Clearenv\", \"Chdir\":",
-      "replace": "\t\t\t\tcase \"Unsetenv\", \"Clearenv\", \"Chdir\":",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a parallel case that sets a package variable is found",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/parallelread/parallelread.go",
-      "find": "\t\tif id, ok := e.(*ast.Ident); ok && vars[id.Name] && !locals[id.Name] && !allowed[id.Name] {",
-      "replace": "\t\tif id, ok := e.(*ast.Ident); ok && vars[id.Name] && !locals[id.Name] && !allowed[id.Name] && false {",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a parallel case that sets another package's variable is found",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/parallelread/parallelread.go",
-      "find": "\t\t\tif id, ok := sel.X.(*ast.Ident); ok && imported[id.Name] && !locals[id.Name] && !vars[id.Name] {",
-      "replace": "\t\t\tif id, ok := sel.X.(*ast.Ident); ok && imported[id.Name] && !locals[id.Name] && !vars[id.Name] && false {",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a parallel case that moves the working directory is found",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/parallelread/parallelread.go",
-      "find": "\t\t\t\tif fn.Name == \"chdir\" {",
-      "replace": "\t\t\t\tif false {",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a case that calls a parallel helper is read as parallel",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/parallelread/parallelread.go",
-      "find": "\t\t\t\tif helper.parallel && !strings.HasPrefix(c, \".\") {",
-      "replace": "\t\t\t\tif helper.parallel && strings.HasPrefix(c, \".\") {",
-      "run": "TestTheParallelReadingFindsWhatACaseSets",
-      "args": []
-    },
-    {
       "label": "check: a split package's cases run in several processes",
       "module": "tools/check",
       "file": "internal/checks/gotest.go",
-      "find": "\t\tif err == nil && split[filepath.ToSlash(rel)] {",
-      "replace": "\t\tif err == nil && split[filepath.ToSlash(rel)] && false {",
+      "find": "\t\tif rel, ok := relUnder(root, at); ok && split[rel] {",
+      "replace": "\t\tif rel, ok := relUnder(root, at); ok && split[rel+\"-\"] {",
       "run": "TestASplitPackagesCasesRunOnceEachInSeveralProcesses",
       "args": []
     },
@@ -149,8 +455,8 @@
       "label": "check: a case that fails in one of a split package's processes is a finding",
       "module": "tools/check",
       "file": "internal/checks/gotest.go",
-      "find": "\t\tif out, err := runIn(dir, goBin, \"test\", \"-count=1\", \"-run\", patterns[i], pkg); err != nil {",
-      "replace": "\t\tif out, err := runIn(dir, goBin, \"test\", \"-count=1\", \"-run\", patterns[i], pkg); err != nil && false {",
+      "find": "\t\tif err != nil {\n\t\t\truns[i] = sprintf(",
+      "replace": "\t\tif err != nil && false {\n\t\t\truns[i] = sprintf(",
       "run": "TestAFailureInOneProcessIsAFinding",
       "args": []
     },
@@ -206,15 +512,6 @@
       "find": "\ttook := readErr == nil && bytes.Equal(got, changed)",
       "replace": "\ttook := readErr == nil || bytes.Equal(got, changed)",
       "run": "TestARunThatTookNothingCannotCertifyAGuard",
-      "args": []
-    },
-    {
-      "label": "mutate: a green handed-in run is asked again on a compile",
-      "module": "tools/repo",
-      "file": "internal/mutate/embed.go",
-      "find": "\tif v.State != \"ok\" && v.State != \"SKIPPED\" {",
-      "replace": "\tif v.State == \"\" {",
-      "run": "TestAGreenHandedInRunIsCompiled",
       "args": []
     },
     {
