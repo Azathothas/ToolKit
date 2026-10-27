@@ -2796,6 +2796,10 @@ that writes the key, so a base that reaches its registry only through a mirror o
 proxy never got either. The owner's `base ensure` writes both drop-ins before it
 refuses, and asks the probe once more where either one changed. `WSL-196`
 
+Measured on a scratch Alpine base with a dead `proxy` and the probe image removed.
+`base ensure` exited 2, not judged, and wrote nothing. With the key taken away, it
+removed the proxy drop-in, asked the probe again and exited 0.
+
 ⛔ **A reason the tool does not know is not judged.** A blob fetch cut off with `EOF`,
 a `GOAWAY` or `context deadline exceeded` keeps the base. Only the base's own causes
 re-provision it. A BusyBox `timeout` that ends the pull reads as the bound. `WSL-174`
