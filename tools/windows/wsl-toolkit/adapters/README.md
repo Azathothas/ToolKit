@@ -8,7 +8,7 @@ one.
 
 | adapter | what it installs | driven on |
 | --- | --- | --- |
-| [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
+| [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client. ⭐ With `private_net`, a network namespace for that server and its agents | the `arch` preset, with systemd |
 | [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, and ⭐ a herdr reporter for its lifecycle | the `arch` preset |
 | [`pi/`](pi/) | the Pi coding agent from npm with `--ignore-scripts`, and **herdr's own** pi integration | the `arch` preset |
 | [`omp/`](omp/) | Oh My Pi from npm, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | the `arch` preset |
@@ -19,6 +19,11 @@ against herdr 0.9.0 and Muse Code 1.3.0, through Muse's credential-free `--provi
 echo`: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` with its release, and
 the adoption of a resumed session. ⚠ `PreToolUse` and `PermissionRequest` are
 registered and not yet driven, because the echo provider calls no tool.
+
+⭐ **herdr's `private_net` adds three files and changes none.** A drop-in beside the
+server's unit, a unit that links the namespace, and the script it runs. Each is a
+file in [`herdr/`](herdr/), and `install.sh` removes all three when the key goes.
+`WSL-159`
 
 ⭐ **The muse probe drives `SessionStart` itself**, with one echo session per `base
 ensure` and none on a read. A hook Muse stops running is a note naming its version. A

@@ -249,3 +249,22 @@ func TestAnUnchangedBasesStatusPrintsNoNewRow(t *testing.T) {
 		}
 	}
 }
+
+// TestAPrivateHerdrSaysWhatItGivesUpInItsStatus: herdr's private_net prints one row,
+// probed or not, and it carries the cost beside the gain. A base without the key
+// prints what it printed before. WSL-159, ruling 36.
+func TestAPrivateHerdrSaysWhatItGivesUpInItsStatus(t *testing.T) {
+	st := toolkit.BaseState{Name: "wsl-toolkit"}
+	for _, probed := range []bool{false, true} {
+		if out := captureStderr(t, func() { renderBaseState(st, probed) }); strings.Contains(out, "herdr net") {
+			t.Errorf("a base without private_net printed a herdr net row:\n%s", out)
+		}
+	}
+	st.Access.HerdrPrivateNet = true
+	for _, probed := range []bool{false, true} {
+		out := captureStderr(t, func() { renderBaseState(st, probed) })
+		if !strings.Contains(out, "  herdr net   private: ") || !strings.Contains(out, "give up rootless containers and sudo") {
+			t.Errorf("a base with private_net, probed %v, did not say what it gives up:\n%s", probed, out)
+		}
+	}
+}

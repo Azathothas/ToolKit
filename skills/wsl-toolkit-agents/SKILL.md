@@ -288,6 +288,12 @@ process. Never start a multiplexer inside a pane.
 ⛔ **A launcher that does not `exec` hides the agent** too, because herdr reads the
 pane's foreground process.
 
+⛔ **Under the `herdr` adapter's `private_net`, an agent reaches no Windows host,
+runs no rootless container and gets no `sudo`.** `base status` names the key on its
+`herdr net` row. Run a container or a root step through `wsl-toolkit base exec`
+from Windows instead. Never turn the key on or off without asking: it takes effect
+when herdr's server restarts, which ends every pane.
+
 ⛔ **Signing an agent in is the user's.** Never ask for, print, copy or store a
 credential, a code or a sign-in URL.
 

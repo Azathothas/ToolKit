@@ -212,6 +212,22 @@ Muse reports through the hook this tool's `muse` adapter installs.
 
 ---
 
+## ⚠ With `private_net`, the agents have a network of their own
+
+`"private_net": true` on the base's `herdr` adapter puts herdr's server, and every
+agent it starts, in its own network namespace. The internet answers, and the Windows
+host and the private ranges do not. `WSL-159`
+
+- ⛔ **An agent there runs no rootless container and no `sudo`.** Run those through
+  `wsl-toolkit base exec` from Windows instead.
+- ⛔ **The key reaches the agents only when herdr's server restarts**, which ends
+  every pane. `base status --probe` names the command, and the restart is yours to
+  decide.
+- ⭐ `readlink /proc/self/ns/net` in a pane names another namespace than it does in
+  `wsl-toolkit base shell`, and `ping` to the Windows host gets no answer.
+
+---
+
 ## ⛔ After a cancelled approval, herdr refuses every prompt
 
 ⛔ **Muse Code 1.3.0 fires no hook when a tool approval is cancelled.** The pane

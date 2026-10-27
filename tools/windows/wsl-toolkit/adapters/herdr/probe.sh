@@ -18,6 +18,11 @@ HERDR_BIN=/usr/local/bin/herdr
 DOOR_DIR=/etc/wsl-toolkit/ssh
 DOOR_WRAPPER=/usr/local/lib/wsl-toolkit/sshd-stdio
 UNIT=wsl-toolkit-herdr.service
+# What private_net adds. The unit directory is the one path a case in the suite points
+# into a temporary directory, and nothing else sets it. WSL-159.
+NETNS=wsl-toolkit-herdr
+NET_UNIT=wsl-toolkit-herdr-net.service
+NET_DROPIN=${TK_HERDR_UNIT_DIR:-/etc/systemd/system}/$UNIT.d/private-net.conf
 
 # ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk, asked by `base status` of
 # an adapter the configuration no longer names: the guest half stays until `base
@@ -28,7 +33,8 @@ if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
   TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
   total=0
   for p in "$HERDR_BIN" "/etc/systemd/system/$UNIT" "$DOOR_DIR" "$DOOR_WRAPPER" \
-      /usr/local/lib/wsl-toolkit/herdr-release "$TK_HOME/.config/herdr"; do
+      /usr/local/lib/wsl-toolkit/herdr-release "$TK_HOME/.config/herdr" \
+      "${NET_DROPIN%/*}" "/etc/systemd/system/$NET_UNIT" /usr/local/lib/wsl-toolkit/herdr-private-net; do
     [ -e "$p" ] || continue
     k=$(du -sk "$p" 2>/dev/null | cut -f1)
     total=$((total + ${k:-0} * 1024))
@@ -60,6 +66,48 @@ printf 'server-answers %s\n' "${answer:-nothing}"
 # binary serves nothing until the server next starts, and herdr says whether that is so.
 stale=$(runuser -u "$TK_USER" -- "$HERDR_BIN" status 2>/dev/null | sed -n 's/^[[:space:]]*server_binary_stale: //p')
 printf 'server-binary-stale %s\n' "${stale:-unknown}"
+
+# -- the private network namespace, read from the machine -------------------------------
+# ⭐ WHICH NAMESPACE THE SERVER IS IN, NOT WHICH ONE ITS UNIT ASKS FOR. base ensure never
+# restarts a running server, so a key turned on reaches the server only at its next
+# start, and until then the configuration says private while every agent is in the
+# shared namespace. WSL-159.
+if [ -e "$NET_DROPIN" ]; then private=on; else private=off; fi
+printf 'private-net %s\n' "$private"
+server_ns=unknown
+pid=$(systemctl show -p MainPID --value "$UNIT" 2>/dev/null || :)
+case $pid in
+  '' | 0 | *[!0-9]*) ;;
+  *)
+    if [ "$(ip netns identify "$pid" 2>/dev/null || :)" = "$NETNS" ]; then
+      server_ns=private
+    else
+      mine=$(readlink "/proc/$pid/ns/net" 2>/dev/null || :)
+      shared=$(readlink /proc/1/ns/net 2>/dev/null || :)
+      if [ -n "$mine" ] && [ "$mine" = "$shared" ]; then server_ns=shared; elif [ -n "$mine" ]; then server_ns=other; fi
+    fi
+    ;;
+esac
+printf 'server-netns %s\n' "$server_ns"
+if [ "$private" = on ]; then
+  link=$(systemctl is-active "$NET_UNIT" 2>/dev/null || :)
+  printf 'private-net-link %s\n' "${link:-unknown}"
+  # ⛔ A PROBLEM, NOT A NOTE: the operator turned the key on to keep the agents from
+  # the Windows host, and they can reach it.
+  case $server_ns in
+    private)
+      [ "$link" = active ] ||
+        problem "the herdr server's private network namespace has no way out, because $NET_UNIT is ${link:-unknown}. Run: base exec --root -c 'systemctl start $NET_UNIT'"
+      ;;
+    shared | other)
+      problem "the herdr server runs in the $server_ns network namespace, and private_net asks for its own. It moves when the server restarts, which ends every pane. When no pane is needed, run: base exec --root -c 'systemctl restart $UNIT'"
+      ;;
+  esac
+  # ⛔ THE COST, ON EVERY READ OF A BASE THAT CARRIES THE KEY. Ruling 36.
+  printf '%s\n' "note herdr's server and every agent it starts reach the internet, and not the Windows host or the private ranges. Those agents give up rootless containers and sudo"
+elif [ "$server_ns" = private ]; then
+  printf 'note private_net is off, and the running herdr server keeps its private network namespace until it restarts\n'
+fi
 
 if [ -r "$DOOR_DIR/ssh_host_ed25519_key.pub" ]; then
   printf 'ssh-host-key %s\n' "$(cut -d' ' -f1,2 "$DOOR_DIR/ssh_host_ed25519_key.pub")"

@@ -2,6 +2,240 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "herdr: private_net is refused on an adapter that cannot take it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif a.PrivateNet \u0026\u0026 !spec.TakesPrivateNet {\n",
+      "replace": "\t\tif a.PrivateNet \u0026\u0026 false {\n",
+      "run": "TestPrivateNetIsRefusedOnAnAdapterThatCannotTakeIt",
+      "args": []
+    },
+    {
+      "label": "herdr: private_net reaches the installer",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif a.PrivateNet {\n\t\tenv[\"TK_ADAPTER_PRIVATE_NET\"] = \"1\"\n\t}\n",
+      "replace": "",
+      "run": "TestPrivateNetReachesTheHerdrInstaller",
+      "args": []
+    },
+    {
+      "label": "herdr: a server outside its private namespace earns the restart",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tcase ns == \"shared\" || ns == \"other\":\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAHerdrServerOutsideItsNamespaceEarnsTheRestart",
+      "args": []
+    },
+    {
+      "label": "herdr: a private namespace with no link earns its start",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tcase ns == \"private\" \u0026\u0026 a.Facts[\"private-net-link\"] != \"active\":\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAHerdrServerOutsideItsNamespaceEarnsTheRestart",
+      "args": []
+    },
+    {
+      "label": "herdr: the configured state carries private_net",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tst.Access.HerdrPrivateNet = st.Access.HerdrPrivateNet || (a.Name == \"herdr\" \u0026\u0026 a.PrivateNet)\n",
+      "replace": "",
+      "run": "TestTheConfiguredStateCarriesPrivateNet",
+      "args": []
+    },
+    {
+      "label": "herdr: only the herdr entry's private_net counts",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "st.Access.HerdrPrivateNet || (a.Name == \"herdr\" \u0026\u0026 a.PrivateNet)\n",
+      "replace": "st.Access.HerdrPrivateNet || a.PrivateNet\n",
+      "run": "TestTheConfiguredStateCarriesPrivateNet",
+      "args": []
+    },
+    {
+      "label": "herdr: base status prints the private_net row",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\tif st.Access.HerdrPrivateNet {\n\t\tfmt.Fprintf(out, \"  herdr net   %s\\n\", toolkit.HerdrPrivateNetSummary)\n\t}\n",
+      "replace": "",
+      "run": "TestAPrivateHerdrSaysWhatItGivesUpInItsStatus",
+      "args": []
+    },
+    {
+      "label": "herdr: the private_net row says what it gives up",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": " Those agents give up rootless containers and sudo\"\n",
+      "replace": "\"\n",
+      "run": "TestAPrivateHerdrSaysWhatItGivesUpInItsStatus",
+      "args": []
+    },
+    {
+      "label": "herdr: the drop-in puts the server in the namespace",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.conf",
+      "find": "NetworkNamespacePath=/run/netns/wsl-toolkit-herdr\n",
+      "replace": "",
+      "run": "TestTheHerdrDropInPutsTheServerInTheNamespaceAndHoldsItThere",
+      "args": []
+    },
+    {
+      "label": "herdr: the drop-in keeps the server stopped when the namespace has no link",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.conf",
+      "find": "Requires=wsl-toolkit-herdr-net.service\n",
+      "replace": "",
+      "run": "TestTheHerdrDropInPutsTheServerInTheNamespaceAndHoldsItThere",
+      "args": []
+    },
+    {
+      "label": "herdr: the drop-in refuses sudo",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.conf",
+      "find": "NoNewPrivileges=yes\n",
+      "replace": "",
+      "run": "TestTheHerdrDropInPutsTheServerInTheNamespaceAndHoldsItThere",
+      "args": []
+    },
+    {
+      "label": "herdr: the drop-in hides the account's user manager",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.conf",
+      "find": "InaccessiblePaths=-/run/user\n",
+      "replace": "",
+      "run": "TestTheHerdrDropInPutsTheServerInTheNamespaceAndHoldsItThere",
+      "args": []
+    },
+    {
+      "label": "herdr: the namespace's unit does not stop when unneeded",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/wsl-toolkit-herdr-net.service",
+      "find": "[Unit]\n",
+      "replace": "[Unit]\nStopWhenUnneeded=yes\n",
+      "run": "TestTheHerdrDropInPutsTheServerInTheNamespaceAndHoldsItThere",
+      "args": []
+    },
+    {
+      "label": "herdr: pasta carries no loopback port of the shared namespace in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.sh",
+      "find": "  -t none -u none -T none -U none --no-map-gw --runas 0:0 --pid \"$PIDFILE\"\n",
+      "replace": "  -t none -u none -U none --no-map-gw --runas 0:0 --pid \"$PIDFILE\"\n",
+      "run": "TestThePrivateNetScriptWritesTheRulesAndLinksNothingElse",
+      "args": []
+    },
+    {
+      "label": "herdr: pasta links IPv4 alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.sh",
+      "find": "exec pasta --quiet -4 --config-net",
+      "replace": "exec pasta --quiet --config-net",
+      "run": "TestThePrivateNetScriptWritesTheRulesAndLinksNothingElse",
+      "args": []
+    },
+    {
+      "label": "herdr: the resolver is open on port 53 alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.sh",
+      "find": "      printf '    ip daddr %s udp dport 53 accept\\n' \"$ns\"\n      printf '    ip daddr %s tcp dport 53 accept\\n' \"$ns\"\n",
+      "replace": "      printf '    ip daddr %s accept\\n' \"$ns\"\n",
+      "run": "TestThePrivateNetScriptWritesTheRulesAndLinksNothingElse",
+      "args": []
+    },
+    {
+      "label": "herdr: the gateway is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.sh",
+      "find": "      printf '    ip daddr %s drop\\n' \"$gw\"\n",
+      "replace": "      :\n",
+      "run": "TestThePrivateNetScriptWritesTheRulesAndLinksNothingElse",
+      "args": []
+    },
+    {
+      "label": "herdr: a stop keeps a namespace a process is still in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/private-net.sh",
+      "find": "    if [ -z \"$(ip netns pids \"$NETNS\" 2\u003e/dev/null)\" ]; then\n",
+      "replace": "    if true; then\n",
+      "run": "TestThePrivateNetScriptWritesTheRulesAndLinksNothingElse",
+      "args": []
+    },
+    {
+      "label": "herdr: private_net adds its three files",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "if [ \"${TK_ADAPTER_PRIVATE_NET:-}\" = 1 ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestPrivateNetAddsADropInAndLeavesTheServersUnitAlone",
+      "args": []
+    },
+    {
+      "label": "herdr: the drop-in goes with the key",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "  if [ -e \"$NET_DROPIN\" ]; then\n    rm -f \"$NET_DROPIN\"\n",
+      "replace": "  if false; then\n    rm -f \"$NET_DROPIN\"\n",
+      "run": "TestPrivateNetAddsADropInAndLeavesTheServersUnitAlone",
+      "args": []
+    },
+    {
+      "label": "herdr: the namespace's unit stays while a process is in it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "    if [ -n \"$(ip netns pids wsl-toolkit-herdr 2\u003e/dev/null || :)\" ]; then\n",
+      "replace": "    if false; then\n",
+      "run": "TestPrivateNetAddsADropInAndLeavesTheServersUnitAlone",
+      "args": []
+    },
+    {
+      "label": "herdr: only a changed drop-in tells a running server it keeps its namespace",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "  if [ -n \"$dropin_changed\" ]; then\n",
+      "replace": "  if [ -n \"$net_changed\" ]; then\n",
+      "run": "TestPrivateNetAddsADropInAndLeavesTheServersUnitAlone",
+      "args": []
+    },
+    {
+      "label": "herdr: a server outside the namespace private_net asks for is a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/probe.sh",
+      "find": "    shared | other)\n",
+      "replace": "    never)\n",
+      "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
+      "args": []
+    },
+    {
+      "label": "herdr: a namespace with no link is a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/probe.sh",
+      "find": "      [ \"$link\" = active ] ||\n",
+      "replace": "      true ||\n",
+      "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
+      "args": []
+    },
+    {
+      "label": "herdr: the probe says what private_net gives up",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/probe.sh",
+      "find": "  printf '%s\\n' \"note herdr's server and every agent it starts",
+      "replace": "  printf '%s\\n' \"said herdr's server and every agent it starts",
+      "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
+      "args": []
+    },
+    {
+      "label": "herdr: the probe reads the server's namespace from the kernel",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/probe.sh",
+      "find": "    if [ \"$(ip netns identify \"$pid\" 2\u003e/dev/null || :)\" = \"$NETNS\" ]; then\n",
+      "replace": "    if false; then\n",
+      "run": "TestTheHerdrProbeSaysWhichNamespaceTheServerIsIn",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: every preset carries a stock host's figures",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/presets.go",

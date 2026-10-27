@@ -1568,6 +1568,81 @@ away. `WSL-90`
 - With no published nightly, `base ensure` refuses the channel with `this
   repository has published no herdr nightly`.
 
+#### ⭐ The agents' own network namespace, `private_net`
+
+```json
+"adapters": [{ "name": "herdr", "private_net": true }]
+```
+
+⭐ **`private_net` puts herdr's server in a network namespace of its own, and so every
+pane and agent it starts.** The internet stays reachable. An `nft` rule inside the
+namespace refuses the Windows host and the private ranges. It is off by default, and
+without it nothing changes. `WSL-159`
+
+⛔ **It gives something up, and `base status` says what on its `herdr net` row.** That
+row prints only where the key is on, probed or not. Those agents give up two things:
+
+- ⛔ **Rootless containers.** The account's engine and its user manager run in the
+  shared namespace, so the server cannot reach either. Podman in a pane refuses with
+  `newuidmap: Could not set caps`.
+- ⛔ **sudo, and every setuid program.** The server runs with `NoNewPrivileges`,
+  because guest root can leave any namespace.
+- ✅ Muse's own sandbox still runs, because `bwrap` needs no privilege.
+
+| measured in a herdr pane on an Arch base | without the key | with `private_net` |
+| --- | --- | --- |
+| the network namespace | the shared one | ⭐ its own |
+| `ip -o link` | `lo`, `eth0` | `lo` and pasta's own `eth0` |
+| the Windows host, ICMP | answered | ⭐ **refused** |
+| the internet, `https://example.com` | `200` | `200` |
+| a service on the shared namespace's `127.0.0.1` | reached | ⭐ **refused** |
+| `id -u` | the account's | the account's |
+| `nft flush ruleset` | | ⭐ `Operation not permitted` |
+| `systemd-run --user` | | ⭐ no user bus to reach |
+| `sudo -n true` | runs | ⛔ refused, `no new privileges` |
+| `podman run` | runs | ⛔ refused |
+| `bwrap --unshare-net` | runs | runs |
+
+⭐ **Root makes this namespace, and not the account.** `base exec --private-net` runs
+pasta as the account, which makes the payload uid 0 in a user namespace. Every agent
+wrapper refuses that uid, and uid 0 there can delete the rules. Here herdr and its
+agents keep the account's uid and hold no privilege over the rules.
+
+`base ensure` writes three files for it, and removes them when the key goes:
+
+| file | what it is |
+| --- | --- |
+| `/etc/systemd/system/wsl-toolkit-herdr.service.d/private-net.conf` | a drop-in, so the server's own unit keeps its bytes. It names the namespace, requires the unit below, hides `/run/user` and sets `NoNewPrivileges` |
+| `wsl-toolkit-herdr-net.service` | makes `/run/netns/wsl-toolkit-herdr`, writes its rules, and starts pasta to link it |
+| `/usr/local/lib/wsl-toolkit/herdr-private-net` | the script that unit runs |
+
+- ⚠ **pasta forwards nothing either way, and links IPv4 alone.** Its default carries
+  every loopback port of the shared namespace in, and the rules are IPv4 rules.
+- ⚠ **The resolver is reached on port 53 alone.** In NAT mode without DNS tunnelling,
+  WSL names the Windows host itself as the resolver.
+- ⚠ **The gateway is read at every start of the unit.** In NAT mode it is the Windows
+  host, and it moves when WSL's VM restarts.
+- ⚠ **pasta runs as root.** Started as root it drops to `nobody`, and `nobody` cannot
+  enter a namespace root made. Rootful podman runs pasta the same way.
+
+⛔ **`base ensure` never restarts a running server, so the key waits for its next
+start.** `base status --probe` reports the server's own namespace as `server-netns`.
+A server outside the namespace the key asks for is a problem. Its remediation is
+`herdr-private-net-pending`, and its command ends every pane:
+
+```powershell
+wsl-toolkit base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'
+```
+
+⚠ **Turning the key off removes the drop-in at once.** The namespace's own unit stays
+while the server is still in it, so that server keeps its way out. The first `base
+ensure` after the restart removes the rest. A namespace whose link failed earns
+`herdr-private-net-down`, whose command links it again and ends no pane.
+
+⚠ **It confines the network of the processes in it, and nothing else.** A Windows
+program that interop starts runs on Windows, and `base doors` reports interop. ⛔ So
+the base is still not called a sandbox.
+
 ⭐ **`muse` installs Muse Code for the base's account, and runs Meta's installer only
 while its digest is approved.** `base ensure` saves the installer Meta serves, prints
 its length and SHA-256, and runs it as the account when that digest is the one the
@@ -2175,6 +2250,10 @@ containers as that account.
 
 ⛔ **`--private-net` and `--root` are refused together.** Guest root can leave the
 namespace it is put in, so the confinement would be a claim rather than a fact.
+
+⭐ **An agent herdr starts is not a command this flag reaches.** The herdr adapter's
+`private_net` puts herdr's whole server in a namespace of its own instead. The
+herdr adapter's section above says what that costs. `WSL-159`
 
 | | plain | `--private-net` |
 | --- | --- | --- |

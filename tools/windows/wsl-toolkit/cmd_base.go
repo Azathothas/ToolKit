@@ -483,6 +483,11 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	if a := st.Access; a.RootEngine || a.RuntimeDir || a.Kvm {
 		fmt.Fprintf(out, "  engines     root engine %v, runtime dir %v, kvm %v\n", a.RootEngine, a.RuntimeDir, a.Kvm)
 	}
+	// ⛔ ONLY WHERE private_net IS ON, for the reason the engines row gives, and it
+	// says what the key gives up where an operator reads what the base is. WSL-159.
+	if st.Access.HerdrPrivateNet {
+		fmt.Fprintf(out, "  herdr net   %s\n", toolkit.HerdrPrivateNetSummary)
+	}
 	for _, mount := range st.Access.Mounts {
 		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}

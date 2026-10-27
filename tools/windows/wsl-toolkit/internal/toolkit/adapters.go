@@ -74,6 +74,17 @@ type BaseAdapter struct {
 	// install time alone would put the integration in one directory and leave omp
 	// reading the other at run time, which is a claim rather than a fact.
 	SeparateAgentDir bool `json:"separate_agent_dir,omitempty"`
+	// PrivateNet puts herdr's server, and so every pane and agent it starts, in a
+	// network namespace of its own, with the Windows host and the private ranges
+	// refused and the internet reachable. WSL-159.
+	//
+	// ⛔ AN OPT-IN, OFF BY DEFAULT, BECAUSE IT GIVES SOMETHING UP. Those agents lose
+	// rootless containers and sudo: the account's engine and its user manager run
+	// outside the namespace, and guest root can leave any namespace. Ruling 36.
+	//
+	// ⭐ WITHOUT IT NOTHING CHANGES. The server's own unit keeps its bytes, and what
+	// the key adds is a drop-in beside it, which install.sh removes when the key goes.
+	PrivateNet bool `json:"private_net,omitempty"`
 	// Model is the model an agent adapter makes the STARTUP default for the account,
 	// so a session nobody passed a flag to begins on it.
 	//
@@ -133,6 +144,9 @@ type adapterSpec struct {
 	// its own when another agent would collide with it. Only omp can: it is the one
 	// whose directory another agent's variable redirects.
 	TakesSeparateAgentDir bool
+	// TakesPrivateNet says the adapter runs a server whose children are the agents,
+	// so a namespace around the server is a namespace around them. Only herdr does.
+	TakesPrivateNet bool
 	// TakesChannel says the adapter may follow AdapterChannelNightly.
 	TakesChannel bool
 	// Efforts are the reasoning-effort words this agent's own CLI accepts, or nil for an
@@ -158,6 +172,7 @@ var adapterSpecs = []adapterSpec{
 		Presets:         []string{"arch"},
 		TakesVersionPin: true,
 		TakesChannel:    true,
+		TakesPrivateNet: true,
 		Host:            &herdrHost{},
 	},
 	{
@@ -193,6 +208,14 @@ var adapterSpecs = []adapterSpec{
 		Host:                  &agentLauncherHost{agent: "omp"},
 	},
 }
+
+// HerdrPrivateNetSummary is what `base status` says of a base whose herdr adapter
+// carries private_net: what it gives, and what it gives up. WSL-159.
+//
+// ⛔ THE COST IS IN THE SAME LINE AS THE GAIN. Ruling 36 made the key an opt-in on
+// the condition that it says what it gives up, and a reader who sees one half
+// believes the other.
+const HerdrPrivateNetSummary = "private: herdr's server and every agent it starts reach the internet, and not the Windows host or the private ranges. Those agents give up rootless containers and sudo"
 
 // installerDigestRE is a SHA-256 as sha256sum prints it.
 var installerDigestRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -250,6 +273,9 @@ func validateAdapters(c Config) error {
 		// force, which is the same rule installer_sha256 and channel already keep.
 		if a.SeparateAgentDir && !spec.TakesSeparateAgentDir {
 			return fmt.Errorf("base.adapters[%d] gives %q separate_agent_dir, and only omp resolves an extension directory another agent's variable can take", i, a.Name)
+		}
+		if a.PrivateNet && !spec.TakesPrivateNet {
+			return fmt.Errorf("base.adapters[%d] gives %q private_net, and only herdr runs the server its agents start under. Give it to the herdr entry", i, a.Name)
 		}
 		if err := validateAdapterPin(i, a, spec); err != nil {
 			return err
@@ -480,6 +506,12 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 	}
 	if a.SeparateAgentDir {
 		env["TK_ADAPTER_SEPARATE_AGENT_DIR"] = "1"
+	}
+	// ⚠ ABSENT, NOT "0", WITHOUT THE KEY: install.sh removes what the key added when it
+	// reads no 1, so a base that never asked and one that stopped asking end alike.
+	// WSL-159.
+	if a.PrivateNet {
+		env["TK_ADAPTER_PRIVATE_NET"] = "1"
 	}
 	// ⭐ THE DIRECTORIES THE OPERATOR ALREADY CHOSE TO EXPOSE, and no others. An agent
 	// that asks "do you trust this workspace?" on every start is a prompt the operator
@@ -775,6 +807,38 @@ func herdrStaleRemediation(a AdapterState) (Remediation, bool) {
 		Repairable: true,
 		Advisory:   true,
 	}, true
+}
+
+// herdrNetRemediation is what a herdr server outside the namespace private_net asks
+// for earns, or one inside it with no way out: the one command that ends it, with
+// what that command costs. WSL-159.
+//
+// ⛔ NOT ADVISORY. The operator turned the key on to keep the agents from the Windows
+// host, and until this runs they can reach it, or reach nothing at all.
+func herdrNetRemediation(a AdapterState) (Remediation, bool) {
+	if a.Name != "herdr" || a.Facts["private-net"] != "on" {
+		return Remediation{}, false
+	}
+	switch ns := a.Facts["server-netns"]; {
+	case ns == "shared" || ns == "other":
+		return Remediation{
+			ID:   "herdr-private-net-pending",
+			What: "private_net is on, and the herdr server still runs in the " + ns + " network namespace, so every agent it starts can reach the Windows host",
+			Costs: "the restart ends every herdr pane and the agent in it. " +
+				"herdr puts its workspaces back, in the private namespace",
+			Command:    ToolCommand("base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'"),
+			Repairable: true,
+		}, true
+	case ns == "private" && a.Facts["private-net-link"] != "active":
+		return Remediation{
+			ID:         "herdr-private-net-down",
+			What:       "the herdr server's private network namespace has no way out, because wsl-toolkit-herdr-net.service is " + a.Facts["private-net-link"],
+			Costs:      "nothing ends: the unit links the same namespace again, and every pane keeps running",
+			Command:    ToolCommand("base exec --root -c 'systemctl start wsl-toolkit-herdr-net.service'"),
+			Repairable: true,
+		}, true
+	}
+	return Remediation{}, false
 }
 
 // probeAdapters reads back every adapter the configuration names, both halves.
