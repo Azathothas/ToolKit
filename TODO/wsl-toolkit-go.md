@@ -17480,7 +17480,7 @@ the first run found the developer section's own harness without bounded, fixed i
 ## WSL-204. Provisioning's limit cuts a bounded package manager try short with no name
 
 **Source** the `WSL-201` second repair's drive, where a stalled alpine mirror outlasted the provisioning run
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -17512,12 +17512,16 @@ Exit 0, with cases where a bound is cut to the deadline, a late try is refused b
 
 ## Closing
 
-Open.
+**Closed on main at `f7f0f7c`, for 9.0.0.** `provisionRequest` hands the script its own limit as `TK_PROVISION_SECONDS`, from the one constant its `Timeout` reads. The script takes a deadline two minutes short of that. `bounded` gives a manager call what is left, up to 900 seconds, and starts none with nothing left. The engine loop does not wait for a try it has no time for. It dies naming that try and the line that ended the last one. Cases drive a cut bound, an uncut one, a try the deadline stopped, and a call never started, with `timeout` and without it.
+
+```text
+linux-proof --rows-since 5feb917: proved tree 445d7e7 (commit 3d74c61), 179 of 183 rows red, 4 skipped for want of jq
+```
 
 ## WSL-205. A stand-in a case wrote can be busy when it runs, so the go job fails by chance
 
 **Source** the `WSL-204` Linux proof, whose go job failed in a mount helper case with "Text file busy"
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -17549,4 +17553,8 @@ Exit 0, with a case where a write waits while a fork holds the lock, and the sca
 
 ## Closing
 
-Open.
+**Closed on main at `4b0fec6`, for 9.0.0.** `internal/forksafe` writes with `syscall.ForkLock` held for reading, so no fork overlaps the write descriptor. All 96 test files of the module that wrote with `os.WriteFile` write through it, and `TestEveryTestFileWritesThroughForkSafe` refuses one that does not. `TestWriteFileWaitsForAFork` holds the fork side of the lock and finds the write waiting. The talking-child case talks for three windows, and is asked again with a 10 s window when a loaded host held its child. The next two Linux proofs' go jobs passed.
+
+```text
+linux-proof --rows-since 5feb917: proved tree 445d7e7 (commit 3d74c61), 179 of 183 rows red, 4 skipped for want of jq
+```

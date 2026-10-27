@@ -21,6 +21,56 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-10-27
+
+### 2026-10-27T20:19:20Z: `wsl-toolkit` is 9.0.0, a major: `gc` with no base, pi and omp from their releases, the private ranges, and root writes the account cannot steer
+
+**Record:** `WSL-134`, `WSL-135`, `WSL-138`, `WSL-158`, `WSL-159`, `WSL-196` to `WSL-205`, `TOOL-40`, ruling 36. Every break has its section in [`docs/consumers.md`](docs/consumers.md).
+**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v9.0.0` from this commit.
+
+⭐ **Ruling 36: nothing waits on the operator that a session can do.** 8.0.0 handed back a WSL
+shutdown, the base rename, a stock-host run and a register question. This release finishes
+each, and the `wsl-toolkit` skill now has an agent run `wsl --shutdown` where the user said
+nobody else uses WSL.
+
+- ⛔ **The break, `WSL-200`.** With no base registered, `gc` now plans and removes this
+  machine's half: incoming directories, sessions of a gone base and the ledger's stale records.
+  It exits 1 when one cannot be removed, where it always exited 0. `docs/consumers.md` has its
+  section.
+- ⭐ **Alpine, `WSL-198` and `WSL-199`.** A grant survives a restart, and a read-only grant is
+  read-only. WSL's own `mount -a` runs with no `PATH`, so BusyBox never found the drvfs helper.
+  `engines.sh` no longer calls `setpriv --reuid`.
+- ⭐ **`base.registry`, `WSL-196`.** Registry mirrors and an engine proxy from the configuration.
+- ⛔ **pi and omp from their own releases, `WSL-138`.** Each installs from its provider's GitHub
+  release, at the version and SHA-256 its adapter pins: pi 1.4.0 and omp 18.13.1. A digest that is
+  not the release file's stops `base ensure` with exit 2. npm is taken only when the release cannot
+  be fetched, and npm's package goes once the release is in use. `docs/consumers.md` has its section.
+- ⭐ **herdr, `WSL-159` and `WSL-158`.** `"private_net": true` on the herdr adapter puts its
+  server and every pane in a network namespace that refuses the Windows host and the private
+  ranges. It is off by default, and `base ensure` never restarts the server for it. The muse adapter
+  writes herdr's rules for Muse's screen, so herdr reads a Muse pane's state again.
+- ⛔ **`--private-net` refuses `100.64.0.0/10`**, where Tailscale gives the Windows host an address.
+- ⭐ **The muse-code guide, `WSL-135`.** Run in order from an empty base: seven faults fixed. A new
+  base's pi reads healthy with a note, and a declared model with no key is a note, not a failure.
+- ⭐ **A real window's focus, `WSL-134`.** `herdr-remote-probe.ps1 -RealWindow`, seven of seven.
+- ⭐ **A stock host, `WSL-197`.** Every preset built with no `.wslconfig`; `base presets` prints both.
+- ⛔ **Root writes nothing the account can steer, `WSL-201` and `WSL-202`.** Every adapter writes
+  in the account's home as the account, and root reads nothing there. A non-directory at an XDG
+  name stops provisioning, named. A new grant target nested in another is refused, and so is one
+  with a link on its way. A nested grant an earlier release wrote still loads, is never mounted,
+  and names its revoke. Every root read of a file in the home stops after 30 seconds. Every family
+  installs `util-linux`. `docs/consumers.md` has its section.
+- ⭐ **A hung package manager is stopped, `WSL-203` and `WSL-204`.** Each manager call in
+  provisioning gets 900 seconds where the userland carries `timeout`, cut to what is left of the
+  run's 30 minutes. A stop is named and costs a try, not the build.
+- ⭐ **Faster tests, `TOOL-40`.** The gate's go check runs `internal/toolkit` in up to four processes,
+  each case once: 104 and 114 s, against 492 and 610 s before on a loaded host. A mutation row on an
+  embedded script runs on its baseline's binary with the bytes swapped in, so 82 of 132 Linux rows
+  needed no compile. A green hand-in beside a red compile is BROKEN, so no verdict is kinder than a
+  compile's.
+- ⭐ **No stand-in runs busy, `WSL-205`.** Every test file writes with no fork while the file is
+  open, so a parallel case's stand-in never fails with "text file busy".
+
 ## 2026-10-26
 
 ### 2026-10-26T18:58:29Z: `wsl-toolkit` is 8.0.0, a major: the default base's name and owner, a job's code apart from the tool's, and a base that survives its restarts

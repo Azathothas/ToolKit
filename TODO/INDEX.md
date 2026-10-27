@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 263  open 2  blocked 0  done 261
+total 263  open 0  blocked 0  done 263
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 2 | 0 | 122 | 124 |
+| P2 | 0 | 0 | 124 | 124 |
 | P3 | 0 | 0 | 35 | 35 |
-| **all** | **2** | **0** | **261** | **263** |
+| **all** | **0** | **0** | **263** | **263** |
 
 ---
 
@@ -298,8 +298,8 @@ total 263  open 2  blocked 0  done 261
 | WSL-201 | P2 | M | done | An adapter's root write in the account's home follows a link the account placed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-202 | P2 | M | done | A root write outside the home follows a path the account made | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-203 | P2 | S | done | A package manager that hangs holds the build with no bound | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-204 | P2 | S | open | Provisioning's limit cuts a bounded package manager try short with no name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-205 | P2 | S | open | A stand-in a case wrote can be busy when it runs, so the go job fails by chance | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-204 | P2 | S | done | Provisioning's limit cuts a bounded package manager try short with no name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-205 | P2 | S | done | A stand-in a case wrote can be busy when it runs, so the go job fails by chance | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 
