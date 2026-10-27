@@ -92,6 +92,24 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+### ⛔ What root writing nothing in the account's home breaks, and what a caller does
+
+`WSL-201`. In `wsl-toolkit-v9.0.0`. It fixes a write root made through a link the
+account placed. A break by the table above, because an adapter that finished there
+can now fail. A home that holds no such link changes nothing a caller reads.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| each adapter writes its files and directories in the account's home as the account. A link at one of those paths to a directory the account cannot write stops that adapter, and `base ensure` answers its error. It finished, and root wrote there | linked one of those paths to a directory of root's | links it to a directory the account owns, or removes the link |
+| `PI_CONFIG_DIR` naming a directory outside the account's home stops the omp adapter where the account cannot make it. Root made it and gave it to the account | sets `PI_CONFIG_DIR` to a path outside the home | sets it to a path inside the home |
+| a link at muse's `trust.json` or at omp's separating wrapper is replaced by the file. Root wrote through it, as root's `install` already replaced the others | keeps one of those files somewhere else through a link | reads the file in the home after `base ensure` |
+| provisioning no longer runs `chown -R` over `~/.config`. A file root left there stays root's after a re-provisioning | relied on a re-provisioning to give the account a file root wrote under `~/.config` | gives it with `base exec --root` |
+| on a base without systemd, root no longer removes the account's engine drop-in where the account could not. `base ensure` names the file in a ⚠ line instead | | nothing |
+
+⚠ **The rows it reaches, from the register.** The register names no consumer that
+configures an adapter. pg-toolkit runs `base ensure`, and podbox runs `base ensure
+--probe`. Each changes only on a base whose home holds a link the account made.
+
 ### ⛔ What `gc` with no base breaks, and what a caller does
 
 `WSL-200`. In `wsl-toolkit-v9.0.0`. It fixes a false pass: `gc --apply` with no

@@ -28,9 +28,19 @@ func engineSettingsRun(t *testing.T, dir string, registry ...*RegistryConfig) st
 	if len(registry) > 0 {
 		r = registry[0]
 	}
+	// ⚠ as_account is this process, which owns the case's home. WSL-201.
 	script := "set -eu\nTK_USER=agent\nTK_HOME=" + at + "/home\n" + string(shellAssignments(registryEnv(r))) +
-		"say() { printf '%s\\n' \"$*\"; }\ndie() { printf 'die: %s\\n' \"$*\"; exit 3; }\nchown() { :; }\npasta() { :; }\n" + section
-	out, err := exec.Command(sh, "-c", script).CombinedOutput()
+		"say() { printf '%s\\n' \"$*\"; }\ndie() { printf 'die: %s\\n' \"$*\"; exit 3; }\nchown() { :; }\npasta() { :; }\n" +
+		"as_account() { aa_script=$1; shift; sh -c \"$aa_script\" \"$@\"; }\n" + section
+	// ⛔ FROM A FILE, NOT FROM -c. On Windows the -c argument crosses a command line. Once
+	// WSL-201 made this script longer, Git's sh answered `unexpected EOF while looking for
+	// matching` over it with base.registry set, and read the same text whole from a file.
+	// The file sits apart from dir, whose tree a case counts.
+	run := filepath.Join(t.TempDir(), "engine-settings.sh")
+	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(sh, filepath.ToSlash(run)).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the engine settings section failed: %v\n%s", err, out)
 	}

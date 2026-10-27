@@ -77,7 +77,6 @@ TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
 if [ -z "$TK_HOME" ] || [ ! -d "$TK_HOME" ]; then
   die "the account $TK_USER has no home directory"
 fi
-TK_GROUP=$(id -gn "$TK_USER")
 PREFIX=$TK_HOME/.local
 # ⭐ EACH RELEASE IS UNPACKED HERE, BY THE ACCOUNT, and $PREFIX/bin/pi links to the one in
 # use. The build reads its themes and native helpers beside its own real path, so it is
@@ -98,6 +97,42 @@ as_account() {
     npm_config_prefix="$PREFIX" \
     PATH="$PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin" "$@"
 }
+
+# >>> the account's own writes: begin
+# ⛔ ROOT WRITES NOTHING IN THE ACCOUNT'S HOME. This script runs as root, and chown,
+# install -d, cp and a redirect each follow a link the account placed there. Where
+# base.passwordless_sudo is off, or in a herdr pane under private_net, the account is
+# not root. Root's write through that link was one the account could not make. As the
+# account, a link reaches only what the account could already write. WSL-201.
+#
+# account_dirs MODE DIR... makes each DIR as the account and gives it MODE. ⚠ A DIR that
+# is a link keeps the mode of what it names, which is the account's own to set.
+account_dirs() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '
+    mode=$1
+    shift
+    for dir do
+      mkdir -p "$dir" || exit 1
+      [ -L "$dir" ] || chmod "$mode" "$dir" || exit 1
+    done' sh "$@"
+}
+
+# account_put DEST MODE writes its standard input to DEST as the account. ⭐ A file of
+# the account's own beside DEST takes the bytes and is renamed over it, so a link at
+# DEST is replaced and never written through. ⛔ A directory at DEST is refused.
+account_put() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '
+    [ ! -d "$1" ] || exit 1
+    tmp=$(mktemp "${1%/*}/.wsl-toolkit.XXXXXX") || exit 1
+    if cat > "$tmp" && chmod "$2" "$tmp" && mv -f "$tmp" "$1"; then
+      exit 0
+    fi
+    rm -f "$tmp"
+    exit 1' sh "$1" "$2"
+}
+# <<< the account's own writes: end
 
 # -- pi --------------------------------------------------------------------------------
 pi_version() {
@@ -313,8 +348,8 @@ if command -v herdr >/dev/null 2>&1 || [ -x /usr/local/bin/herdr ]; then
   herdr_bin=$(command -v herdr 2>/dev/null || printf '/usr/local/bin/herdr')
   # ⚠ herdr CREATES THE EXTENSIONS DIRECTORY ONLY WHEN PI'S AGENT DIRECTORY EXISTS,
   # and a fresh install has never been run, so it does not. Making it is this
-  # adapter's job and it is the only directory it makes.
-  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$TK_HOME/.pi" "$TK_HOME/.pi/agent"
+  # adapter's job and it is the only directory it makes. ⛔ As the account. WSL-201.
+  account_dirs 0755 "$TK_HOME/.pi" "$TK_HOME/.pi/agent" || die "the account could not make $TK_HOME/.pi/agent"
   if as_account "$herdr_bin" integration install pi >/dev/null 2>&1; then
     say "installed herdr's pi integration, which gives herdr lifecycle authority"
   else
@@ -344,9 +379,11 @@ if [ -n "${TK_ADAPTER_MODEL:-}${TK_ADAPTER_EFFORT:-}" ]; then
   if ! command -v jq >/dev/null 2>&1; then
     say "no jq in this base, so pi's startup model and effort were not set. Set base.toolset to developer or later"
   else
-    install -d -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$TK_HOME/.pi" "$TK_HOME/.pi/agent"
+    account_dirs 0755 "$TK_HOME/.pi" "$TK_HOME/.pi/agent" || die "the account could not make $TK_HOME/.pi/agent"
     pi_settings=$TK_HOME/.pi/agent/settings.json
-    [ -f "$pi_settings" ] || as_account sh -c "printf '{}\n' > '$pi_settings'"
+    if [ ! -f "$pi_settings" ]; then
+      printf '{}\n' | account_put "$pi_settings" 0600 || die "the account could not write $pi_settings"
+    fi
     as_account jq -e 'type == "object"' "$pi_settings" >/dev/null 2>&1 ||
       die "$pi_settings is not a JSON object, and pi reads its settings from one. It was left exactly as it is; read it, then run base ensure again"
     # ⭐ A SLASH SPLITS PROVIDER FROM MODEL, because pi reaches a model through a named
@@ -369,7 +406,8 @@ if [ -n "${TK_ADAPTER_MODEL:-}${TK_ADAPTER_EFFORT:-}" ]; then
       if same_file "$settings_tmp" "$pi_settings"; then
         rm -f "$settings_tmp"
       else
-        install -o "$TK_USER" -g "$TK_GROUP" -m 0600 "$settings_tmp" "$pi_settings"
+        account_put "$pi_settings" 0600 < "$settings_tmp" ||
+          { rm -f "$settings_tmp"; die "the account could not write $pi_settings"; }
         rm -f "$settings_tmp"
       fi
       say "pi starts on ${TK_ADAPTER_MODEL:-its own model} at effort ${TK_ADAPTER_EFFORT:-its own}, from $pi_settings"

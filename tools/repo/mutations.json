@@ -2,6 +2,285 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "omp: the account moves its own omp aside and writes the wrapper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "    as_account mv -f \"$OMP_WRAPPER\" \"$OMP_REAL\" || die \"omp could not be moved aside to $OMP_REAL\"\n    account_put \"$OMP_WRAPPER\" 0755 <<WRAPPER || die \"the account could not write the wrapper at $OMP_WRAPPER\"\n",
+      "replace": "    mv -f \"$OMP_WRAPPER\" \"$OMP_REAL\" || die \"omp could not be moved aside to $OMP_REAL\"\n    chown \"$TK_USER\" \"$OMP_REAL\"\n    cat > \"$OMP_WRAPPER\" <<WRAPPER\n",
+      "run": "TestTheOmpAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "omp: the account makes the directory herdr installs omp's integration in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "  account_dirs 0755 \"$(dirname \"$OMP_AGENT_DIR\")\" \"$OMP_AGENT_DIR\" ||\n",
+      "replace": "  install -d -o \"$TK_USER\" -m 0755 \"$(dirname \"$OMP_AGENT_DIR\")\" \"$OMP_AGENT_DIR\" ||\n",
+      "run": "TestTheOmpAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: the account makes the trust store's directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  account_dirs 0700 \"$TK_HOME/.config/muse\" || die \"the account could not make $TK_HOME/.config/muse\"\n",
+      "replace": "  install -d -o \"$TK_USER\" -m 0700 \"$TK_HOME/.config/muse\" || die \"the account could not make $TK_HOME/.config/muse\"\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: a new trust store replaces a link at its path",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    printf '{\\n  \"schema_version\": 1,\\n  \"projects\": {}\\n}\\n' | account_put \"$trust_file\" 0600 ||\n",
+      "replace": "    printf '{\\n  \"schema_version\": 1,\\n  \"projects\": {}\\n}\\n' > \"$trust_file\" ||\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: the account reads the trust store it edits",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    if as_account jq --arg w \"$ws\" '.projects += {($w): {\"decision\":\"trusted\"}}' \"$trust_file\" > \"$tmp\" 2>/dev/null &&\n",
+      "replace": "    if jq --arg w \"$ws\" '.projects += {($w): {\"decision\":\"trusted\"}}' \"$trust_file\" > \"$tmp\" 2>/dev/null &&\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot",
+      "args": []
+    },
+    {
+      "label": "muse: the account writes the trust store it edited",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "        account_put \"$trust_file\" 0600 < \"$tmp\"; then\n",
+      "replace": "        cp \"$tmp\" \"$trust_file\"; then\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: the account reads whether the trust store is Muse's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    as_account jq -e 'has(\"schema_version\") and has(\"projects\")' \"$trust_file\" >/dev/null 2>&1 ||\n",
+      "replace": "    jq -e 'has(\"schema_version\") and has(\"projects\")' \"$trust_file\" >/dev/null 2>&1 ||\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot",
+      "args": []
+    },
+    {
+      "label": "muse: the account reads whether a workspace is trusted",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    if as_account jq -e --arg w \"$ws\" '.projects | has($w)' \"$trust_file\" >/dev/null 2>&1; then\n",
+      "replace": "    if jq -e --arg w \"$ws\" '.projects | has($w)' \"$trust_file\" >/dev/null 2>&1; then\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot",
+      "args": []
+    },
+    {
+      "label": "muse: the account makes the reporter's directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  account_dirs 0755 \"$HOOK_DIR\" || die \"the account could not make $HOOK_DIR\"\n",
+      "replace": "  install -d -o \"$TK_USER\" -m 0755 \"$HOOK_DIR\" || die \"the account could not make $HOOK_DIR\"\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: the account writes the reporter",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    account_put \"$HOOK\" 0755 < \"$hook_tmp\" || { rm -f \"$hook_tmp\"; die \"the account could not write $HOOK\"; }\n",
+      "replace": "    install -o \"$TK_USER\" -m 0755 \"$hook_tmp\" \"$HOOK\" || { rm -f \"$hook_tmp\"; die \"the account could not write $HOOK\"; }\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: the account makes Muse's configuration directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  account_dirs 0700 \"$MUSE_CONFIG_DIR\" || die \"the account could not make $MUSE_CONFIG_DIR\"\n",
+      "replace": "  install -d -o \"$TK_USER\" -m 0700 \"$MUSE_CONFIG_DIR\" || die \"the account could not make $MUSE_CONFIG_DIR\"\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: a new settings file replaces a link at its path",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    printf '{\"schema_version\":1}\\n' | account_put \"$MUSE_SETTINGS\" 0600 ||\n",
+      "replace": "    as_account sh -c \"printf '{\\\"schema_version\\\":1}\\n' > '$MUSE_SETTINGS'\" ||\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot",
+      "args": []
+    },
+    {
+      "label": "muse: the account writes Muse's settings",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "      account_put \"$MUSE_SETTINGS\" 0600 < \"$settings_tmp\" ||\n",
+      "replace": "      install -o \"$TK_USER\" -m 0600 \"$settings_tmp\" \"$MUSE_SETTINGS\" ||\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: the account makes the directory herdr's rules are in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  account_dirs 0700 \"$TK_HOME/.config\" \"$TK_HOME/.config/herdr\" \"$HERDR_RULES_DIR\" ||\n",
+      "replace": "  install -d -o \"$TK_USER\" -m 0700 \"$TK_HOME/.config\" \"$TK_HOME/.config/herdr\" \"$HERDR_RULES_DIR\" ||\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: the account writes herdr's rules",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    account_put \"$HERDR_RULES\" 0644 < \"$rules_tmp\" || { rm -f \"$rules_tmp\"; die \"the account could not write $HERDR_RULES\"; }\n",
+      "replace": "    install -o \"$TK_USER\" -m 0644 \"$rules_tmp\" \"$HERDR_RULES\" || { rm -f \"$rules_tmp\"; die \"the account could not write $HERDR_RULES\"; }\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "muse: a directory the account linked keeps its own mode",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "      [ -L \"$dir\" ] || chmod \"$mode\" \"$dir\" || exit 1\n",
+      "replace": "      chmod \"$mode\" \"$dir\" || exit 1\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestTheAccountsOwnWritesAreOneText",
+      "args": []
+    },
+    {
+      "label": "muse: a link at a file the account writes is replaced, never written through",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    if cat > \"$tmp\" && chmod \"$2\" \"$tmp\" && mv -f \"$tmp\" \"$1\"; then\n",
+      "replace": "    if cat > \"$1\" && chmod \"$2\" \"$1\"; then\n",
+      "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestTheAccountsOwnWritesAreOneText",
+      "args": []
+    },
+    {
+      "label": "pi: the account makes ~/.pi for herdr's integration",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "  # adapter's job and it is the only directory it makes. ⛔ As the account. WSL-201.\n  account_dirs 0755 \"$TK_HOME/.pi\" \"$TK_HOME/.pi/agent\" || die \"the account could not make $TK_HOME/.pi/agent\"\n",
+      "replace": "  # adapter's job and it is the only directory it makes. ⛔ As the account. WSL-201.\n  install -d -o \"$TK_USER\" -m 0755 \"$TK_HOME/.pi\" \"$TK_HOME/.pi/agent\" || die \"the account could not make $TK_HOME/.pi/agent\"\n",
+      "run": "TestThePiAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "pi: the account makes ~/.pi for pi's settings",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "    account_dirs 0755 \"$TK_HOME/.pi\" \"$TK_HOME/.pi/agent\" || die \"the account could not make $TK_HOME/.pi/agent\"\n    pi_settings=",
+      "replace": "    install -d -o \"$TK_USER\" -m 0755 \"$TK_HOME/.pi\" \"$TK_HOME/.pi/agent\" || die \"the account could not make $TK_HOME/.pi/agent\"\n    pi_settings=",
+      "run": "TestThePiAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "pi: a new settings file replaces a link at its path",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "      printf '{}\\n' | account_put \"$pi_settings\" 0600 || die \"the account could not write $pi_settings\"\n",
+      "replace": "      as_account sh -c \"printf '{}\\n' > '$pi_settings'\" || die \"the account could not write $pi_settings\"\n",
+      "run": "TestThePiAdapterWritesNothingInTheHomeAsRoot",
+      "args": []
+    },
+    {
+      "label": "pi: the account writes pi's settings",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "        account_put \"$pi_settings\" 0600 < \"$settings_tmp\" ||\n",
+      "replace": "        install -o \"$TK_USER\" -m 0600 \"$settings_tmp\" \"$pi_settings\" ||\n",
+      "run": "TestThePiAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "herdr: the account makes the configuration's directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "account_dirs 0700 \"$TK_HOME/.config\" \"$TK_HOME/.config/herdr\" ||\n",
+      "replace": "install -d -o \"$TK_USER\" -m 0700 \"$TK_HOME/.config\" \"$TK_HOME/.config/herdr\" ||\n",
+      "run": "TestTheHerdrAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "herdr: the account writes the tracked configuration",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "if ! account_put \"$TK_HOME/.config/herdr/config.toml\" 0644 < \"$config_tmp\"; then\n",
+      "replace": "if ! cp \"$config_tmp\" \"$TK_HOME/.config/herdr/config.toml\"; then\n",
+      "run": "TestTheHerdrAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account makes its XDG directories",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "as_account '\n  for d do\n    mkdir -p \"$d\" || exit 1\n",
+      "replace": "sh -c '\n  for d do\n    mkdir -p \"$d\" || exit 1\n",
+      "run": "TestProvisioningLeavesTheHomeToTheAccount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an XDG directory the account linked keeps its own mode",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    [ -L \"$d\" ] || chmod 0700 \"$d\" || exit 1\n",
+      "replace": "    chmod 0700 \"$d\" || exit 1\n",
+      "run": "TestProvisioningLeavesTheHomeToTheAccount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: root gives an XDG directory back without following a link",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      chown -h \"$TK_USER:$TK_GROUP\" \"$xdg_name\"\n",
+      "replace": "      chown \"$TK_USER:$TK_GROUP\" \"$xdg_name\"\n",
+      "run": "TestProvisioningLeavesTheHomeToTheAccount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: root gives back only what is inside the home",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    [ \"$(pwd -P)\" = \"$tk_home_real$xdg_parent\" ] || exit 0\n",
+      "replace": "    :\n",
+      "run": "TestProvisioningLeavesTheHomeToTheAccount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account writes its engine settings",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "if ! as_account '\n  mkdir -p \"${1%/*}\" || exit 1\n",
+      "replace": "if ! sh -c '\n  mkdir -p \"${1%/*}\" || exit 1\n",
+      "run": "TestProvisioningLeavesTheHomeToTheAccount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account removes the containers.conf an earlier release wrote",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "old_conf=$(as_account '\n",
+      "replace": "old_conf=$(sh -c '\n",
+      "run": "TestProvisioningLeavesTheHomeToTheAccount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning runs no chown -R over the account's .config",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "apply_registry_settings || die \"base.registry's drop-ins could not be written\"\n# ⛔ NO chown -R",
+      "replace": "apply_registry_settings || die \"base.registry's drop-ins could not be written\"\nchown -R \"$TK_USER\" \"$TK_HOME/.config\"\n# ⛔ NO chown -R",
+      "run": "TestProvisioningLeavesTheHomeToTheAccount|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: root never removes the account's engine drop-in in its place",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  write_manager remove ||\n    say \"⚠ cgroup delegation: $TK_USER could not remove",
+      "replace": "  write_manager remove || rm -f \"$home/$MANAGER_REL\" ||\n    say \"⚠ cgroup delegation: $TK_USER could not remove",
+      "run": "TestEnginesShLeavesTheAccountsDropInToTheAccount|TestNoRootWriteLandsInTheAccountsHome",
+      "args": []
+    },
+    {
       "label": "herdr: a server outside the namespace is a note and fails no ensure",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/herdr/probe.sh",
@@ -464,7 +743,7 @@
       "label": "muse: herdr's rules are written where herdr reads them",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "    install -o \"$TK_USER\" -g \"$(tk_group)\" -m 0644 \"$rules_tmp\" \"$HERDR_RULES\"\n",
+      "find": "    account_put \"$HERDR_RULES\" 0644 < \"$rules_tmp\" || { rm -f \"$rules_tmp\"; die \"the account could not write $HERDR_RULES\"; }\n",
       "replace": "    :\n",
       "run": "TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem",
       "args": []
@@ -1391,8 +1670,8 @@
       "label": "wsl-toolkit: provisioning writes base.registry's drop-ins",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
-      "find": "apply_registry_settings || die \"base.registry's drop-ins could not be written\"\nchown -R",
-      "replace": "chown -R",
+      "find": "apply_registry_settings || die \"base.registry's drop-ins could not be written\"\n# ⛔ NO chown -R",
+      "replace": "# ⛔ NO chown -R",
       "run": "TestProvisioningWritesTheRegistryDropInsAndNothingWithoutTheKey|TestProvisioningAndEveryEnsureAreHandedTheSameRegistryDropIns",
       "args": []
     },
@@ -2165,8 +2444,8 @@
       "label": "wsl-toolkit: the containers.conf an earlier release wrote is removed",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
-      "find": "  rm -f \"$OLD_CONF\"\n",
-      "replace": "  :\n",
+      "find": "    rm -f \"$1\" && echo removed\n",
+      "replace": "    echo removed\n",
       "run": "TestAnEarlierReleasesEngineSettingsMoveToTheDropIns",
       "args": []
     },
@@ -15442,8 +15721,8 @@
       "label": "a managed account receiving its private persistent XDG directories",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
-      "find": "for xdg_dir in \"$TK_HOME/.config\" \"$TK_HOME/.cache\" \"$TK_HOME/.local\" \"$TK_HOME/.local/share\" \"$TK_HOME/.local/state\"; do",
-      "replace": "for xdg_dir in \"$TK_HOME/.config\"; do",
+      "find": "  \"$TK_HOME/.config\" \"$TK_HOME/.cache\" \"$TK_HOME/.local\" \"$TK_HOME/.local/share\" \"$TK_HOME/.local/state\" ||",
+      "replace": "  \"$TK_HOME/.config\" ||",
       "run": "TestManagedAccountGetsPrivateXDGDirectories",
       "args": []
     },
@@ -17035,9 +17314,9 @@
       "label": "muse: a settings file this writes carries schema_version",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "  [ -f \"$MUSE_SETTINGS\" ] || as_account sh -c \"printf '{\\\"schema_version\\\":1}\\n' > '$MUSE_SETTINGS'\"\n",
-      "replace": "  [ -f \"$MUSE_SETTINGS\" ] || as_account sh -c \"printf '{}\\n' > '$MUSE_SETTINGS'\"\n",
-      "run": "TestTheHerdrReporterIsRegisteredWhereMuseReadsIt",
+      "find": "    printf '{\"schema_version\":1}\\n' | account_put \"$MUSE_SETTINGS\" 0600 ||\n",
+      "replace": "    printf '{}\\n' | account_put \"$MUSE_SETTINGS\" 0600 ||\n",
+      "run": "TestTheHerdrReporterIsRegisteredWhereMuseReadsIt|TestTheMuseAdapterWritesNothingInTheHomeAsRoot",
       "args": []
     },
     {

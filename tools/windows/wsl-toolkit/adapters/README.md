@@ -144,7 +144,7 @@ One directory per adapter, named as the configuration names it.
 
 | file | runs as | contract |
 | --- | --- | --- |
-| `install.sh` | root, in the base | ⛔ looks before it changes anything, so a second run changes nothing. Its last line is `adapter-complete NAME`, and a zero exit without it is a failure |
+| `install.sh` | root, in the base | ⛔ looks before it changes anything, so a second run changes nothing. Its last line is `adapter-complete NAME`, and a zero exit without it is a failure. ⛔ It writes in the account's home only as the account, as the next section says |
 | `probe.sh` | root, in the base | prints one fact per line as `name value`, a `version` line, and `problem TEXT` for each thing wrong, and exits 0 whatever it finds |
 | any other file | nobody | reaches `install.sh` base64-encoded in `TK_FILE_<NAME>_B64`, where NAME is the file name upper-cased with each other character run turned into `_` |
 
@@ -157,6 +157,32 @@ key.
 
 ⛔ **Nothing is substituted into a script.** A value that becomes shell source is a
 value whose quote becomes code.
+
+## ⛔ Root writes nothing in the account's home
+
+`install.sh` runs as root, and the account can place a link at any path in its home.
+`chown`, `install -d`, `cp` and a redirect each follow that link. With
+`passwordless_sudo` off, or in a herdr pane under `private_net`, the account cannot act
+as root. So root's write through the link was one the account could not make. `WSL-201`
+
+⭐ **So every write in the home is the account's**, through the three helpers each
+installer carries between its `the account's own writes` markers:
+
+| helper | what it does |
+| --- | --- |
+| `as_account CMD...` | runs one command as the account, with a fresh environment |
+| `account_dirs MODE DIR...` | makes each directory as the account and gives it MODE. A directory that is a link keeps its own mode |
+| `account_put DEST MODE` | writes its standard input to a file of the account's own beside DEST, and renames it over DEST. A link at DEST is replaced, never written through |
+
+⭐ Root builds what goes into a file outside the home, in its own temporary file, and
+hands it to `account_put` on standard input. Root may still compare a file in the home
+with one of its own, because a comparison writes nothing.
+
+⛔ **The suite refuses a new root write in the home.**
+`TestNoRootWriteLandsInTheAccountsHome` reads every script the executable carries. It
+refuses a `chown`, `install`, `mkdir`, `mv` or `cp` onto a path in the home, and a
+redirect onto one, outside `as_account`. A case per adapter plants a link at each path
+it writes and finds the link's target untouched.
 
 ## The pins
 

@@ -99,6 +99,7 @@ fi
 # The switch is a drop-in beside provision.sh's own, 10-wsl-toolkit.conf, which
 # keeps cgroupfs as the default this one overrides by sorting after it.
 DELEGATE=/etc/systemd/system/user@.service.d/50-wsl-toolkit-delegate.conf
+# >>> the account's engine drop-in: begin
 MANAGER_REL=.config/containers/containers.conf.d/50-wsl-toolkit-cgroup.conf
 
 # write_manager writes or removes the account's drop-in, as the account.
@@ -116,6 +117,7 @@ write_manager() {
     mv -f "$t" "$f"
   ' wtk-manager "$home" "$MANAGER_REL" "$1"
 }
+# <<< the account's engine drop-in: end
 
 if [ "$systemd_up" = true ]; then
   mkdir -p "${DELEGATE%/*}" || die "could not create ${DELEGATE%/*}"
@@ -151,7 +153,13 @@ if [ "$systemd_up" = true ]; then
 else
   # ⚠ A BASE THAT NO LONGER RUNS SYSTEMD keeps no drop-in pointing its engine at
   # a manager it does not have.
-  write_manager remove || rm -f "$home/$MANAGER_REL"
+  # >>> the account's drop-in without systemd: begin
+  # ⛔ AND ROOT NEVER REMOVES IT IN THE ACCOUNT'S PLACE. rm -f follows a link the account
+  # made of a directory above the file, so root's removal reached a file of that name
+  # outside the home. One the account cannot remove is named instead. WSL-201.
+  write_manager remove ||
+    say "⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, which still names a manager this base does not run"
+  # <<< the account's drop-in without systemd: end
   rm -f "$DELEGATE"
   say "cgroup delegation: none, because this base does not run systemd"
 fi

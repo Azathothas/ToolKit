@@ -1591,6 +1591,18 @@ because `muse`, `pi` and `omp` each set herdr up only where herdr is installed.
 adapter is applied, and `base ensure` reports each one's problem rather than
 stopping at the first. `WSL-107`
 
+⛔ **Root writes nothing in the account's home.** `base ensure` runs each adapter as
+root, and the account writes every file and directory an adapter keeps in its home.
+Root's `chown`, `install -d` and redirects followed a link the account had placed
+there. Where `passwordless_sudo` is off, or in a herdr pane under `private_net`, that
+link made root write where the account could not. As the account, a link reaches only
+what the account could already write. `WSL-201`
+
+⭐ A link at a file an adapter writes whole is replaced by that file. A directory the
+account made a link keeps its own mode. Provisioning keeps the same rule for the XDG
+directories and the engine's settings. ⚠ A path the account cannot write, such as a
+link to a directory of root's, stops that adapter, and `base ensure` names it.
+
 ```json
 "adapters": [{ "name": "herdr" }]
 ```
