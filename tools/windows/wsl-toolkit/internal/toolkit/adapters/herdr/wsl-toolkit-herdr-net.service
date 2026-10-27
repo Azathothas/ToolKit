@@ -1,0 +1,17 @@
+# Written by wsl-toolkit's herdr adapter while base.adapters gives herdr
+# "private_net": true. base ensure rewrites it, and stops and removes it when the key
+# goes and no process is left in the namespace. The herdr server's unit requires it,
+# through private-net.conf beside that unit. WSL-159.
+#
+# ⚠ NOT StopWhenUnneeded. Removing the drop-in would make this unneeded at once, and
+# a running server would lose its only way out while it still holds every pane.
+[Unit]
+Description=the private network namespace herdr's server runs in, written by wsl-toolkit
+After=network-online.target
+
+[Service]
+# pasta forks once the namespace is linked, so a started unit is a linked namespace.
+Type=forking
+PIDFile=/run/wsl-toolkit-herdr-net.pid
+ExecStart=/usr/local/lib/wsl-toolkit/herdr-private-net start
+ExecStopPost=/usr/local/lib/wsl-toolkit/herdr-private-net stop

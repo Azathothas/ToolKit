@@ -187,9 +187,24 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 	case answers["herdr"] == "stale" && bytes.Contains(script, []byte("# herdr adapter, probe:")):
 		fmt.Print("version 0.9.5\nrelease 0.9.5\nserver active\nserver-answers running\nserver-binary-stale yes\n")
 		return 0, true
+	// ⚠ herdr=pending IS private_net PLACED UNDER A SERVER STILL IN THE SHARED
+	// NAMESPACE, as probe.sh reads it: two notes and no problem. WSL-159.
+	case answers["herdr"] == "pending" && bytes.Contains(script, []byte("# herdr adapter, install:")):
+		fmt.Println(adapterCompleteLine("herdr"))
+		return 0, true
+	case answers["herdr"] == "pending" && bytes.Contains(script, []byte("# herdr adapter, probe:")):
+		fmt.Print("version 0.9.5\nrelease 0.9.5\nserver active\nserver-answers running\nserver-binary-stale no\n" +
+			"private-net on\nserver-netns shared\nprivate-net-link inactive\n" +
+			"note the herdr server still runs in the shared network namespace, so its panes reach the Windows host\n" +
+			"note under private_net, processes in herdr's panes reach the internet, and not the Windows host or the private ranges\n" +
+			"ssh-host-key " + fakeHerdrHostKey + "\nssh-client-keys 1\nssh-listeners 0\n")
+		return 0, true
 	}
 	return 0, false
 }
+
+// fakeHerdrHostKey is the door's host key the fake herdr probe answers.
+const fakeHerdrHostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeHostKeyOfTheFakeGuest"
 
 // fakeMuseSessionNote is the note the fake muse probe answers for a session whose
 // SessionStart never reached the reporter.

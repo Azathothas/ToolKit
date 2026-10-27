@@ -210,6 +210,28 @@ wsl-toolkit base herdr -- agent explain work
 It answers `screen_detection_skip_reason: full_lifecycle_hook_authority` for those two.
 Muse reports through the hook this tool's `muse` adapter installs.
 
+⭐ **herdr also reads Muse's screen, with rules the `muse` adapter writes.** herdr's own
+Muse rules match no idle screen of Muse Code 1.4.13, and `agent explain` then answers
+`rule: none`. With the adapter's file it names `idle_prompt`. `WSL-158`
+
+---
+
+## ⚠ With `private_net`, the agents have a network of their own
+
+`"private_net": true` on the base's `herdr` adapter puts herdr's server, and every
+agent it starts, in its own network namespace. The internet answers, and the Windows
+host and the private ranges do not. `WSL-159`
+
+- ⛔ **An agent there runs no rootless container and no `sudo`.** Run those through
+  `wsl-toolkit base exec` from Windows instead.
+- ⛔ **The key reaches the agents only when herdr's server restarts**, which ends
+  every pane. Until then `base ensure` passes and notes it, and `base status --probe`
+  names the command. The restart is yours to decide.
+- ⚠ **It confines the panes alone.** `base agent` runs outside the namespace, and a
+  pane can still run a Windows program through interop.
+- ⭐ `readlink /proc/self/ns/net` in a pane names another namespace than it does in
+  `wsl-toolkit base shell`, and `ping` to the Windows host gets no answer.
+
 ---
 
 ## ⛔ After a cancelled approval, herdr refuses every prompt

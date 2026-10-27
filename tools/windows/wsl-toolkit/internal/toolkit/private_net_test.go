@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"encoding/base64"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -59,7 +60,7 @@ func TestAnEmptyPrivateNetPayloadIsRefused(t *testing.T) {
 func TestTheResolverIsAcceptedBeforeThePrivateRangesAreDropped(t *testing.T) {
 	script := string(privateNetScript)
 	accept := strings.Index(script, "out ip daddr %s accept")
-	drop := strings.Index(script, "10.0.0.0/8, 172.16.0.0/12")
+	drop := strings.Index(script, `ip daddr "{ 10.0.0.0/8, `)
 	if accept < 0 || drop < 0 {
 		t.Fatal("the script no longer writes both a resolver exception and a private-range drop")
 	}
@@ -68,6 +69,32 @@ func TestTheResolverIsAcceptedBeforeThePrivateRangesAreDropped(t *testing.T) {
 	}
 	if !strings.Contains(script, "/etc/resolv.conf 2>/dev/null |") {
 		t.Error("the exception no longer reads the resolvers this base actually uses")
+	}
+}
+
+// ⛔ THE SHARED ADDRESS SPACE IS DROPPED WITH THE PRIVATE RANGES, in both rule sets.
+// Tailscale gives the Windows host an address in 100.64.0.0/10, and the host answers
+// on it through WSL's NAT. A namespace that drops only RFC 1918 still reaches it.
+// WSL-159.
+func TestBothPrivateRuleSetsDropTheSharedAddressSpace(t *testing.T) {
+	herdr, err := adapterTree.ReadFile("adapters/herdr/private-net.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, script := range map[string]string{"base exec --private-net": string(privateNetScript), "herdr's private_net": string(herdr)} {
+		set := regexp.MustCompile(`ip daddr "?\{ ([^}]*) \}"? drop`).FindStringSubmatch(script)
+		if set == nil {
+			t.Fatalf("%s writes no drop of the private ranges", name)
+		}
+		ranges := map[string]bool{}
+		for _, r := range strings.Split(set[1], ", ") {
+			ranges[r] = true
+		}
+		for _, want := range []string{"10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"} {
+			if !ranges[want] {
+				t.Errorf("%s drops %s, without %s", name, set[1], want)
+			}
+		}
 	}
 }
 

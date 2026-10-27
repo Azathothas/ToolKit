@@ -8,8 +8,8 @@ one.
 
 | adapter | what it installs | driven on |
 | --- | --- | --- |
-| [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
-| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, and ⭐ a herdr reporter for its lifecycle | the `arch` preset |
+| [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client. ⭐ With `private_net`, a network namespace for that server and its agents | the `arch` preset, with systemd |
+| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, ⭐ a herdr reporter for its lifecycle, and herdr's rules for its screen | the `arch` preset |
 | [`pi/`](pi/) | the Pi coding agent from pi's own release while its digest is pinned, npm with `--ignore-scripts` only when that cannot be fetched, and **herdr's own** pi integration | the `arch` preset |
 | [`omp/`](omp/) | Oh My Pi from omp's own release while its digest is pinned, npm only when that cannot be fetched, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | the `arch` preset |
 
@@ -20,13 +20,24 @@ echo`: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` with its release
 the adoption of a resumed session. ⚠ `PreToolUse` and `PermissionRequest` are
 registered and not yet driven, because the echo provider calls no tool.
 
+⭐ **The muse adapter also writes herdr's own rules for Muse's screen**, at the local
+path herdr reads before its bundled and remote manifests. They match Muse Code
+1.4.13's idle screen, which herdr's own rules did not, and the reporter stays as the
+fallback. `WSL-158`
+
+⭐ **herdr's `private_net` adds three files and changes none.** A drop-in beside the
+server's unit, a unit that links the namespace, and the script it runs. Each is a
+file in [`herdr/`](herdr/), and `install.sh` removes all three when the key goes.
+`WSL-159`
+
 ⭐ **The muse probe drives `SessionStart` itself**, with one echo session per `base
 ensure` and none on a read. A hook Muse stops running is a note naming its version. A
 Muse that cannot run the session leaves it unmeasured. Measured with herdr 0.9.5 and
 Muse Code 1.4.11. `WSL-157`
 
-⭐ **`base ensure` installs every adapter it is given, in order, and one that fails
-does not stop the rest.** The ensure then answers one error naming each adapter that
+⭐ **`base ensure` installs every adapter it is given, herdr first and the rest in
+order, and one that fails does not stop the rest.** muse, pi and omp each set herdr up
+only where herdr is already installed. `WSL-158` The ensure then answers one error naming each adapter that
 did not finish. ⛔ **Each agent probe asks first whether its agent is in the base at
 all.** An agent that is not there answers one problem, `NAME is not installed in this
 base`. The checks that only mean something for an installed agent do not run.

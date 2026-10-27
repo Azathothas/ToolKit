@@ -50,7 +50,13 @@ if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
       "$TK_HOME"/.local/share/*) versions=$(dirname "$real") ;;
     esac
   fi
-  printf 'footprint %s\n' "$(footprint "$WRAPPER" "$LAUNCHER" "$versions" "$TK_HOME/.config/muse" /var/lib/wsl-toolkit/muse)"
+  # ⚠ AND herdr's RULES FOR MUSE, when they are this adapter's. A file of the
+  # operator's own at that path is not this adapter's to count. WSL-158.
+  rules=''
+  if head -n 1 "$TK_HOME/.config/herdr/agent-detection/muse.toml" 2>/dev/null | grep -q "from wsl-toolkit's muse adapter"; then
+    rules=$TK_HOME/.config/herdr/agent-detection/muse.toml
+  fi
+  printf 'footprint %s\n' "$(footprint "$WRAPPER" "$LAUNCHER" "$versions" "$TK_HOME/.config/muse" /var/lib/wsl-toolkit/muse "$rules")"
   exit 0
 fi
 if [ "$installed" = no ]; then
@@ -155,6 +161,46 @@ if [ -f "$MUSE_SETTINGS" ] && command -v jq >/dev/null 2>&1; then
     '[(.hooks // {}) | to_entries[] | select(any(.value[]?.hooks[]?; (.command // "") == $h)) | .key] | sort | join(",")' \
     "$MUSE_SETTINGS" 2>/dev/null)
   printf 'herdr_reporter_events %s\n' "${registered:-none}"
+fi
+
+# -- herdr's detection rules for Muse, read back -------------------------------------
+# ⭐ WHETHER THE FILE IS THERE, AND WHETHER herdr LOADS IT. install.sh writes the file.
+# A herdr whose manifest format moved ignores a file it cannot read, with a warning and
+# its own rules instead. ⚠ Facts and a note, not problems: the reporter still reports,
+# and `base ensure` writes the same file again and cannot cure it. WSL-158.
+#
+# ⚠ AND WHETHER IT SHADOWS A NEWER MANIFEST OF herdr's. A local file wins whenever herdr
+# holds a remote one, so herdr cannot deliver a fix for Muse's screen past it. A remote
+# version other than the one these rules were measured against is a note naming it.
+HERDR_RULES=$TK_HOME/.config/herdr/agent-detection/muse.toml
+HERDR_RULES_MEASURED=2026.08.26.1
+if [ -f "$HERDR_RULES" ] && head -n 1 "$HERDR_RULES" | grep -q "from wsl-toolkit's muse adapter"; then
+  printf 'herdr_detection_rules installed\n'
+  if command -v jq >/dev/null 2>&1; then
+    # ⚠ THE WARNING GOES LAST, because it is herdr's own text and may carry a `|`.
+    loaded=$(as_account herdr server agent-manifests --json 2>/dev/null |
+      as_account jq -r '.result.manifests[]? | select(.agent == "muse") | "\(.source_kind)|\(.local_override_shadowing_remote // false)|\(.cached_remote_version // "")|\(.warning // "it gave no warning")"' 2>/dev/null | head -n 1)
+    kind=${loaded%%|*}
+    rest=${loaded#*|}
+    shadowing=${rest%%|*}
+    rest=${rest#*|}
+    remote=${rest%%|*}
+    warning=${rest#*|}
+    if [ -n "$kind" ]; then
+      printf 'herdr_detection_source %s\n' "$kind"
+      [ "$kind" = "local override" ] ||
+        printf 'note herdr reads its own Muse rules and not %s: %s\n' "$HERDR_RULES" "$warning"
+      if [ "$kind" = "local override" ] && [ "$shadowing" = true ] && [ -n "$remote" ]; then
+        printf 'herdr_detection_shadows %s\n' "$remote"
+        [ "$remote" = "$HERDR_RULES_MEASURED" ] ||
+          printf 'note %s\n' "this adapter's Muse rules shadow herdr's Muse manifest $remote, and were measured against $HERDR_RULES_MEASURED. Measure $remote without them: move $HERDR_RULES aside, then run base herdr -- agent explain PANE"
+      fi
+    fi
+  fi
+elif [ -f "$HERDR_RULES" ]; then
+  printf 'herdr_detection_rules other\n'
+else
+  printf 'herdr_detection_rules absent\n'
 fi
 
 # -- and Muse runs it ----------------------------------------------------------------

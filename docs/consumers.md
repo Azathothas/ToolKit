@@ -160,6 +160,20 @@ a pi or omp adapter. podbox runs `base status --probe` and `base ensure --probe`
 pg-toolkit runs `base ensure`. Their exits change only on a base whose configuration
 names pi.
 
+### ⚠ What the private ranges and herdr's adapters change, and what a caller does
+
+`WSL-159` and `WSL-158`. In `wsl-toolkit-v9.0.0`. The first row fixes a false pass, a
+break by the table above. The others change what a base holds, and no flag or exit.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `base exec --private-net` and `base shell --private-net` refuse `100.64.0.0/10` beside the private ranges. Tailscale gives the Windows host an address there | reaches a Tailscale peer, or another address in that range, from a private namespace | runs that step without `--private-net` |
+| a base with the `muse` and `herdr` adapters gets `~/.config/herdr/agent-detection/muse.toml`, which herdr reads before its own Muse rules. herdr then reports Muse panes from it | reads herdr's Muse pane states, and relies on herdr's own rules for them | reads `herdr_detection_rules` in `base status --probe --json`, or replaces the file with one of its own, which is then left alone |
+| `base ensure` installs `herdr` before every other adapter, wherever `base.adapters` lists it | reads the order of the adapter lines in the ensure's log | reads each adapter's own line |
+
+⚠ **A base without `private_net` answers what it answered before.** herdr's probe
+prints the namespace's facts only where the key is or was used.
+
 ### ⛔ What the canonical default base name breaks, and what a caller does
 
 `WSL-167`, ruling 33. In `wsl-toolkit-v8.0.0`. A break by the table above, so the release

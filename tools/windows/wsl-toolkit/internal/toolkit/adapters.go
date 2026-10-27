@@ -74,6 +74,20 @@ type BaseAdapter struct {
 	// install time alone would put the integration in one directory and leave omp
 	// reading the other at run time, which is a claim rather than a fact.
 	SeparateAgentDir bool `json:"separate_agent_dir,omitempty"`
+	// PrivateNet puts herdr's server, and so every pane and agent it starts, in a
+	// network namespace of its own. The internet stays reachable there. The Windows
+	// host and the private ranges are refused. WSL-159.
+	//
+	// ⛔ AN OPT-IN, OFF BY DEFAULT, BECAUSE IT GIVES SOMETHING UP. Those agents lose
+	// rootless containers and sudo. The account's engine and its user manager run
+	// outside the namespace, and guest root can leave any namespace. Ruling 36.
+	//
+	// ⚠ IT CONFINES THE PANES AND NOTHING ELSE. `base agent` runs through `base exec`,
+	// and interop runs a Windows program outside the namespace, wsl.exe among them.
+	//
+	// ⭐ THE SERVER'S OWN UNIT KEEPS ITS BYTES. What the key adds is a drop-in beside
+	// it, which install.sh removes when the key goes.
+	PrivateNet bool `json:"private_net,omitempty"`
 	// Model is the model an agent adapter makes the STARTUP default for the account,
 	// so a session nobody passed a flag to begins on it.
 	//
@@ -133,6 +147,9 @@ type adapterSpec struct {
 	// its own when another agent would collide with it. Only omp can: it is the one
 	// whose directory another agent's variable redirects.
 	TakesSeparateAgentDir bool
+	// TakesPrivateNet says the adapter runs a server whose children are the agents,
+	// so a namespace around the server is a namespace around them. Only herdr does.
+	TakesPrivateNet bool
 	// TakesChannel says the adapter may follow AdapterChannelNightly.
 	TakesChannel bool
 	// Efforts are the reasoning-effort words this agent's own CLI accepts, or nil for an
@@ -158,6 +175,7 @@ var adapterSpecs = []adapterSpec{
 		Presets:         []string{"arch"},
 		TakesVersionPin: true,
 		TakesChannel:    true,
+		TakesPrivateNet: true,
 		Host:            &herdrHost{},
 	},
 	{
@@ -196,6 +214,23 @@ var adapterSpecs = []adapterSpec{
 		Host:            &agentLauncherHost{agent: "omp"},
 	},
 }
+
+// HerdrPrivateNetSummary is what `base status` says of a configuration that gives
+// the herdr adapter private_net: what it asks for, and what it gives up. WSL-159.
+//
+// ⛔ THE COST IS IN THE SAME LINE AS THE GAIN. Ruling 36 made the key an opt-in on
+// the condition that it says what it gives up. A reader who sees one half believes
+// the other.
+//
+// ⚠ WHAT WAS ASKED, NOT WHAT THE BASE DOES. The row reads the configuration, and a
+// key not yet ensured, or a server not yet restarted, is not in force. `base status
+// --probe` measures that, and names the command where it is not.
+//
+// ⚠ AND ONLY THE PANES. `base agent` runs through `base exec`, and interop runs a
+// Windows program outside the namespace, which `base doors` reports as
+// interop.exec-pe.
+const HerdrPrivateNetSummary = "private_net asked: processes in herdr's panes are to reach the internet, and not the Windows host or the private ranges. " +
+	"They give up rootless containers and sudo. base agent and interop stay outside it"
 
 // installerDigestRE is a SHA-256 as sha256sum prints it.
 var installerDigestRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -253,6 +288,9 @@ func validateAdapters(c Config) error {
 		// force, which is the same rule installer_sha256 and channel already keep.
 		if a.SeparateAgentDir && !spec.TakesSeparateAgentDir {
 			return fmt.Errorf("base.adapters[%d] gives %q separate_agent_dir, and only omp resolves an extension directory another agent's variable can take", i, a.Name)
+		}
+		if a.PrivateNet && !spec.TakesPrivateNet {
+			return fmt.Errorf("base.adapters[%d] gives %q private_net, and only herdr runs the server its agents start under. Give it to the herdr entry", i, a.Name)
 		}
 		if err := validateAdapterPin(i, a, spec); err != nil {
 			return err
@@ -484,6 +522,12 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 	if a.SeparateAgentDir {
 		env["TK_ADAPTER_SEPARATE_AGENT_DIR"] = "1"
 	}
+	// ⚠ ABSENT, NOT "0", WITHOUT THE KEY: install.sh removes what the key added when it
+	// reads no 1, so a base that never asked and one that stopped asking end alike.
+	// WSL-159.
+	if a.PrivateNet {
+		env["TK_ADAPTER_PRIVATE_NET"] = "1"
+	}
 	// ⭐ THE DIRECTORIES THE OPERATOR ALREADY CHOSE TO EXPOSE, and no others. An agent
 	// that asks "do you trust this workspace?" on every start is a prompt the operator
 	// answers the same way every time for the places they granted themselves, so the
@@ -554,8 +598,30 @@ func (b *Base) applyAdapters(ctx context.Context) (map[string]AdapterState, erro
 	// in order, each failure is kept, and the answer names all of them. WSL-107,
 	// issue 37.
 	ensured := map[string]AdapterState{}
-	err := applyEach(b.cfg.Base.Adapters, b.log, func(a BaseAdapter) error { return b.applyAdapter(ctx, a, ensured) })
+	err := applyEach(installOrder(b.cfg.Base.Adapters), b.log, func(a BaseAdapter) error { return b.applyAdapter(ctx, a, ensured) })
 	return ensured, err
+}
+
+// installOrder is the order base ensure installs the adapters in: herdr first, then
+// every other one in the configuration's order.
+//
+// ⛔ herdr FIRST, BECAUSE THE AGENTS LOOK FOR IT. muse writes herdr's rules and its
+// reporter, and pi and omp install herdr's integration, each only where herdr is
+// already installed. A configuration that listed an agent before herdr got none of
+// them on a new base's first ensure. WSL-158.
+func installOrder(adapters []BaseAdapter) []BaseAdapter {
+	ordered := make([]BaseAdapter, 0, len(adapters))
+	for _, a := range adapters {
+		if a.Name == "herdr" {
+			ordered = append(ordered, a)
+		}
+	}
+	for _, a := range adapters {
+		if a.Name != "herdr" {
+			ordered = append(ordered, a)
+		}
+	}
+	return ordered
 }
 
 // applyEach applies every adapter in order, keeps each failure, and answers one
@@ -626,10 +692,20 @@ func (b *Base) applyAdapter(ctx context.Context, a BaseAdapter, ensured map[stri
 		st.Problems = append(st.Problems, hostProblems...)
 		st.Notes = append(st.Notes, hostNotes...)
 	}
-	if len(st.Problems) > 0 {
-		return fmt.Errorf("adapter %s is installed, and reading it back found: %s", a.Name, strings.Join(st.Problems, "; "))
+	if err := readBackError(st); err != nil {
+		return err
 	}
 	b.log("adapter " + a.Name + ": healthy, version " + st.Version)
+	return nil
+}
+
+// readBackError is what an ensure's read-back of one adapter fails it with: its
+// problems, and never its notes. A note is true and stops nothing, so a condition
+// base ensure cannot cure is a note. WSL-181, WSL-159.
+func readBackError(st AdapterState) error {
+	if len(st.Problems) > 0 {
+		return fmt.Errorf("adapter %s is installed, and reading it back found: %s", st.Name, strings.Join(st.Problems, "; "))
+	}
 	return nil
 }
 
@@ -778,6 +854,70 @@ func herdrStaleRemediation(a AdapterState) (Remediation, bool) {
 		Repairable: true,
 		Advisory:   true,
 	}, true
+}
+
+// herdrNetRemediation is what a herdr base whose namespace is not the one its
+// configuration asks for earns: the one command that ends it, with what that command
+// costs. configured is the herdr entry's private_net. WSL-159.
+//
+// ⭐ THE CONFIGURATION AND THE BASE ARE COMPARED FIRST. The probe's private-net is the
+// drop-in the base carries, so a key added or removed and not yet ensured read as the
+// old state. `base ensure` places or removes the drop-in, and ends no pane.
+//
+// ⚠ ADVISORY WHERE base ensure CANNOT END IT, OR NEED NOT. A server outside the
+// namespace moves only when it restarts, which ends every pane, and the restart is
+// the operator's. As a problem it failed every ensure, ready and job. WSL-181.
+//
+// ⛔ NOT ADVISORY FOR A LINK THAT IS DOWN. base ensure starts it again, so one still
+// down after it is a failure, and every agent in the namespace reaches nothing.
+func herdrNetRemediation(a AdapterState, configured bool) (Remediation, bool) {
+	if a.Name != "herdr" || a.Facts == nil {
+		return Remediation{}, false
+	}
+	carried := a.Facts["private-net"] == "on"
+	switch {
+	case configured && !carried:
+		return Remediation{
+			ID:         "herdr-private-net-unapplied",
+			What:       "private_net is in the configuration, and the base does not carry it yet, so herdr's panes reach the Windows host",
+			Costs:      "nothing ends: base ensure adds the namespace's files. The server moves into the namespace at its next restart",
+			Command:    ToolCommand("base ensure"),
+			Repairable: true,
+			Advisory:   true,
+		}, true
+	case !configured && carried:
+		return Remediation{
+			ID:         "herdr-private-net-unapplied",
+			What:       "private_net is gone from the configuration, and the base still carries it, so the herdr server's next start is in the private namespace",
+			Costs:      "nothing ends: base ensure removes the drop-in. The server leaves the namespace at its next restart",
+			Command:    ToolCommand("base ensure"),
+			Repairable: true,
+			Advisory:   true,
+		}, true
+	case !configured:
+		return Remediation{}, false
+	}
+	switch ns := a.Facts["server-netns"]; {
+	case ns == "shared" || ns == "other":
+		return Remediation{
+			ID:   "herdr-private-net-pending",
+			What: "private_net is on, and the herdr server still runs in the " + ns + " network namespace, so every agent it starts can reach the Windows host",
+			Costs: "the restart ends every herdr pane and the agent in it. " +
+				"herdr puts its workspaces back, in the private namespace",
+			Command:    ToolCommand("base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'"),
+			Repairable: true,
+			Advisory:   true,
+		}, true
+	case ns == "private" && a.Facts["private-net-link"] != "active":
+		return Remediation{
+			ID:         "herdr-private-net-down",
+			What:       "the herdr server's private network namespace has no way out, because wsl-toolkit-herdr-net.service is " + a.Facts["private-net-link"],
+			Costs:      "nothing ends: the unit links the same namespace again, and every pane keeps running",
+			Command:    ToolCommand("base exec --root -c 'systemctl start wsl-toolkit-herdr-net.service'"),
+			Repairable: true,
+		}, true
+	}
+	return Remediation{}, false
 }
 
 // probeAdapters reads back every adapter the configuration names, both halves.

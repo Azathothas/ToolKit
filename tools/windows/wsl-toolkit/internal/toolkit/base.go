@@ -202,6 +202,10 @@ type BaseAccessState struct {
 	// Registry is base.registry as configured. ⚠ Absent where the key is, so an
 	// unchanged base's report carries no new field. WSL-196.
 	Registry *RegistryConfig `json:"registry,omitempty"`
+	// HerdrPrivateNet is the herdr adapter's private_net, as configured. ⚠ Absent
+	// from --json where it is off, so an unchanged base's answer keeps its bytes.
+	// WSL-159.
+	HerdrPrivateNet bool `json:"herdr_private_net,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -318,6 +322,7 @@ func (b *Base) configuredState() (BaseState, error) {
 	}
 	for _, a := range b.cfg.Base.Adapters {
 		st.Access.Adapters = append(st.Access.Adapters, a.Name)
+		st.Access.HerdrPrivateNet = st.Access.HerdrPrivateNet || (a.Name == "herdr" && a.PrivateNet)
 	}
 	// ⭐ A GRANT WHOSE SOURCE IS GONE IS REPORTED WITHOUT --probe, because it is
 	// this machine's fact, and `base ensure` and `base grant` refuse over it until
@@ -511,6 +516,11 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 			st.Problems = append(st.Problems, "adapter "+a.Name+": "+p)
 		}
 		if r, ok := herdrStaleRemediation(a); ok {
+			st.Remediations = append(st.Remediations, r)
+		}
+		// ⚠ st.Access CARRIES WHAT THE CONFIGURATION ASKS, which the probe's
+		// private-net is compared with. WSL-159.
+		if r, ok := herdrNetRemediation(a, st.Access.HerdrPrivateNet); ok {
 			st.Remediations = append(st.Remediations, r)
 		}
 	}

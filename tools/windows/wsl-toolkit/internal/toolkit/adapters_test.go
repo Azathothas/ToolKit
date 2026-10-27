@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -416,6 +417,7 @@ func TestEveryStoredBaseFieldSurvivesLoading(t *testing.T) {
 	stored.Base.Mounts = []BaseMount{grant}
 	// ⚠ AND A FIELD INSIDE AN ADAPTER, which the reflect walk below cannot see.
 	stored.Base.Adapters = append(stored.Base.Adapters, BaseAdapter{Name: "muse", InstallerSHA256: museDigest})
+	stored.Base.Adapters[0].PrivateNet = true
 	v := reflect.ValueOf(stored.Base)
 	for i := 0; i < v.NumField(); i++ {
 		if v.Field(i).IsZero() {
@@ -458,8 +460,16 @@ func TestAnAdapterFileReachesTheGuestAsBase64(t *testing.T) {
 	if err != nil || !bytes.Equal(got, want) {
 		t.Fatalf("config.toml reached the environment as %q (%v)", got, err)
 	}
-	if len(env) != 1 {
-		t.Fatalf("the environment carries %d files, and herdr has one beside its scripts: %v", len(env), env)
+	// ⚠ FOUR: its configuration, and the script, unit and drop-in private_net adds.
+	// WSL-159.
+	names := make([]string, 0, len(env))
+	for k := range env {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	carried := []string{"TK_FILE_CONFIG_TOML_B64", "TK_FILE_PRIVATE_NET_CONF_B64", "TK_FILE_PRIVATE_NET_SH_B64", "TK_FILE_WSL_TOOLKIT_HERDR_NET_SERVICE_B64"}
+	if strings.Join(names, " ") != strings.Join(carried, " ") {
+		t.Fatalf("the environment carries %v, and herdr has %v beside its scripts", names, carried)
 	}
 }
 

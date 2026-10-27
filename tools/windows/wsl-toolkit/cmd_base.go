@@ -486,6 +486,12 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	// ⭐ ONLY WHERE base.registry IS SET, for the reason the engines row gives.
 	// WSL-196.
 	renderRegistryRows(out, st.Access.Registry)
+	// ⛔ ONLY WHERE THE CONFIGURATION ASKS FOR private_net, for the reason the engines
+	// row gives. It says what was asked and what the key gives up, where an operator
+	// reads what the base is. --probe says whether it holds. WSL-159.
+	if st.Access.HerdrPrivateNet {
+		fmt.Fprintf(out, "  herdr net   %s\n", toolkit.HerdrPrivateNetSummary)
+	}
 	for _, mount := range st.Access.Mounts {
 		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}
