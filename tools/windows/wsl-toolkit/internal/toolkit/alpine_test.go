@@ -138,6 +138,13 @@ func TestTheMountHelperLeavesAFileItDidNotWrite(t *testing.T) {
 // the ro. A link elsewhere is not this tool's, and is left. WSL-198.
 func TestTheMountHelperReplacesALinkToWSLsHelper(t *testing.T) {
 	grantsCase(t)
+	// ⚠ NOT ON WINDOWS. Git's readlink reads a Windows symbolic link back in its own
+	// form, not the one it was made with, so the helper's byte comparison of the
+	// target fails there and nowhere it runs. The guest is Linux, and the Linux job
+	// runs this case. Measured on CI's Windows runner, which can make the link.
+	if runtime.GOOS == "windows" {
+		t.Skip("a Windows symbolic link reads back through Git's readlink in another form than its target")
+	}
 	for _, c := range []struct {
 		name, to string
 		kept     bool
