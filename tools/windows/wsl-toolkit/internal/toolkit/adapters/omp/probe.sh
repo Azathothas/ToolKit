@@ -76,14 +76,38 @@ if [ "$installed" = no ]; then
   exit 0
 fi
 
-# ⭐ THE RUNTIME IS A FACT HERE, because omp is a Bun program and a base with Node
-# alone installs it and cannot run it. Reporting the version alone would have said
+# ⭐ WHERE THE ACCOUNT'S omp CAME FROM, read from the file that is omp itself: beside the
+# separating wrapper when there is one. install.sh takes omp's own release binary and
+# takes npm only when that release could not be fetched. WSL-138.
+omp_real=$PREFIX/bin/omp
+if head -3 "$omp_real" 2>/dev/null | grep -qF "# wsl-toolkit omp adapter wrapper"; then
+  omp_real=$PREFIX/bin/omp-npm
+fi
+case $(as_account readlink -f "$omp_real" 2>/dev/null || :) in
+  */node_modules/*) source=npm ;;
+  *)
+    # ⭐ A PREBUILT omp IS ONE ELF FILE, and it carries its own runtime.
+    if [ "$(as_account head -c 4 "$omp_real" 2>/dev/null | od -An -c | tr -d ' \n')" = '177ELF' ]; then
+      source=release
+    else
+      source=other
+    fi
+    ;;
+esac
+printf 'source %s\n' "$source"
+if [ "$source" = npm ]; then
+  printf "note omp came from npm, not from omp's own release. base ensure installs the release when it can fetch it\n"
+fi
+
+# ⭐ THE RUNTIME IS A FACT HERE, because omp from npm is a Bun program and a base with
+# Node alone installs it and cannot run it. Reporting the version alone would have said
 # "no version" for a missing runtime and a broken install alike, which are different
 # problems with different fixes. Measured 2026-09-17.
+# ⚠ omp's release binary carries its own runtime, so only an omp that is not one needs bun.
 bun_version=$(as_account bun --version 2>/dev/null | tr -d '\r' | head -1)
 if [ -n "$bun_version" ]; then
   printf 'bun %s\n' "$bun_version"
-else
+elif [ "$source" != release ]; then
   problem "omp is a Bun program and this base has no bun the account can run"
 fi
 

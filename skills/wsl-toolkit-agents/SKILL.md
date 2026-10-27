@@ -225,6 +225,15 @@ the user before you run it on a base that holds work. ⚠ Each adapter installs 
 keeps the installer and prints how to read it. Approving it is the user's decision,
 after reading it. Never add `installer_sha256` yourself.
 
+⛔ **So does a pi or omp release whose digest is not the adapter's pin.** Each comes
+from its provider's own release, and npm only when that cannot be fetched. A changed
+digest is not a fetch failure, so npm is not tried. The refusal names the release's
+checksum list and the `version` and `sha256` that approve it. That is the user's
+decision too.
+
+⚠ **A pi model declared before its key is stored is a note.** `base status --probe`
+reads `credential absent` for pi, and stops nothing. An undeclared model is a problem.
+
 ⚠ **Only the state directory that owns the base installs an adapter.** From another
 one, or from a shell whose `%LOCALAPPDATA%` Windows redirects into an app's copy,
 `base ensure` says so in one line and exits 0. Run it from PowerShell or a terminal

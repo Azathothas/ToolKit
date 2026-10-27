@@ -10,8 +10,8 @@ one.
 | --- | --- | --- |
 | [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
 | [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, and ⭐ a herdr reporter for its lifecycle | the `arch` preset |
-| [`pi/`](pi/) | the Pi coding agent from npm with `--ignore-scripts`, and **herdr's own** pi integration | the `arch` preset |
-| [`omp/`](omp/) | Oh My Pi from npm, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | the `arch` preset |
+| [`pi/`](pi/) | the Pi coding agent from pi's own release while its digest is pinned, npm with `--ignore-scripts` only when that cannot be fetched, and **herdr's own** pi integration | the `arch` preset |
+| [`omp/`](omp/) | Oh My Pi from omp's own release while its digest is pinned, npm only when that cannot be fetched, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | the `arch` preset |
 
 ⭐ **All four are driven**, on one base with herdr: `WSL-88` and `WSL-89` carry
 the runs for `pi` and `omp`. ⭐ **The muse adapter's herdr reporter is driven**
@@ -55,19 +55,20 @@ reads is how an operator believes they pinned a thing they did not. They move
 together or neither moves. An architecture the configuration does not name is
 refused rather than falling back.
 
-⚠ **An npm adapter pins differently and the difference is the route, not the
-standard.** `pi` and `omp` are npm packages, and npm checks a package against the
-registry's own integrity value; a digest written here would duplicate that check
-and then go stale against it. `version` alone pins one for an operator who wants
-that, and `TK_ADAPTER_PACKAGE` names a different package for a fork.
+⭐ **`pi` and `omp` pin their own releases the same way.** Each pins a version and a
+digest per architecture, and the same two fields move it. Their npm fallback takes
+that version too, so the two routes install one release. `WSL-138`
 
 ⭐ **No adapter's summary carries a version number.** A number in a Go string is a
 second home for a fact the probe reads back from the machine, and it is the one
 nobody updates.
 
-⭐ **`pi` and `omp` are npm packages, installed with `--ignore-scripts`, and
-neither needs a piped installer.** Both have official herdr integrations, and both
-give herdr **lifecycle authority** rather than the screen detection Muse gets.
+⭐ **`pi` and `omp` come from each provider's own release, and neither needs a piped
+installer.** Each saves the release's file, prints its length and SHA-256, and
+installs it only while the digest is pinned. npm, with `--ignore-scripts`, is taken
+only when the release cannot be fetched, and never over a changed digest. Both have
+official herdr integrations, and both give herdr **lifecycle authority** rather than
+the screen detection Muse gets.
 `WSL-88` and `WSL-89` in
 [`../../../../TODO/wsl-toolkit-go.md`](../../../../TODO/wsl-toolkit-go.md) carry
 what each installs. ⛔ `WSL-89` also carries the one trap: herdr **refuses** the
@@ -157,6 +158,10 @@ being run.
 is approved:** the one the adapter pins, which the operator approved, or the
 `installer_sha256` its configuration carries. Any other is saved for
 the operator to read, never run, and the adapter exits non-zero naming its digest.
+
+⛔ **A provider's own release asset is kept the same way when its digest is not the
+pinned one.** `pi` and `omp` save it, exit 2, and print the `version` and `sha256`
+that would approve it. Neither falls back to npm over a changed digest. `WSL-138`
 
 ## The copy the executable carries
 

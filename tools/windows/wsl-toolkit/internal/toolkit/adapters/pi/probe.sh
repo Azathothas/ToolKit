@@ -15,6 +15,8 @@ problem() { printf 'problem %s\n' "$*"; }
 
 TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
 PREFIX=$TK_HOME/.local
+# Where install.sh unpacks each pi release it takes from pi's own GitHub release. WSL-138.
+RELEASES=$TK_HOME/.local/share/wsl-toolkit/pi
 
 as_account() {
   runuser -u "$TK_USER" -- env -i HOME="$TK_HOME" USER="$TK_USER" LOGNAME="$TK_USER" \
@@ -48,7 +50,7 @@ npm_package_dir() {
 if [ -e /usr/local/bin/pi ] || [ -e "$PREFIX/bin/pi" ]; then installed=yes; else installed=no; fi
 printf 'installed %s\n' "$installed"
 if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
-  printf 'footprint %s\n' "$(footprint /usr/local/bin/pi "$PREFIX/bin/pi" "$(npm_package_dir "$PREFIX/bin/pi")" "$TK_HOME/.pi")"
+  printf 'footprint %s\n' "$(footprint /usr/local/bin/pi "$PREFIX/bin/pi" "$(npm_package_dir "$PREFIX/bin/pi")" "$RELEASES" "$TK_HOME/.pi")"
   exit 0
 fi
 if [ "$installed" = no ]; then
@@ -92,6 +94,23 @@ else
   problem "pi answers no version for $TK_USER, so it is not usable by that account"
 fi
 
+# ⭐ WHERE THE ACCOUNT'S pi CAME FROM. install.sh takes pi's own release and takes npm only
+# when that release could not be fetched, so `npm` here says the official route did not
+# run. A base built before WSL-138 reads `npm` too, until its next base ensure.
+pi_real=$(as_account readlink -f "$PREFIX/bin/pi" 2>/dev/null || :)
+releases_real=$(as_account readlink -f "$RELEASES" 2>/dev/null || :)
+if [ -n "$pi_real" ] && [ -n "$releases_real" ] && [ "${pi_real#"$releases_real"/}" != "$pi_real" ]; then
+  printf 'source release\n'
+else
+  case $pi_real in
+    */node_modules/*)
+      printf 'source npm\n'
+      printf "note pi came from npm, not from pi's own release. base ensure installs the release when it can fetch it\n"
+      ;;
+    *) printf 'source other\n' ;;
+  esac
+fi
+
 # -- the startup model, read back from pi rather than from the file that set it ---------
 # ⛔ A STARTUP MODEL PI CANNOT RESOLVE IS NOT AN ERROR TO PI: it falls back to its own
 # built-in default, on a DIFFERENT provider, and says nothing. Measured 2026-09-17: with
@@ -114,11 +133,46 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
   [ -n "$want_model" ] && printf 'startup_model %s/%s\n' "${want_provider:-?}" "$want_model"
   [ -n "$want_effort" ] && printf 'startup_effort %s\n' "$want_effort"
   if [ -n "$want_model" ]; then
-    if as_account pi --list-models 2>/dev/null | tr -d '\r' |
-        awk -v p="$want_provider" -v m="$want_model" '$1 == p && $2 == m { found = 1 } END { exit !found }'; then
-      : # pi's own catalogue resolves it
+    # ⛔ pi LISTS ONLY THE MODELS OF A PROVIDER IT HOLDS A KEY FOR. Measured with pi 1.4.0:
+    # with no key it prints `No models available`, and with the provider's key it lists
+    # muse-gateway/muse-spark-1.3-contributor. So a model the guide declared before its
+    # key was stored read as undeclared, and the probe told the operator to declare it
+    # again. A provider pi lists nothing for is a missing key, read from models.json and
+    # from pi itself. WSL-135.
+    undeclared="pi's startup model is $want_provider/$want_model and its own catalogue does not list it, so every session starts on pi's built-in default instead. Declare the model under that provider in $TK_HOME/.pi/agent/models.json"
+    listed=$(as_account pi --list-models 2>/dev/null | tr -d '\r')
+    models=$TK_HOME/.pi/agent/models.json
+    if printf '%s\n' "$listed" | awk -v p="$want_provider" -v m="$want_model" '$1 == p && $2 == m { found = 1 } END { exit !found }'; then
+      printf 'credential present\n' # pi's own catalogue resolves it, which takes a key
+    elif [ -z "$want_provider" ] || printf '%s\n' "$listed" | awk -v p="$want_provider" '$1 == p { found = 1 } END { exit !found }'; then
+      # ⛔ pi HOLDS A KEY FOR THIS PROVIDER AND STILL DOES NOT LIST THE MODEL, so it is not
+      # declared, and every session starts on another model.
+      [ -z "$want_provider" ] || printf 'credential present\n'
+      problem "$undeclared"
     else
-      problem "pi's startup model is $want_provider/$want_model and its own catalogue does not list it, so every session starts on pi's built-in default instead. Declare the model under that provider in $TK_HOME/.pi/agent/models.json"
+      printf 'credential absent\n'
+      # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
+      if [ -f "$models" ] && as_account jq -e --arg p "$want_provider" --arg m "$want_model" \
+          '(.providers[$p].models // []) | any(.id == $m)' "$models" >/dev/null 2>&1; then
+        # ⭐ DECLARED, AND ITS KEY IS THE OPERATOR'S TO STORE. True, and it stops nothing.
+        printf "note pi's startup model %s/%s is declared in %s, and pi holds no key for %s yet, so pi lists none of its models. Store the key, and pi auth check --provider %s answers ready\n" \
+          "$want_provider" "$want_model" "$models" "$want_provider" "$want_provider"
+      elif [ -f "$models" ] && as_account jq -e --arg p "$want_provider" '.providers | has($p)' "$models" >/dev/null 2>&1; then
+        # ⛔ THE PROVIDER IS DECLARED AND THE MODEL IS NOT, so no key would make pi list it.
+        problem "$undeclared"
+      else
+        # ⚠ A PROVIDER pi CARRIES ITSELF IS ONE models.json DOES NOT NAME, and pi answers
+        # not_ready for it with no key. Measured with pi 1.4.0: not_ready for anthropic,
+        # invalid for a provider pi does not know. Its models cannot be listed without the
+        # key, so the startup model waits for it.
+        verdict=$(as_account pi auth check --provider "$want_provider" 2>/dev/null | tr -d '\r' | head -1)
+        if [ "$verdict" = not_ready ]; then
+          printf "note pi holds no key for %s, a provider pi carries itself, so its startup model %s/%s is not checked until the key is stored. Store the key, and pi auth check --provider %s answers ready\n" \
+            "$want_provider" "$want_provider" "$want_model" "$want_provider"
+        else
+          problem "pi answers ${verdict:-nothing} for the provider $want_provider of its startup model $want_provider/$want_model, so it knows no such provider. Declare the provider and the model in $models"
+        fi
+      fi
     fi
     case $want_effort in
       xhigh|max)

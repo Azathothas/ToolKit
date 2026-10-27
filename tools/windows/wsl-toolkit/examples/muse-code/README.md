@@ -97,7 +97,16 @@ four adapters; a later run reconciles in seconds. The entries that built the
 adapters carry the measured times with their conditions: `WSL-76`, `WSL-77`,
 `WSL-88` and `WSL-89`.
 
-The last lines print the state. Every adapter must read `healthy`.
+The last lines print the state. herdr, muse and omp must read `healthy`.
+
+⚠ **On a new base, pi reads one problem and `base ensure` exits 2.** The profile
+starts pi on `muse-gateway/muse-spark-1.3-contributor`, and step 5 declares that
+provider. Until then pi knows no such provider. Every adapter is still installed, and
+step 6 reads pi `healthy`. `WSL-135`
+
+⭐ **pi and omp come from their own releases.** Each adapter saves the release's file
+and prints its length and SHA-256. It installs the file only while that digest is the
+one it pins. npm is used only when the release cannot be fetched. `WSL-138`
 
 ---
 
@@ -121,15 +130,7 @@ that would cover it. That is the profile working.
 
 ⚠ **Use `--mode ro` for a directory an agent must not change.**
 
-Take a grant away by the path the base sees it at:
-
-```powershell
-wsl-toolkit base revoke --target /workspaces/demoproj
-```
-
-⛔ **`base revoke` takes `--target` alone.** A grant is named by where the base sees
-it, not by the Windows directory. The mount goes at once. An empty directory is left
-behind and reaches nothing.
+⛔ **Keep this grant until step 10.** Steps 8 and 9 work in it.
 
 ---
 
@@ -213,6 +214,11 @@ pi auth check --provider muse-gateway
 ```
 
 It answers `ready`.
+
+⭐ **Until the key is stored, pi's model is a note and not a problem.** pi lists only
+the models of a provider it holds a key for. So `base status --probe` reads
+`credential absent` and names the step that stores the key. It stops nothing. A model
+`models.json` does not declare is still a problem. `WSL-135`
 
 ⚠ **The type is `api_key`.** Another word is accepted by `jq` and read by pi as no
 credential at all. ⚠ **The file is merged**, so a provider already in it is kept.
@@ -323,8 +329,24 @@ muse exec --json "Answer with only the number of files git tracks here."
 The launcher runs the agent in the base, at the guest path this directory is granted
 at. Every argument is the agent's. The exit code is the agent's.
 
-⛔ **An agent's own screen needs a terminal, so `muse` with no argument answers exit 2
-from Windows.** Use a herdr pane for the screen.
+⛔ **An agent's own screen needs a terminal, so `muse` with no argument answers exit 125
+from Windows.** That is the tool's own refusal, as for every command that forwards an
+agent's code. `WSL_TOOLKIT_TOOL_EXIT` moves it. Use a herdr pane for the screen.
+`WSL-135`
+
+---
+
+## 10. Take the grant away
+
+When the work is done, revoke the grant by the path the base sees it at:
+
+```powershell
+wsl-toolkit base revoke --target /workspaces/demoproj
+```
+
+⛔ **`base revoke` takes `--target` alone.** A grant is named by where the base sees
+it, not by the Windows directory. The mount goes at once. An empty directory is left
+behind and reaches nothing.
 
 ---
 

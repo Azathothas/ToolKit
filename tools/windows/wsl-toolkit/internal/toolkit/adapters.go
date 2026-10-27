@@ -171,11 +171,12 @@ var adapterSpecs = []adapterSpec{
 	},
 	{
 		Name: "pi",
-		// ⭐ NO DIGEST PIN AND NO INSTALLER APPROVAL, and the difference from muse is
-		// the install route rather than a lower standard: pi is an npm package, and
-		// npm checks a package against the registry's own integrity value. The
-		// version is pinnable from the configuration for an operator who wants one.
-		Summary:         "the Pi coding agent for the base's account from npm, with herdr's own integration so herdr has lifecycle authority",
+		// ⭐ pi's OWN RELEASE, PINNED BY VERSION AND DIGEST, and npm only when that
+		// release cannot be fetched. Ruling 20 as ruling 36 amended it: the official
+		// route first, by Muse's rule of a saved file and a pinned digest. A changed
+		// digest is refused, never a reason to take npm. `version` and `sha256` move the
+		// release, and the npm fallback takes the same version. WSL-138.
+		Summary:         "the Pi coding agent for the base's account from pi's own release while its digest is pinned, npm only when that cannot be fetched, with herdr's own integration so herdr has lifecycle authority",
 		Presets:         []string{"arch"},
 		TakesVersionPin: true,
 		Efforts:         []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"},
@@ -185,12 +186,14 @@ var adapterSpecs = []adapterSpec{
 	{
 		Name:                  "omp",
 		TakesSeparateAgentDir: true,
-		Summary:               "Oh My Pi for the base's account from npm, with herdr's own integration, and a refusal when it and pi resolve to one extension directory",
-		Presets:               []string{"arch"},
-		TakesVersionPin:       true,
-		Efforts:               []string{"minimal", "low", "medium", "high", "xhigh", "max", "auto"},
-		Agent:                 "omp",
-		Host:                  &agentLauncherHost{agent: "omp"},
+		// ⭐ omp's OWN RELEASE BINARY, the build omp's installer takes on a machine with
+		// no Bun, pinned as pi's is. Only the npm fallback needs Bun. WSL-138.
+		Summary:         "Oh My Pi for the base's account from omp's own release while its digest is pinned, npm only when that cannot be fetched, with herdr's own integration, and a refusal when it and pi resolve to one extension directory",
+		Presets:         []string{"arch"},
+		TakesVersionPin: true,
+		Efforts:         []string{"minimal", "low", "medium", "high", "xhigh", "max", "auto"},
+		Agent:           "omp",
+		Host:            &agentLauncherHost{agent: "omp"},
 	},
 }
 
