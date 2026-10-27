@@ -501,7 +501,7 @@
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/linksafe_test.go",
       "find": "\t\t\tat[c.scope] = h.place(to) != placeNone || here && shRelative(to)\n",
-      "replace": "\t\t\tat[c.scope] = false\n",
+      "replace": "\t\t\t_ = to\n\t\t\tat[c.scope] = false\n",
       "run": "TestTheHomeWriteScanReadsWhatRootWrites",
       "args": []
     },
