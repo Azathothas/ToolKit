@@ -65,6 +65,7 @@ func seedFile(t *testing.T, dir, rel, body string) string {
 // mirror or a proxy set in either was gone after the next ensure. Its settings
 // are drop-ins, and the account's sorts before engines.sh's systemd switch.
 func TestAReProvisioningKeepsTheOperatorsEngineSettings(t *testing.T) {
+	parallelCase(t)
 	dir := t.TempDir()
 	const (
 		mirror = "[[registry]]\nlocation = \"docker.io\"\n[[registry.mirror]]\nlocation = \"mirror.example\"\n"
@@ -97,6 +98,7 @@ func TestAReProvisioningKeepsTheOperatorsEngineSettings(t *testing.T) {
 // slirp4netns pin cannot outlast a pasta installed since. A main registries.conf
 // in the v1 format takes no drop-in, so it is written whole, as before.
 func TestAnEarlierReleasesEngineSettingsMoveToTheDropIns(t *testing.T) {
+	parallelCase(t)
 	dir := t.TempDir()
 	containers := seedFile(t, dir, "home/.config/containers/containers.conf",
 		"# Written by wsl-toolkit. cgroupfs works with either configured init.\n[engine]\ncgroup_manager = \"cgroupfs\"\n[network]\ndefault_rootless_network_cmd = \"slirp4netns\"\n")

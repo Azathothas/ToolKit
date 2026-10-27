@@ -283,6 +283,7 @@ func TestARedactionCommaListKeepsRegexCommasInsideSyntax(t *testing.T) {
 // and Finish waited on it with the command long finished. Measured once in eight
 // runs of a six-second command on this host.
 func TestFinishReturnsWhileTheHeartbeatIsStillAskingAboutTheDistribution(t *testing.T) {
+	parallelCase(t)
 	log, err := OpenRunLog(LogSettings{Tick: time.Millisecond}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatal(err)

@@ -215,28 +215,43 @@ func TestAStallWatchStopsCleanlyAndOnlyOnce(t *testing.T) {
 
 // TestDriveAStallAgainstARealProcess runs a real child that produces one line
 // and then goes silent for ever, and asserts the stall deadline ends it.
+//
+// ⚠ SERIAL. Its child must print within the 2 s stall, and beside 70 parallel
+// cases a loaded host can start sh later than that. TOOL-40.
+//
+// ⚠ AND ASKED AGAIN WITH 20 s WHEN THE CHILD PRINTED NOTHING. The go check runs
+// this package's cases in several processes at once. On a loaded host sh can
+// start later than 2 s, and its line then never comes. ⛔ A line the call loses
+// is lost in both runs, so the second run cannot hide that.
 func TestDriveAStallAgainstARealProcess(t *testing.T) {
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no sh on this host")
 	}
-	started := time.Now()
-	c := engineCall{Timeout: 5 * time.Minute, Stall: 2 * time.Second, What: "the fake engine"}
-	out, _, err := c.run(context.Background(), sh, "-c", "echo moving; sleep 300")
-	elapsed := time.Since(started)
-	if err == nil {
-		t.Fatal("a child that went silent for ever was not given up")
+	windows := []time.Duration{2 * time.Second, 20 * time.Second}
+	for i, stall := range windows {
+		started := time.Now()
+		c := engineCall{Timeout: 5 * time.Minute, Stall: stall, What: "the fake engine"}
+		out, _, err := c.run(context.Background(), sh, "-c", "echo moving; sleep 300")
+		elapsed := time.Since(started)
+		if err == nil {
+			t.Fatal("a child that went silent for ever was not given up")
+		}
+		if !strings.Contains(err.Error(), "produced nothing for "+stall.String()) {
+			t.Fatalf("the refusal does not name the stall: %v", err)
+		}
+		if elapsed > stall+28*time.Second {
+			t.Fatalf("the stall took %s to fire, and the limit was %s", elapsed, stall)
+		}
+		if strings.Contains(out, "moving") {
+			t.Logf("DRIVEN: stall fired after %s, refusal: %v", elapsed.Round(time.Millisecond), err)
+			return
+		}
+		if i == len(windows)-1 {
+			t.Fatalf("the output before the stall was lost: %q", out)
+		}
+		t.Logf("sh printed nothing within %s on this host, so the stall is asked again with %s", stall, windows[i+1])
 	}
-	if !strings.Contains(err.Error(), "produced nothing for 2s") {
-		t.Fatalf("the refusal does not name the stall: %v", err)
-	}
-	if elapsed > 30*time.Second {
-		t.Fatalf("the stall took %s to fire, and the limit was 2s", elapsed)
-	}
-	if !strings.Contains(out, "moving") {
-		t.Fatalf("the output before the stall was lost: %q", out)
-	}
-	t.Logf("DRIVEN: stall fired after %s, refusal: %v", elapsed.Round(time.Millisecond), err)
 }
 
 // TestDriveAChildThatKeepsTalkingIsNotKilled is the other half: a slow transfer

@@ -347,12 +347,20 @@ func (wk *worker) drop(module string) {
 // goTest runs `go test` in dir with the worker's environment, emptied first.
 // keep is the file the row changed on purpose, as the row names it, or empty.
 func (wk *worker) goTest(dir, keep string, args ...string) (testRun, error) {
+	return wk.goTestEnv(dir, keep, nil, args...)
+}
+
+// goTestEnv is goTest with more variables on top of the worker's own.
+func (wk *worker) goTestEnv(dir, keep string, extra []string, args ...string) (testRun, error) {
 	if err := wk.fresh(); err != nil {
 		return testRun{text: err.Error()}, err
 	}
 	cmd := exec.Command("go", append([]string{"test"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = wk.env
+	if len(extra) > 0 {
+		cmd.Env = append(wk.env[:len(wk.env):len(wk.env)], extra...)
+	}
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
@@ -525,6 +533,18 @@ type printer struct {
 	done  int
 	last  time.Time
 	busy  []activity
+	// handed counts the rows proved on their baseline's binary. embed.go.
+	handed int
+}
+
+// embedded counts one row proved on its baseline's binary.
+func (p *printer) embedded() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.handed++
 }
 
 // activity is what one worker runs, and since when.

@@ -43,6 +43,7 @@ func tarModes(t *testing.T, blob []byte) map[string]int64 {
 // script rather than the transfer. A consumer measured 396 of 396 needing
 // repair and shipped a `restore-modes.sh` plus a wrapper to call it.
 func TestTheExecutableBitSurvivesAFilesystemThatCannotHoldIt(t *testing.T) {
+	parallelCase(t)
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not on PATH, and the git index is what this reads")
 	}
@@ -752,6 +753,7 @@ func TestANativeJobNamesItsPlatform(t *testing.T) {
 // exists precisely because the other behaviour is available, so a later edit
 // reaching for it would silently stop matching every path.
 func TestASubdirectoryWorkspaceReadsItsOwnPaths(t *testing.T) {
+	parallelCase(t)
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not on PATH, and the git index is what this reads")
 	}

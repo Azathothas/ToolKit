@@ -56,6 +56,7 @@ func accountSectionRun(t *testing.T, taken, tool string) (string, string) {
 // ubuntu's does, refused the build outright. The account takes the next free id,
 // with useradd and with BusyBox's adduser.
 func TestTheAccountTakesUid1000OnlyWhereItIsFree(t *testing.T) {
+	parallelCase(t)
 	for _, tool := range []string{"useradd", "adduser"} {
 		_, made := accountSectionRun(t, "", tool)
 		if !strings.Contains(made, "1000") {
@@ -74,6 +75,7 @@ func TestTheAccountTakesUid1000OnlyWhereItIsFree(t *testing.T) {
 // ⛔ THE ID RANGE IS ONE NO OTHER ACCOUNT HOLDS. 100000 was written whoever held
 // it, so an image's own account shared its ids with this account's containers.
 func TestTheAccountsIdRangeStartsPastEveryOther(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")
@@ -118,6 +120,7 @@ func TestAGrantNamesTheAccountsOwnIds(t *testing.T) {
 // earlier release granted for 1000 is re-provisioned with its account's ids.
 // Options that name no uid are not judged.
 func TestTheVerifierRefusesAGrantMountedForAnotherUid(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")

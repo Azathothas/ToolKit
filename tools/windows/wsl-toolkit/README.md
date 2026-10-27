@@ -21,6 +21,12 @@ tools/windows/wsl-toolkit/
   internal/toolkit/adapters generated copy of adapters/, which the gate compares
   internal/toolkit/shipped  generated copy of the scripts/common/ files the
                             executable CARRIES, which the gate compares
+  internal/embedswap        hands a mutation row's bytes to a test binary;
+                            only test files import it
+  internal/parallelread     reads which parallel cases set shared state;
+                            only test files import it
+  internal/toolkitsource    reads internal/toolkit's source, type-checked;
+                            only its own test files hold code
   acceptance.ps1            real-Windows acceptance runner
   consumer.ps1              published-release smoke runner. -Exe drives a
                             working-tree build instead, which is what the
@@ -105,6 +111,43 @@ Add a test for every refusal and a row in
 whose removal could make the suite pass falsely. `repo mutate` proves those
 rows by deleting one guard at a time in a copy; a row whose test skips on this
 host is reported as skipped, and CI's ubuntu job proves it.
+
+⭐ **A row that changes a file `internal/toolkit` embeds needs no compile.**
+`repo mutate` hands the changed bytes to the binary its baseline built.
+`internal/embedswap` puts them in the embedding variable and in the file before
+any case runs. The file read back is the receipt, and only the process that
+runs the cases writes it. A process it starts takes the bytes and writes
+nothing. ⛔ A process that cannot take them stops and leaves a mark, and the row
+is then compiled.
+
+⛔ **A red run that took the bytes is kept, and so is a skip its baseline made
+too.** Any other verdict is the first of two runs, and a compile is the second.
+So a green run and a red compile are BROKEN. ⚠ A fake an `init` starts reads
+the row's bytes too, because a package variable takes them first.
+
+⭐ **A new embedded file goes in the tables of
+`internal/toolkit/mutate_embed_test.go`.**
+`internal/toolkitsource` refuses one that is missing, a file two variables
+embed, and a package variable set from an embedded one. It is its own package,
+so the test binary every row links again does not link `go/types`. `TOOL-40`.
+
+⭐ **A case that sets nothing shared calls `parallelCase`, and runs beside the
+others like it.** ⛔ A case that calls `t.Setenv`, changes the working directory
+or sets a package variable of any package stays serial. That holds through
+every function of this package it calls or passes on, to any depth.
+`TestNoParallelCaseSetsWhatAnotherReads` in `internal/toolkitsource` reads that
+from the type-checked source, with `internal/parallelread`. A method called on a package variable
+sets it, unless the method only reads, and so do `delete`, `clear`, `copy`,
+`append` and `&`.
+
+⚠ **What the reading does not see.** It does not see a write through a copy of
+a variable's map, slice or pointer, or through what a call returned. Nor does
+it see a value method of another package that writes through what its value
+holds, or another package's own setters, as `log.SetOutput`. It reads the files
+this host builds, and CI's Linux job reads the rest.
+
+⚠ **A case with a bound a loaded host can break stays serial too,** as a child
+that must never stall for 2 s. A case waits on what it needs, never on a sleep.
 
 ⚠ **A case that runs the acceptance suite's own PowerShell needs `pwsh`.** On
 Windows a missing one fails the case. Elsewhere it skips, as in the Linux proof's

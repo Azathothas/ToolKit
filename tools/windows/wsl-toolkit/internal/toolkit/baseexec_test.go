@@ -425,6 +425,7 @@ func TestAnEmptySetThroughARealHelperIsAnsweredAndReleased(t *testing.T) {
 }
 
 func TestTheArtifactListIsBoundedAndTheCountStaysExact(t *testing.T) {
+	parallelCase(t)
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	for i := 0; i < MaxListedArtifacts+3; i++ {

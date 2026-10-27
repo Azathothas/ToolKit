@@ -34,7 +34,11 @@ import (
 //	sh scripts/common/check.sh shipped --fix
 //
 //go:embed shipped
-var shippedTree embed.FS
+var shippedFiles embed.FS
+
+// shippedTree is the files this executable carries, through embedTree so a test
+// binary can change one. TOOL-40.
+var shippedTree embedTree = shippedFiles
 
 // ShippedFile is one file the executable carries, with the path it came from.
 type ShippedFile struct {

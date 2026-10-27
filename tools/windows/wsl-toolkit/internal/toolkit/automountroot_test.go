@@ -26,6 +26,7 @@ import (
 // exactly the shape that needs a check asserting the two agree rather than a
 // shared function. This is that check.
 func TestBothReadersOfTheAutomountRootAgree(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")
@@ -87,6 +88,7 @@ func TestBothReadersOfTheAutomountRootAgree(t *testing.T) {
 // reported its drives closed, reached no cmd.exe, and read a Windows directory on
 // PATH as none. Each of the three is driven with a hand-set root.
 func TestDoorsLooksForTheDrivesUnderTheAutomountRoot(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")
@@ -134,6 +136,7 @@ func TestDoorsLooksForTheDrivesUnderTheAutomountRoot(t *testing.T) {
 // drives closed and no Windows directory on PATH. ⚠ A path on no drive is not
 // read as one, which a root of / would make every path.
 func TestDoorsReadsARootOfSlash(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")
@@ -168,6 +171,7 @@ func TestDoorsReadsARootOfSlash(t *testing.T) {
 // /mnt, so a base adopted with `root = /` read its drives as off: automount off
 // verified over a guest with a drive mounted, and rw refused one that kept it.
 func TestTheVerifierCountsTheDrivesUnderARootOfSlash(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")

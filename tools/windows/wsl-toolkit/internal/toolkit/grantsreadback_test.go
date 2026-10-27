@@ -84,6 +84,7 @@ func TestAGrantThatCannotBeReadBackIsRefused(t *testing.T) {
 // off, which survives that redirect, so the case asks for the mode where the
 // shell has it. dash and ash have no such option, and are POSIX already.
 func TestTheReadBackProbeAnswersInARealShell(t *testing.T) {
+	parallelCase(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell on this host")

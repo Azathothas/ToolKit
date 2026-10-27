@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,7 +37,20 @@ import (
 // TK_FILE_<NAME>_B64. An adapter may also have a half on this machine, adapterHost.
 //
 //go:embed adapters
-var adapterTree embed.FS
+var adapterFiles embed.FS
+
+// embedTree is what this package reads an embedded directory through.
+//
+// ⚠ AN INTERFACE AND NOT embed.FS, so a test binary can hold the same tree with
+// one file changed. A mutation row on an embedded file then needs no compile of
+// this package, and internal/embedswap hands the file in. TOOL-40.
+type embedTree interface {
+	fs.ReadDirFS
+	fs.ReadFileFS
+}
+
+// adapterTree is the adapters this executable carries.
+var adapterTree embedTree = adapterFiles
 
 // BaseAdapter is one adapter a base configuration names.
 type BaseAdapter struct {
