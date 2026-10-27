@@ -31,7 +31,7 @@ func init() {
 //
 // ⛔ THE FAKE READS THE ROW'S SCRIPT, as it would from a compile of the row. A
 // fake that read the old one could fail its case for a reason the row did not
-// cause, and the harness would certify a guard nothing tested.
+// cause. The harness would then certify a guard nothing tested.
 func TestAFakeAnInitStartsReadsTheRowsBytes(t *testing.T) {
 	dir := t.TempDir()
 	with, file := filepath.Join(dir, "with"), filepath.Join(dir, "verify.sh")
