@@ -208,7 +208,7 @@ func TestTheEnginesRunAsRootWithTheConfigurationsSettings(t *testing.T) {
 	cfg.Base.RootEngine, cfg.Base.Kvm = true, true
 	b := &Base{cfg: cfg}
 	req := b.enginesRequest(nil)
-	if req.User != "root" || !bytes.Equal(req.Script, enginesScript) {
+	if req.User != "root" || !bytes.Equal(req.Script, enginesPayload()) {
 		t.Fatalf("engines.sh runs as %q, or is not the embedded script", req.User)
 	}
 	for k, want := range map[string]string{

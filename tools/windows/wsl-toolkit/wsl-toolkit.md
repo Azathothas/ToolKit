@@ -473,6 +473,45 @@ through it. An empty list means the plan held nothing.
 
 ---
 
+## ⭐ A cleanup after the base is gone
+
+```powershell
+wsl-toolkit base remove --yes
+wsl-toolkit gc            # what --apply would remove of what this machine holds
+wsl-toolkit gc --apply    # remove it
+```
+
+⛔ **With no base registered, `gc` still cleans up this machine's half.** It said
+there was nothing inside the base to clean up and exited 0. `resources` still listed
+the open records, the incoming directories and the gone base's sessions. `WSL-200`
+
+It plans and removes these, with the same dry run, `--json`, entries and exit code:
+
+| what | when |
+| --- | --- |
+| a job's host directory, and an incoming, upload or artifact directory | as with a base |
+| a session | its distribution is not registered |
+| an open record | its directory is gone, or it names a guest directory in a distribution that is not registered. The gone base's build record is closed too |
+
+The rules a cleanup with a base keeps still hold:
+
+- ⚠ A transfer whose record is under six hours old reads as in use, and
+  `--include-live` removes it. The age rule of `--older-than` applies as before.
+- `--job` and `--workspace` narrow it as they do with a base. A job nothing here
+  belongs to is refused with exit 2.
+- A build that holds the base's lock keeps its record, and so does a build whose
+  distribution was registered meanwhile.
+- `--caches` and `--images` find nothing: both live in the base's engine.
+- It runs through the helper too.
+
+Measured on a scratch home whose base was removed with a session running and a
+killed client's incoming directory. `resources` listed both and one open record.
+`gc --apply` removed the session and a job's directory, and kept the incoming
+directory as in use. `gc --apply --include-live` removed it and closed its record,
+and `resources` then listed none of them.
+
+---
+
 ## ⭐ A job from a second process
 
 A job has an id from its first second, and any process on this machine reaches
@@ -1050,6 +1089,51 @@ FILE. `--root` loads into root's engine. `--json` answers `wsl-toolkit-image-loa
 ⭐ **A job runs a loaded image with no registry.** Measured with podman 6.1.4: a
 reference that only the base's engine holds ran as a job, and through `base exec`
 with `--pull=never`. A host image was saved through `wslc`.
+
+---
+
+## ⭐ A registry mirror and an engine proxy
+
+`base.registry` names the mirrors the base's engines try before a registry, and the
+proxy their traffic takes. Each base was set up by hand inside the guest before.
+`WSL-196`
+
+```json
+{ "base": { "registry": {
+  "mirrors": { "docker.io": ["mirror.gcr.io"] },
+  "proxy": "http://proxy.example:3128",
+  "no_proxy": ["localhost", "127.0.0.1"]
+} } }
+```
+
+| field | what it does |
+| --- | --- |
+| `mirrors` | each registry as an image reference names it, with the mirrors tried before it, in order. The registry itself is tried last. A name has no scheme and is in lower case, such as `mirror.example:5000/library` |
+| `proxy` | the `http://`, `https://` or `socks5://` proxy the engine's traffic takes, pulls included |
+| `no_proxy` | the hosts, domains and ranges the engine reaches without the proxy. It needs `proxy` |
+
+- ⭐ **Provisioning writes it**, so a new base pulls through it from its first pull.
+- ⭐ **Every owner's `base ensure` writes it too**, so a working base takes a change
+  with no rebuild and no restart. A key taken away removes both files.
+- The files are `/etc/containers/registries.conf.d/99-wsl-toolkit-mirrors.conf` and
+  `/etc/containers/containers.conf.d/99-wsl-toolkit-proxy.conf`. Root's engine reads
+  them as the account's does, so the QEMU step pulls through them too.
+- ⛔ **A base without the key is byte for byte unchanged.** Neither file is written,
+  and `base status` and `config` print no new row.
+- `config` and `base status` print one `mirror` row for each registry, and one
+  `proxy` row. `base status --json` and `config --json` carry the key as written.
+- ⛔ **A proxy with a user or a password is refused.** `config` and `base status`
+  print the key, and every container sees it. Use a proxy that needs none, such as a
+  local one that holds the credential.
+- ⚠ **podman hands the proxy to every container it starts**, so each job sees
+  `http_proxy`, `https_proxy` and `no_proxy`, in both cases.
+- ⚠ A `wsl-toolkit-v8.0.0` build refuses a file that carries the key. Write
+  `"requires": "8.1.0"` beside it, so that build names the remedy.
+
+Measured on a scratch Alpine base with podman 5.8.9. `podman info` named
+`mirror.gcr.io`, and a debug pull of `docker.io/library/busybox` went to it. With
+`proxy` set to an address nothing answers, the account's pull and root's pull both
+failed with `proxyconnect`. A container's environment carried all six names.
 
 ---
 

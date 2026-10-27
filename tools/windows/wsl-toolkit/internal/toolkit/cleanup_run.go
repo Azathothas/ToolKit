@@ -77,16 +77,7 @@ func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, 
 		return plan, err
 	}
 	sessionDone := r.removeSessions(ctx, &plan, Of(remove, "session"))
-	hostDone := map[string]error{}
-	for _, t := range Of(remove, "host-dir") {
-		if err := RemoveInside(r.home, t.Name); err != nil {
-			plan.Failed = append(plan.Failed, "host directory "+t.Name+": "+err.Error())
-			hostDone[t.Name] = err
-			continue
-		}
-		hostDone[t.Name] = nil
-		plan.Removed = append(plan.Removed, "host directory "+t.Name)
-	}
+	hostDone := r.removeHostDirs(&plan, Of(remove, "host-dir"))
 	for i, t := range remove {
 		e := &plan.Entries[i]
 		switch t.Kind {
@@ -157,18 +148,7 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 	for id := range openIDs {
 		liveJob[id] = true
 	}
-	// ⭐ EACH JOB'S PROJECT, read once from the record its claim wrote, so its
-	// container and its two directories answer `gc --workspace` together.
-	// WSL-114.
-	recorded := map[string]string{}
-	workspaceOf := func(id string) string {
-		ws, ok := recorded[id]
-		if !ok {
-			ws = RecordedWorkspace(r.home, id)
-			recorded[id] = ws
-		}
-		return ws
-	}
+	workspaceOf := r.workspaceReader()
 	var targets []CleanupTarget
 	for _, c := range containers {
 		id := jobIDFromContainer(c.Name)
@@ -190,6 +170,57 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 		})
 	}
 
+	targets = append(targets, r.hostTargets(ctx, liveJob, workspaceOf)...)
+	if ledgerErr != nil {
+		// Reported rather than swallowed: a ledger that cannot be read means the
+		// liveness answer above is weaker than it looks.
+		r.log("the ledger could not be read, so a job between its container and its artifacts may not be seen as live: " + ledgerErr.Error())
+	}
+	return targets, images, nil
+}
+
+// removeHostDirs removes each selected host directory inside the state
+// directory, and answers each one's outcome by path, nil for removed.
+func (r *Runner) removeHostDirs(plan *CleanupPlan, targets []CleanupTarget) map[string]error {
+	done := map[string]error{}
+	for _, t := range targets {
+		if err := RemoveInside(r.home, t.Name); err != nil {
+			plan.Failed = append(plan.Failed, "host directory "+t.Name+": "+err.Error())
+			done[t.Name] = err
+			continue
+		}
+		done[t.Name] = nil
+		plan.Removed = append(plan.Removed, "host directory "+t.Name)
+	}
+	return done
+}
+
+// workspaceReader answers each job's project, read once from the record its
+// claim wrote.
+//
+// ⭐ ONE ANSWER PER JOB, so its container and its two directories answer `gc
+// --workspace` together. WSL-114.
+func (r *Runner) workspaceReader() func(string) string {
+	recorded := map[string]string{}
+	return func(id string) string {
+		ws, ok := recorded[id]
+		if !ok {
+			ws = RecordedWorkspace(r.home, id)
+			recorded[id] = ws
+		}
+		return ws
+	}
+}
+
+// hostTargets is this machine's half of the survey: each job's host directory,
+// each session, and the helper's directories. liveJob names the jobs that are
+// live, and workspaceOf answers each job's project.
+//
+// ⭐ ONE COPY FOR BOTH CLEANUPS. The one with a base and the one without read
+// this machine's half through here, so the two cannot see different sets.
+// WSL-200.
+func (r *Runner) hostTargets(ctx context.Context, liveJob map[string]bool, workspaceOf func(string) string) []CleanupTarget {
+	var targets []CleanupTarget
 	hostJobs := filepath.Join(r.home, "jobs")
 	if entries, err := os.ReadDir(hostJobs); err == nil {
 		for _, e := range entries {
@@ -222,12 +253,7 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 	for _, dir := range []string{"uploads", "artifacts", "incoming"} {
 		targets = append(targets, r.helperStateTargets(dir, openDirs)...)
 	}
-	if ledgerErr != nil {
-		// Reported rather than swallowed: a ledger that cannot be read means the
-		// liveness answer above is weaker than it looks.
-		r.log("the ledger could not be read, so a job between its container and its artifacts may not be seen as live: " + ledgerErr.Error())
-	}
-	return targets, images, nil
+	return targets
 }
 
 // helperStateTargets brings the helper's own two directories into the survey.

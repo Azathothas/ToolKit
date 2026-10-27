@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -273,11 +274,11 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 		if err := unregisteredJobRefusal(home, policy); err != nil {
 			return exitCannot, err
 		}
-		logf("  %s is not registered, so there is nothing inside it to clean up", st.Name)
-		if *asJSON {
-			return exitOK, writeJSON(toolkit.CleanupPlan{Schema: toolkit.CleanupSchema, DryRun: !*apply, Entries: []toolkit.CleanupEntry{}})
-		}
-		return exitOK, nil
+		// ⛔ THIS MACHINE'S HALF IS STILL CLEANED UP. gc returned here, so the
+		// records, incoming directories and sessions `resources` listed stayed,
+		// and `gc --apply` removed none of them. WSL-200.
+		plan, err := runner.CleanupHost(ctx, *apply, policy)
+		return finishGC(plan, err, *asJSON)
 	}
 	plan, err := runner.Cleanup(ctx, *apply, policy, *images)
 	return finishGC(plan, err, *asJSON)
@@ -513,6 +514,7 @@ func cmdConfig(args []string) (int, error) {
 	}
 	fmt.Fprintf(os.Stderr, "  access      automount %s, interop %s, systemd %v, passwordless sudo %v, toolset %s\n",
 		automount, interop, cfg.Base.Systemd, cfg.Base.PasswordlessSudo, toolset)
+	renderRegistryRows(os.Stderr, cfg.Base.Registry)
 	mounts, err := cfg.ResolvedBaseMounts()
 	if err != nil {
 		return exitCannot, err
@@ -601,6 +603,15 @@ func renderJobDefaults(cfg toolkit.Config) {
 	}
 	for _, c := range j.Cache {
 		fmt.Fprintf(os.Stderr, "  cache       %s\n", c)
+	}
+}
+
+// renderRegistryRows writes base.registry, one row for each mirrored registry
+// and one for the proxy, and nothing where the key is not set. `config` and
+// `base status` both print it. WSL-196.
+func renderRegistryRows(out io.Writer, r *toolkit.RegistryConfig) {
+	for _, row := range toolkit.RegistryRows(r) {
+		fmt.Fprintf(out, "  %-11s %s\n", row[0], row[1])
 	}
 }
 

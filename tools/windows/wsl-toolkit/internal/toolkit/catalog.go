@@ -117,6 +117,10 @@ type BaseConfig struct {
 	// the kvm group and a systemd unit opens the node to that group at every
 	// start. Opt-in, and it needs systemd. WSL-130.
 	Kvm bool `json:"kvm,omitempty"`
+	// Registry is the mirrors the base's engines try before a registry, and the
+	// proxy their traffic takes. ⚠ Nil, which every file without the key reads
+	// as, writes nothing into the base. WSL-196.
+	Registry *RegistryConfig `json:"registry,omitempty"`
 }
 
 // BaseMount is one Windows directory made visible inside a base.
@@ -595,6 +599,11 @@ func loadConfigFile(path, from string) (Config, error) {
 	cfg.Base.RootEngine = stored.Base.RootEngine
 	cfg.Base.RuntimeDir = stored.Base.RuntimeDir
 	cfg.Base.Kvm = stored.Base.Kvm
+	// ⚠ A KEY THAT STATES NOTHING IS NO KEY, so `"registry": {}` fingerprints and
+	// reports as a file without it. WSL-196.
+	if !stored.Base.Registry.empty() {
+		cfg.Base.Registry = stored.Base.Registry
+	}
 	// Every jobs key goes through the copy a working tree's file lends with.
 	// WSL-131.
 	written, _ := lentKeys(b)
@@ -768,6 +777,9 @@ func (c Config) Validate() error {
 		}
 	}
 	if err := validateAdapters(c); err != nil {
+		return err
+	}
+	if err := validateRegistry(c.Base.Registry); err != nil {
 		return err
 	}
 	// ⛔ A RULE THAT HAS TO RUN AT EVERY BOOT NEEDS SOMETHING THAT RUNS AT EVERY

@@ -45,12 +45,16 @@ var packagesScript []byte
 // names that knew six managers where the table knew twelve, and a distribution that
 // renamed a package had to be fixed in both. WSL-70.
 func provisionPayload() []byte {
-	payload := make([]byte, 0, len(packagesScript)+len(loginShellScript)+2+len(provisionScript))
+	payload := make([]byte, 0, len(packagesScript)+len(loginShellScript)+len(mirrorsScript)+3+len(provisionScript))
 	payload = append(payload, packagesScript...)
 	payload = append(payload, '\n')
 	// ⭐ loginshell.sh's functions come next, so the account is created with the
 	// shell every later `base ensure` holds it to. WSL-143.
 	payload = append(payload, loginShellScript...)
+	payload = append(payload, '\n')
+	// ⭐ AND mirrors.sh's, so a new base pulls through base.registry from its
+	// first pull, which is the health probe's. WSL-196.
+	payload = append(payload, mirrorsScript...)
 	payload = append(payload, '\n')
 	return append(payload, provisionScript...)
 }
@@ -185,6 +189,9 @@ type BaseAccessState struct {
 	RootEngine bool `json:"root_engine"`
 	RuntimeDir bool `json:"runtime_dir"`
 	Kvm        bool `json:"kvm"`
+	// Registry is base.registry as configured. ⚠ Absent where the key is, so an
+	// unchanged base's report carries no new field. WSL-196.
+	Registry *RegistryConfig `json:"registry,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -295,6 +302,9 @@ func (b *Base) configuredState() (BaseState, error) {
 			RootEngine: b.cfg.Base.RootEngine, RuntimeDir: b.cfg.Base.RuntimeDir, Kvm: b.cfg.Base.Kvm,
 		},
 		Naming: b.naming(),
+	}
+	if !b.cfg.Base.Registry.empty() {
+		st.Access.Registry = b.cfg.Base.Registry
 	}
 	for _, a := range b.cfg.Base.Adapters {
 		st.Access.Adapters = append(st.Access.Adapters, a.Name)
@@ -1829,7 +1839,7 @@ func hasLine(out, line string) bool {
 // provisionRequest is the one provisioning run: the payload, as root, with the
 // configuration's settings in its environment.
 func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string, out io.Writer) ExecRequest {
-	return ExecRequest{
+	req := ExecRequest{
 		Distro: b.cfg.Base.Name,
 		User:   "root",
 		Script: provisionPayload(),
@@ -1849,6 +1859,11 @@ func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string,
 		Stdout:  out,
 		Stderr:  out,
 	}
+	// WSL-196: base.registry's two drop-ins, which engines.sh is handed too.
+	for k, v := range registryEnv(b.cfg.Base.Registry) {
+		req.Env[k] = v
+	}
+	return req
 }
 
 // baseMountPayloads renders explicit grants for /etc/fstab and for the

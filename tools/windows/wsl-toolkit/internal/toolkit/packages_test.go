@@ -15,14 +15,16 @@ import (
 // provisioning sends. WSL-70: the provisioner kept a second map of package names
 // that knew six managers where the shared table knew twelve. ⭐ loginshell.sh's
 // functions sit between the two, so the account is created with the shell every
-// ensure holds it to. WSL-143.
+// ensure holds it to. WSL-143. ⭐ mirrors.sh's come next, so a new base's first
+// pull takes base.registry. WSL-196.
 func TestTheProvisioningRunIsTheSharedTableThenTheProvisioner(t *testing.T) {
 	b := &Base{cfg: Config{Base: BaseConfig{Name: "wsl-toolkit-tbl", User: "agent"}}}
 	req := b.provisionRequest(AutomountOff, BaseInteropOff, BaseToolsetDeveloper, SharedTmpfsOn, io.Discard)
 	want := append(append(append([]byte{}, packagesScript...), '\n'), loginShellScript...)
+	want = append(append(want, '\n'), mirrorsScript...)
 	want = append(append(want, '\n'), provisionScript...)
 	if !bytes.Equal(req.Script, want) {
-		t.Fatalf("the provisioning run sends %d bytes that are not the shared table, the login shell's functions and then the provisioner", len(req.Script))
+		t.Fatalf("the provisioning run sends %d bytes that are not the shared table, the login shell's and mirrors.sh's functions and then the provisioner", len(req.Script))
 	}
 	if req.User != "root" || req.Env["TK_TOOLSET"] != BaseToolsetDeveloper {
 		t.Errorf("the provisioning run is as %q with toolset %q", req.User, req.Env["TK_TOOLSET"])

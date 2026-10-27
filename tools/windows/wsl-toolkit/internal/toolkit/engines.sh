@@ -9,6 +9,8 @@
 # false. TK_RUN_PREFIX names the engine's run directory, which the account's uid
 # ends, and TK_RUN_STATE_B64 is the check `run` sends for a stale one.
 # TK_BOOT_B64 is the text of the script WSL runs at every start. WSL-178.
+# TK_REGISTRY_MIRRORS_B64 and TK_REGISTRY_PROXY_B64 are base.registry's two
+# drop-ins, which mirrors.sh writes. WSL-196.
 #
 # ⭐ EVERY FILE HERE BELONGS TO ONE SETTING, and that setting turned off removes
 # it. The cgroup delegation and the run state's upkeep are the parts that are not
@@ -271,6 +273,12 @@ else
     rm -f "$OLD_BOOT"
   fi
 fi
+
+# -- the registry mirrors and the engine proxy, WSL-196 --------------------------
+# ⭐ mirrors.sh arrives ahead of this script, as it arrives ahead of provision.sh,
+# so a base that already works takes a changed base.registry here with no
+# rebuild. A base without the key gets neither file and no line.
+apply_registry_settings || die "base.registry's drop-ins could not be written"
 
 # -- root's engine, WSL-130 ------------------------------------------------------
 # ⛔ ROOT'S PODMAN WANTS THE SYSTEMD CGROUP MANAGER BY DEFAULT, AND THAT NEEDS A

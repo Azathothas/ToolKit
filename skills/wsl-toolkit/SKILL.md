@@ -134,6 +134,7 @@ Start there whenever something is unexpected.
 | `toolset` | what the base installs as root. It is `none` by default |
 | `mounts` | the grants. One Windows directory each |
 | `adapters` | the software `base ensure` installs, in order. Each installs with `pacman -Syu --needed`, which upgrades every package in the base |
+| `registry` | `mirrors` the engines try before a registry, and the `proxy` their pulls take, with `no_proxy`. `base ensure` applies a change with no rebuild. A proxy with a password is refused, and every job's container sees the proxy |
 
 | field under `jobs` | what it means |
 | --- | --- |
@@ -319,6 +320,9 @@ caller that Windows redirects holds the name only against callers on its own sid
 `gc --workspace . --apply` removes this project's jobs and no other project's. It
 skips a job that recorded no workspace, and `gc --job ID --apply` removes that one.
 It is refused through the helper.
+
+After `base remove`, `gc --apply` still removes what this machine holds for the gone
+base: its job and incoming directories, its sessions and its stale records.
 
 ---
 

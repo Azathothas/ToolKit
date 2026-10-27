@@ -92,6 +92,34 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+### ⛔ What `gc` with no base breaks, and what a caller does
+
+`WSL-200`. In `wsl-toolkit-v8.1.0`. It fixes a false pass: `gc --apply` with no
+base registered removed nothing and exited 0, while `resources` said it cleared
+what it listed. A break by the table above, because its output and its exit
+change.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| with no base registered, `gc --apply` removes this machine's half: job, incoming, upload and artifact directories, the gone base's sessions and its stale records | ran `gc --apply` after `base remove` and kept those on purpose | moves what it keeps out of the state directory first, or runs `gc` without `--apply` |
+| it exits 1 when one of those cannot be removed, as `gc` with a base does. It exited 0 | reads exit 0 as the only answer `gc` gives with no base | reads `failed` in `--json` |
+| `gc --json` with no base lists the plan and its `entries`. It printed an empty plan | read the empty plan as "no base" | reads `base status --json` for whether the base is registered |
+| stderr prints the plan with a first line naming the half it cleans. It printed one line saying nothing was inside the base | treats every stderr line of `gc` as one it knows | reads `--json` |
+| through the helper, a cleanup with no base answers this machine's half. It failed reading the guest's home | | nothing |
+
+### ⭐ What `base.registry` adds, and what a caller reads
+
+`WSL-196`. In `wsl-toolkit-v8.1.0`. ⛔ A base without the key is byte for byte
+unchanged: no file in it, no line on stderr, and no field in any report.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `base.registry` names registry mirrors, a proxy and its exceptions. Provisioning and every owner's `base ensure` write them into two drop-ins in `/etc/containers` | | sets it, or nothing |
+| `base status --json` adds `access.registry`, and `config --json` adds `base.registry`, only where the key is set | | reads them, or ignores them |
+| `base status` and `config` print a `mirror` row for each registry and a `proxy` row, only where the key is set | | nothing: a configuration without the key prints the rows it printed |
+| with `proxy` set, podman hands the proxy to every container it starts, so a job sees `http_proxy`, `https_proxy` and `no_proxy` | relies on a job's container having no proxy | leaves `proxy` unset on that base |
+| a `wsl-toolkit-v8.0.0` build refuses a file that carries the key, as an unknown key | shares one file between both builds | writes `"requires": "8.1.0"` beside it, or updates every build |
+
 ### ⛔ What the canonical default base name breaks, and what a caller does
 
 `WSL-167`, ruling 33. In `wsl-toolkit-v8.0.0`. A break by the table above, so the release

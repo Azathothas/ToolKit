@@ -74,6 +74,8 @@ type enginesHost struct {
 	uid  string
 	user string
 	log  string
+	// registry is the configuration's base.registry, nil for none. WSL-196.
+	registry *RegistryConfig
 }
 
 // newEnginesHost skips where there is no POSIX shell to run the script in.
@@ -150,7 +152,7 @@ func (h *enginesHost) read(rel string) string {
 
 func (h *enginesHost) script() string {
 	d := filepath.ToSlash(h.dir)
-	s := string(enginesScript)
+	s := string(enginesPayload())
 	for _, r := range [][2]string{
 		{`home=$(getent passwd "$TK_USER" 2>/dev/null | cut -d: -f6) || home=`, "home=" + d + "/home"},
 		{"/usr/lib/systemd/user/", d + "/usr/lib/systemd/user/"},
@@ -188,6 +190,9 @@ func (h *enginesHost) run(rootEngine, runtimeDir, kvm bool) (string, time.Durati
 		"TK_RUN_PREFIX="+filepath.ToSlash(h.dir)+"/tmp/wsl-toolkit-run-",
 		"TK_RUN_STATE_B64="+base64.StdEncoding.EncodeToString(staleRunStatePayload()),
 		"TK_BOOT_B64="+base64.StdEncoding.EncodeToString(bootScript))
+	for k, v := range registryEnv(h.registry) {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	start := time.Now()
