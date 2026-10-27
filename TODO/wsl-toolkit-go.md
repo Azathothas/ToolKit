@@ -17088,7 +17088,7 @@ Done in `wsl-toolkit-v9.0.0`. `base.registry` names mirrors for each registry, a
 
 Drives:
 - Builder: the drop-in carried mirror.gcr.io, `podman info` named it and a debug pull went to it. A dead proxy failed the account's and root's pulls with `proxyconnect`, a container saw all six names, and taking the key away removed both files.
-- This pass: with a dead proxy and the probe image removed, `base ensure` exited 2, not judged. With the key taken away, it removed the proxy drop-in, asked the probe again and exited 0.
+- This pass: with a dead proxy and the probe image removed, `base ensure` exited 2, not judged. Then, with no key, the drop-in went, the probe ran again and the ensure exited 0.
 
 Proof: check-go exit 0. Linux proof proved tree 688e1bb (commit a9ccd3f), 41 of 41 rows red. The gate agrees except the worktree's hooks rule.
 
@@ -17196,7 +17196,7 @@ wsl-toolkit --instance r81f base ensure   -> exit 0
 ```
 No `mount -a failed` line was printed. Under 8.0.0 the same stop left both grants unmounted and printed "wsl: Processing /etc/fstab with mount -a failed."
 
-linux-proof --rows-since 5001ccd: proved tree 8fff567ba9fa60a2a36e638a4f2697b06f65edf4 (commit 1e7049a), 29 of 29 guards. check-go exit 0. Gate: only the worktree's inherited hooks rule fails.
+linux-proof --rows-since 5001ccd: proved tree 8fff567 (commit 1e7049a), 29 of 29 guards. check-go exit 0. Gate: only the worktree's inherited hooks rule fails.
 
 Built on `r81/alpine`, then repaired after an adversarial review whose ten findings were all fixed (`1e7049a`); every new row red on Windows and on Linux.
 
