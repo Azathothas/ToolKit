@@ -251,7 +251,10 @@ func runMountHelper(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
 	sh, bin := grantsShell(t)
 	at := shellPath(t, dir)
-	seedFile(t, dir, "sbin/mount.drvfs", wslHelperStandIn)
+	// ⚠ EXECUTABLE, as WSL's is. The helper runs it by its path.
+	if err := os.Chmod(seedFile(t, dir, "sbin/mount.drvfs", wslHelperStandIn), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	s := markedSection(t, []byte(mountHelperText(t)), "the mount helper")
 	for _, r := range [][2]string{
 		{"helper=/sbin/mount.drvfs\n", "helper=" + at + "/sbin/mount.drvfs\n"},
