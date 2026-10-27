@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 259  open 2  blocked 0  done 257
+total 260  open 3  blocked 0  done 257
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 0 | 0 | 96 | 96 |
-| P2 | 1 | 0 | 119 | 120 |
+| P2 | 2 | 0 | 119 | 121 |
 | P3 | 1 | 0 | 34 | 35 |
-| **all** | **2** | **0** | **257** | **259** |
+| **all** | **3** | **0** | **257** | **260** |
 
 ---
 
@@ -296,6 +296,7 @@ total 259  open 2  blocked 0  done 257
 | WSL-199 | P3 | S | done | `engines.sh` calls `setpriv --reuid`, which BusyBox rejects | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-200 | P2 | S | done | `gc` cleans nothing on the host once the base is gone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-201 | P2 | M | open | An adapter's root write in the account's home follows a link the account placed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-202 | P2 | M | open | A root write outside the home follows a path the account made | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

@@ -17387,3 +17387,40 @@ Exit 0, with a case per adapter where a link planted at each path it writes leav
 ## Closing
 
 Open.
+
+## WSL-202. A root write outside the home follows a path the account made
+
+**Source** the review of `WSL-201`, which swept every embedded script for root writes the account can steer
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Root writes outside the account's home at paths the account can shape. `grants.sh` makes and chmods a grant's target, and mounts it, through any link on the way. A target nested inside another read-write grant sits on `drvfs`, where the account can plant that link. muse's reporter self-test runs as root in a fixed name under `/tmp`, which the account can make first.
+
+## Premise
+
+Read at `r81/linksafe`: `grants.sh` validates duplicate targets and allows nesting (`catalog.go`), then runs `mkdir -p`, `chmod 755` and `mount` as root. The muse adapter runs `herdr-agent-state.sh --selftest` as root, which uses `mkdir -p` on `${TMPDIR:-/tmp}/herdr-muse-selftest.$$`. muse's `probe.sh` removes the account's scratch directory as root.
+
+## Approach
+
+Validation refuses a grant target nested in another, across configuration files through the ledger. `grants.sh` refuses a target that resolves elsewhere or sits under a live `drvfs` mount, and chmods only a directory it just made. The self-test makes its directory with `mktemp -d`, and the probe removes the account's scratch as the account.
+
+## Consumers
+
+A configuration that nests one grant's target inside another's is refused. Its section is in `docs/consumers.md`.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where a nested target is refused, a target behind a link is refused before anything is made, and the self-test's directory is its own.
+
+---
+
+## Closing
+
+Open.
