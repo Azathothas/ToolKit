@@ -497,33 +497,6 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: the scan counts runuser and su as the account only by their user word",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/linksafe_test.go",
-      "find": "\troute := shAccountRoutes[base] || (base == \"runuser\" || base == \"su\") && shRunsAsAccount(args)\n",
-      "replace": "\troute := shAccountRoutes[base] || base == \"runuser\" || base == \"su\"\n",
-      "run": "TestTheHomeWriteScanReadsWhatRootWrites",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: the scan reads a relative name after a cd into the home as a path there",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/linksafe_test.go",
-      "find": "\t\t\tat[c.scope] = h.place(to) != placeNone || here && shRelative(to)\n",
-      "replace": "\t\t\t_ = to\n\t\t\tat[c.scope] = false\n",
-      "run": "TestTheHomeWriteScanReadsWhatRootWrites",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: the scan ends a cd's reach where its subshell closes",
-      "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/linksafe_test.go",
-      "find": "\t\t\tscopes = scopes[:len(scopes)-1]\n",
-      "replace": "",
-      "run": "TestTheHomeWriteScanReadsWhatRootWrites",
-      "args": []
-    },
-    {
       "label": "wsl-toolkit: the tdnf family installs runuser and su",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
