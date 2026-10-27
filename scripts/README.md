@@ -273,6 +273,14 @@ not proved this tree builds.
 A module that does not build is not vetted or tested. The findings come back
 in module order, whichever module finished first.
 
+⭐ **`internal/toolkit`'s cases run in 2 to 4 processes at once.** Most of its
+cases set a variable, so one process ran them one after another. The check
+lists the cases from the package's own binary and deals them out as `-run`
+patterns. ⛔ A case that no pattern matches, or that two match, fails the
+check. A package is split only where its cases keep their state to their own
+process. `splitTests` in `tools/check/internal/checks/gotest.go` names each one
+and why. `TOOL-40` has the figures.
+
 ⚠ **On four CPUs with an empty build cache, as CI has, this is slower.** The
 slowest module sets the floor, and the others compete with it. Pinned to four
 CPUs in `golang:1.25`, the `go` check took a median of 107 s against 103 s one

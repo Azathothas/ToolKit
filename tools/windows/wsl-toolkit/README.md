@@ -106,6 +106,20 @@ whose removal could make the suite pass falsely. `repo mutate` proves those
 rows by deleting one guard at a time in a copy; a row whose test skips on this
 host is reported as skipped, and CI's ubuntu job proves it.
 
+⭐ **A row that changes a file `internal/toolkit` embeds needs no compile.**
+`repo mutate` hands the changed bytes to the binary its baseline built.
+`internal/toolkit/mutate_embed_test.go` puts them in the embedding variable and
+in the file before any case runs. Only a red run is kept, and anything else is
+proved the old way. A new embedded file goes in that file's tables, and
+`TestEveryEmbeddedFileCanTakeAMutation` refuses one that is missing. `TOOL-40`
+
+⭐ **A case that sets nothing shared calls `parallelCase`, and runs beside the
+others like it.** ⛔ A case that calls `t.Setenv`, changes the working directory
+or sets a package variable stays serial, through any helper it calls.
+`TestNoParallelCaseSetsWhatAnotherReads` reads that from the source. ⚠ A case
+with a bound a loaded host can break stays serial too, as a child that must
+never stall for 2 s.
+
 ⚠ **A case that runs the acceptance suite's own PowerShell needs `pwsh`.** On
 Windows a missing one fails the case. Elsewhere it skips, as in the Linux proof's
 image, and its row's label ends `under pwsh`. CI's ubuntu runner carries `pwsh`.
