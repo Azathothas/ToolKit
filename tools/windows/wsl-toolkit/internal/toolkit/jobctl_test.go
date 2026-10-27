@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -205,15 +207,44 @@ func TestAStopIsFoundInTheLedger(t *testing.T) {
 
 // followed is one follower running in its own goroutine. Its buffers are read
 // only after done answers.
+//
+// ⛔ read CLOSES ON THE FOLLOWER'S FIRST WRITE TO stdout, and a case waits on it
+// rather than on a sleep. A follower that started late on a loaded host read a
+// line appended after the sleep as one of the last lines. TOOL-40.
 type followed struct {
 	out, err bytes.Buffer
 	done     chan error
+	read     chan struct{}
 }
 
 func follow(ctx context.Context, dir string, tail int) *followed {
-	f := &followed{done: make(chan error, 1)}
-	go func() { f.done <- FollowTranscript(ctx, dir, tail, &f.out, &f.err) }()
+	f := &followed{done: make(chan error, 1), read: make(chan struct{})}
+	out := &firstWrite{to: &f.out, wrote: f.read}
+	go func() { f.done <- FollowTranscript(ctx, dir, tail, out, &f.err) }()
 	return f
+}
+
+// firstWrite closes wrote once its first write landed.
+type firstWrite struct {
+	to    io.Writer
+	wrote chan struct{}
+	once  sync.Once
+}
+
+func (w *firstWrite) Write(p []byte) (int, error) {
+	n, err := w.to.Write(p)
+	w.once.Do(func() { close(w.wrote) })
+	return n, err
+}
+
+// readOnce waits for the follower's first write to stdout.
+func (f *followed) readOnce(t *testing.T) {
+	t.Helper()
+	select {
+	case <-f.read:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the follower never wrote what the transcript already held")
+	}
 }
 
 func appendFile(t *testing.T, path, text string) {
@@ -240,7 +271,7 @@ func TestFollowingATranscriptReadsUntilTheOwnerLetsGo(t *testing.T) {
 	dir := filepath.Join(home, "jobs", testJobID)
 	appendFile(t, filepath.Join(dir, "stdout.log"), "one\n")
 	f := follow(context.Background(), dir, 0)
-	time.Sleep(2 * FollowPoll)
+	f.readOnce(t)
 	appendFile(t, filepath.Join(dir, "stdout.log"), "two\n")
 	appendFile(t, filepath.Join(dir, "stderr.log"), "err\n")
 	select {
@@ -310,7 +341,7 @@ func TestFollowingFromTheTailStartsAtTheLastLines(t *testing.T) {
 	dir := filepath.Join(home, "jobs", testJobID)
 	appendFile(t, filepath.Join(dir, "stdout.log"), "1\n2\n3\n")
 	f := follow(context.Background(), dir, 2)
-	time.Sleep(2 * FollowPoll)
+	f.readOnce(t)
 	appendFile(t, filepath.Join(dir, "stdout.log"), "4\n")
 	owner.Release()
 	if err := <-f.done; err != nil {
