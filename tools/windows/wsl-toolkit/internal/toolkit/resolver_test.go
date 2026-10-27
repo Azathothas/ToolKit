@@ -98,7 +98,13 @@ func sealedBootRun(t *testing.T) (string, string) {
 	seedFile(t, d, "proc/mounts", "none "+at+"/mnt/wsl tmpfs rw 0 0\n")
 	h := bootScriptHost{t: t, dir: d}
 	script := "sleep() { printf 'nameserver 192.0.2.7\\n' > '" + at + "/mnt/wsl/resolv.conf'; }\numount() { :; }\n" + h.script("off")
-	if out, err := exec.Command(sh, "-c", script).CombinedOutput(); err != nil {
+	// ⚠ FROM A FILE. The boot script grew past what Git's sh.exe launcher passes
+	// on in one argument, and a script cut short there is a syntax error. WSL-198.
+	run := filepath.Join(d, "boot-run.sh")
+	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(sh, filepath.ToSlash(run)).CombinedOutput(); err != nil {
 		t.Fatalf("the boot script failed: %v\n%s", err, out)
 	}
 	bootLog, _ := os.ReadFile(filepath.Join(d, "run", "wsl-toolkit-boot.log"))

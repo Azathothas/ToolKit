@@ -385,6 +385,11 @@ func (h bootScriptHost) script(seal string) string {
 	d := filepath.ToSlash(h.dir)
 	s := "seal=" + seal + "\naccount=agent\n" + markedSection(h.t, bootScript, "the boot script")
 	for _, r := range [][2]string{
+		// ⚠ The grants' lock and WSL's mount helper are the case's own. WSL-198.
+		{"gb_helper=/sbin/mount.drvfs\n", "gb_helper=" + d + "/sbin/mount.drvfs\n"},
+		{"gb_link=/usr/local/bin/mount.drvfs\n", "gb_link=" + d + "/usr/local/bin/mount.drvfs\n"},
+		{"gb_mount_bin=/bin/mount\n", "gb_mount_bin=" + d + "/bin/mount\n"},
+		{"/var/lib/", d + "/var/lib/"},
 		{"/run/", d + "/run/"},
 		{"/usr/local/lib/", d + "/usr/local/lib/"},
 		{"/mnt/wsl", d + "/mnt/wsl"},

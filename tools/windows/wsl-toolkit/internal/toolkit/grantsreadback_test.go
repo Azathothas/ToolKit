@@ -117,6 +117,9 @@ func TestTheReadBackProbeAnswersInARealShell(t *testing.T) {
 // grant there was refused, and its account could write in it until then. A
 // remount read-only holds, also measured. A read-write grant is left as it is.
 // WSL-188.
+//
+// ⚠ A BIND REMOUNT, as the boot script makes one: the mount point goes read-only
+// and the filesystem is asked nothing. WSL-198.
 func TestAReadOnlyGrantThatCameUpWritableIsRemountedReadOnly(t *testing.T) {
 	grantsCase(t)
 	for _, mode := range []string{"ro", "rw"} {
@@ -128,7 +131,7 @@ func TestAReadOnlyGrantThatCameUpWritableIsRemountedReadOnly(t *testing.T) {
 		if err != nil || !strings.Contains(out, "grant "+mode+" /workspaces/mine") {
 			t.Fatalf("a %s grant whose mount drops ro answered %v:\n%s", mode, err, out)
 		}
-		remounted := strings.Contains(read("log"), "mount -o remount,ro /workspaces/mine")
+		remounted := strings.Contains(read("log"), "mount -o remount,bind,ro /workspaces/mine")
 		if remounted != (mode == "ro") {
 			t.Errorf("a %s grant whose mount drops ro was remounted read-only: %v\n%s", mode, remounted, read("log"))
 		}

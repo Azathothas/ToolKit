@@ -2,6 +2,141 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a start mounts each grant WSL did not",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/boot.sh",
+      "find": "        if gb_mount \"$gb_target\"; then\n",
+      "replace": "        if false; then\n",
+      "run": "TestTheBootScriptMountsEachGrantWSLDidNotInItsMode",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a start makes a read-only grant that came up writable read-only",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/boot.sh",
+      "find": "      if [ \"$gb_want\" = ro ] \u0026\u0026 [ \"$gb_mode\" = rw ]; then\n",
+      "replace": "      if false; then\n",
+      "run": "TestTheBootScriptMakesAGrantWSLMountedWritableReadOnly|TestTheBootScriptMountsEachGrantWSLDidNotInItsMode",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a start mounts a grant with WSL's helper directory on PATH",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/boot.sh",
+      "find": "    PATH=${PATH:+$PATH:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n",
+      "replace": "    PATH=${PATH:-}\n",
+      "run": "TestTheBootScriptMountsWithWSLsHelperDirectoryOnPath",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a start unmounts a read-only grant that stays writable",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/boot.sh",
+      "find": "          umount \"$gb_target\" || :\n",
+      "replace": "          :\n",
+      "run": "TestTheBootScriptUnmountsAReadOnlyGrantThatStaysWritable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a start reads the grants under the grant lock",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/boot.sh",
+      "find": "    until flock -n 9 2\u003e/dev/null; do\n",
+      "replace": "    until true; do\n",
+      "run": "TestTheBootScriptReadsTheGrantsUnderTheGrantLock",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a start links WSL's mount helper where BusyBox looks",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/boot.sh",
+      "find": "        if mkdir -p \"${gb_link%/*}\" \u0026\u0026 ln -s \"$gb_helper\" \"$gb_link\"; then\n",
+      "replace": "        if false; then\n",
+      "run": "TestTheBootScriptLinksWSLsHelperOnABusyBoxBase",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a start links WSL's mount helper only on a BusyBox base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/boot.sh",
+      "find": "      */busybox)\n        if mkdir -p",
+      "replace": "      *)\n        if mkdir -p",
+      "run": "TestTheBootScriptLinksWSLsHelperOnABusyBoxBase",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant links WSL's mount helper before it writes a block",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "      ln -s \"$DRVFS_HELPER\" \"$DRVFS_LINK\" || die",
+      "replace": "      true || die",
+      "run": "TestAGrantLinksWSLsMountHelperWhereBusyBoxLooks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant links WSL's mount helper only on a BusyBox base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    */busybox)\n      mkdir -p \"${DRVFS_LINK%/*}\"",
+      "replace": "    *)\n      mkdir -p \"${DRVFS_LINK%/*}\"",
+      "run": "TestAGrantLinksWSLsMountHelperWhereBusyBoxLooks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the held step links nothing",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ \"$TK_GRANTS_MODE\" != held ] \u0026\u0026 [ -e \"$DRVFS_HELPER\" ]",
+      "replace": "if [ -e \"$DRVFS_HELPER\" ]",
+      "run": "TestAGrantLinksWSLsMountHelperWhereBusyBoxLooks",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live read-only grant is made read-only with a bind remount",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "      mount -o remount,bind,ro \"$target\" 2\u003e\"$WORK/mount.err\" ||\n",
+      "replace": "      mount -o remount,ro \"$target\" 2\u003e\"$WORK/mount.err\" ||\n",
+      "run": "TestAReadOnlyGrantThatCameUpWritableIsRemountedReadOnly",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier waits for the boot script's grants",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "  grant_wait \"$target\" \"$mode\"\n",
+      "replace": "",
+      "run": "TestTheVerifierWaitsForTheBootScriptsGrants",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier does not wait for a grant already as asked",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "  while [ \"$grant_waited\" -lt 15 ] \u0026\u0026 ! grant_as_asked \"$1\" \"$2\" \u0026\u0026\n",
+      "replace": "  while [ \"$grant_waited\" -lt 15 ] \u0026\u0026\n",
+      "run": "TestTheVerifierWaitsForTheBootScriptsGrants",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier does not wait once the boot script checked the grants",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    ! grep -q '^grants checked' /run/wsl-toolkit-boot.log 2\u003e/dev/null; do\n",
+      "replace": "    true; do\n",
+      "run": "TestTheVerifierDoesNotWaitOnceTheBootScriptCheckedTheGrants",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: engines.sh becomes the account through su where there is no runuser",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.sh",
+      "find": "    su -s /bin/sh -c \"$aa_script\" \"$TK_USER\" \"$@\"\n",
+      "replace": "    setpriv --reuid=\"$uid\" --regid=\"$(id -g \"$TK_USER\")\" --init-groups -- /bin/sh -c \"$aa_script\" \"$@\"\n",
+      "run": "TestEnginesShBecomesTheAccountThroughSuWhereThereIsNoRunuser",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: every preset carries a stock host's figures",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/presets.go",

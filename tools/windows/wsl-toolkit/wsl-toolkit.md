@@ -1309,11 +1309,29 @@ and gid. `base ensure` verifies the uid, and the account owns the grant through 
 
 ⭐ **On Alpine a read-only grant is remounted read-only.** BusyBox's `mount` drops `ro`
 for a Windows directory, so the mount comes up writable. The grant remounts it
-read-only at once, which holds. Both were measured on the alpine preset. `WSL-188`
+read-only at once with a bind remount, which holds. That makes the mount point
+read-only and leaves the filesystem under it alone. Both were measured on the
+alpine preset. `WSL-188`, `WSL-198`
 
-⚠ **On Alpine a restart mounts no grant.** WSL's `mount -a` fails there, measured on
-WSL 3.0.3 with the alpine preset. `base ensure` then exits 2, because a granted
-directory is not mounted. A base with grants is best built from another preset.
+⭐ **On Alpine a grant survives a restart.** WSL runs `mount -a` with no `PATH` at a
+start, and BusyBox's `mount` looks for WSL's `mount.drvfs` on `PATH`. musl's default
+path has no `/sbin`, where WSL keeps it. So every grant failed with `No such device`,
+measured on WSL 3.0.3 with the alpine preset. Where `/bin/mount` is BusyBox's, the
+grants step links `/usr/local/bin/mount.drvfs` to WSL's helper, where that default
+looks. WSL then mounts every grant itself, and prints no `mount -a` failure.
+`WSL-198`
+
+⭐ **The boot script checks each grant at every start, on every base.** It mounts a
+line of the block that WSL did not mount, and remounts a read-only grant that came
+up writable. One that will not go read-only is unmounted, so nothing writes through
+it. It reads the block under the grant lock, and writes `grants checked` to
+`/run/wsl-toolkit-boot.log` last. While a grant is not yet as asked, the verifier
+waits up to 15 seconds for that line. WSL does not wait for the boot script.
+`WSL-198`
+
+⚠ **An Alpine base an earlier release built takes this at its next `base ensure`.** Its
+first start after that may still print that WSL's `mount -a` failed. The boot script
+then mounts its grants, and links the helper for the next start.
 
 ⛔ **Each changes its own target alone.** A mount under `/workspaces` that this
 configuration does not name stays mounted, because another configuration may hold
@@ -2228,9 +2246,9 @@ zero-grant base has, and `base.shared_tmpfs` shuts it. The provisioner installs
 `WSL-68`
 
 ⚠ **Every base gets that boot script now, and only this setting closes the
-tmpfs.** The script also checks the engine's state at each start. A base that
-keeps `shared_tmpfs` on keeps `/mnt/wsl` mounted. Its log is
-`/run/wsl-toolkit-boot.log`. `WSL-178`
+tmpfs.** The script also checks each grant and the engine's state at each start.
+A base that keeps `shared_tmpfs` on keeps `/mnt/wsl` mounted. Its log is
+`/run/wsl-toolkit-boot.log`. `WSL-178`, `WSL-198`
 
 ⚠ **It replaces `/usr/local/lib/wsl-toolkit/seal-boot.sh`, which an earlier
 release installed on a sealed base.** Its log was `/run/wsl-toolkit-seal.log`.

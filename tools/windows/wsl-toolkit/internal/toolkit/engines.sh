@@ -54,17 +54,27 @@ uid=$(id -u "$TK_USER" 2>/dev/null) || die "the account $TK_USER does not exist"
 home=$(getent passwd "$TK_USER" 2>/dev/null | cut -d: -f6) || home=
 [ -n "$home" ] || home=/home/$TK_USER
 
-# as_account runs a command as the account, so a file in its home is written by
-# its owner rather than by root following whatever that directory holds.
+# >>> as the account: begin
+# as_account SCRIPT NAME ARG...: SCRIPT run by sh as the account, with NAME as its
+# $0 and each ARG one of its positional parameters, so a file in its home is
+# written by its owner rather than by root following whatever that directory
+# holds. Through runuser, or through su where there is no runuser.
+#
+# ⛔ NOT setpriv. BusyBox's has no --reuid, so every ensure on alpine printed its
+# usage, and root then removed the account's file itself. su is grants.sh's form,
+# its options before the account, and no ARG begins with a dash. WSL-188, WSL-199.
 as_account() {
+  aa_script=$1
+  shift
   if command -v runuser >/dev/null 2>&1; then
-    runuser -u "$TK_USER" -- "$@"
-  elif command -v setpriv >/dev/null 2>&1; then
-    setpriv --reuid="$uid" --regid="$(id -g "$TK_USER")" --init-groups -- "$@"
+    runuser -u "$TK_USER" -- /bin/sh -c "$aa_script" "$@"
+  elif command -v su >/dev/null 2>&1; then
+    su -s /bin/sh -c "$aa_script" "$TK_USER" "$@"
   else
     return 127
   fi
 }
+# <<< as the account: end
 
 systemd_up=false
 if [ "$TK_SYSTEMD" = true ] && [ -d /run/systemd/system ]; then
@@ -91,7 +101,7 @@ MANAGER_REL=.config/containers/containers.conf.d/50-wsl-toolkit-cgroup.conf
 write_manager() {
   # $1 and $2 are expanded by the inner shell, which is the point.
   # shellcheck disable=SC2016
-  as_account /bin/sh -c '
+  as_account '
     set -eu
     f=$1/$2
     if [ "$3" = remove ]; then rm -f "$f"; exit 0; fi

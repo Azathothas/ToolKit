@@ -258,6 +258,26 @@ install_owners() {
   mv "$OWNERS.new" "$OWNERS"
 }
 
+# ⛔ WSL'S OWN mount -a FINDS ITS HELPER, or a restart mounts no grant. WSL runs
+# /bin/mount -a with no PATH at a start, and BusyBox's mount looks for mount.drvfs
+# on PATH. musl's default has no /sbin, where WSL keeps it. Measured on alpine:
+# every grant line failed with `No such device`, and WSL printed that mount -a
+# failed on every call into the base. A link where the default looks mounted them
+# all. It comes before any block is written, so a new base's first start has it.
+# The boot script mounts what WSL still did not. WSL-198.
+DRVFS_HELPER=/sbin/mount.drvfs
+DRVFS_LINK=/usr/local/bin/mount.drvfs
+MOUNT_BIN=/bin/mount
+if [ "$TK_GRANTS_MODE" != held ] && [ -e "$DRVFS_HELPER" ] && [ ! -e "$DRVFS_LINK" ] && [ ! -L "$DRVFS_LINK" ]; then
+  case "$(readlink -f "$MOUNT_BIN" 2>/dev/null)" in
+    */busybox)
+      mkdir -p "${DRVFS_LINK%/*}" || die "could not create ${DRVFS_LINK%/*} for the link WSL's mount -a needs"
+      ln -s "$DRVFS_HELPER" "$DRVFS_LINK" || die "could not link $DRVFS_LINK to $DRVFS_HELPER, which WSL's mount -a needs"
+      say "linked $DRVFS_LINK to $DRVFS_HELPER, so WSL's mount -a finds it at a start"
+      ;;
+  esac
+fi
+
 # ⛔ BLOCK, NOTHING LIVE IS TOUCHED. It takes back the block of a live change that
 # mounted and unmounted nothing, because its target was already as asked. A live
 # take-back unmounted that target, and another configuration had mounted it. WSL-179.
@@ -554,8 +574,12 @@ while read -r mode target; do
     # grant came up rw, the account could write in it, and the read-back refused
     # it. A remount read-only holds, also measured, so a read-only grant works
     # there. Elsewhere the mount is ro already and nothing is remounted. WSL-188.
+    #
+    # ⚠ A BIND REMOUNT, as the boot script makes one. It makes the mount point
+    # read-only and asks the filesystem nothing. A plain one remounted 9p itself,
+    # measured on alpine: its superblock went read-only too. WSL-198.
     if [ "$mode" = ro ] && [ "$(live_mode "$target")" = rw ]; then
-      mount -o remount,ro "$target" 2>"$WORK/mount.err" ||
+      mount -o remount,bind,ro "$target" 2>"$WORK/mount.err" ||
         fail_back "$target came up writable and could not be remounted read-only: $(head -1 "$WORK/mount.err")"
       say "remounted $target ro, which its mount had dropped"
     fi

@@ -289,7 +289,8 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 // WSL-188.
 //
 // ⚠ mount COMES UP rw WHATEVER ITS LINE SAYS while dir holds mount.drops-ro, as
-// BusyBox's was measured to, and `mount -o remount,ro` then makes it ro. WSL-188.
+// BusyBox's was measured to, and a read-only remount then makes it ro, plain or
+// bind. Its log names which. WSL-188, WSL-198.
 //
 // ⛔ su PERMUTES, as BusyBox's and util-linux's were both measured to: -s and -c take
 // their value wherever they stand, a later -c replaces an earlier one, and what is
@@ -333,8 +334,8 @@ id() {
   case "$1" in -u) echo "$id_uid" ;; -g) echo "$id_gid" ;; *) return 1 ;; esac
 }
 mount() {
-  if [ "$1" = -o ] && [ "$2" = remount,ro ]; then
-    printf 'mount -o remount,ro %s\n' "$3" >> "$TK_TEST_DIR/log"
+  if [ "$1" = -o ] && { [ "$2" = remount,ro ] || [ "$2" = remount,bind,ro ]; }; then
+    printf 'mount -o %s %s\n' "$2" "$3" >> "$TK_TEST_DIR/log"
     sr_keep=
     while read -r sr_source sr_target sr_type sr_options sr_rest; do
       if [ "$sr_target" = "$3" ]; then sr_options="ro,${sr_options#*,}"; fi
@@ -407,6 +408,16 @@ func grantsRun(t *testing.T, dir string, env map[string]string) (string, error) 
 	script = strings.ReplaceAll(script, "/proc/mounts", at+"/mounts")
 	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", at+"/owners")
 	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grants.lock", at+"/grants.lock")
+	// ⚠ WSL's helper is dir's mount.drvfs and the link is dir's bin/mount.drvfs.
+	// /bin/mount is BusyBox's while dir holds busybox, and the mounts file where it
+	// does not. Each is a file that is there, so any readlink resolves it. WSL-198.
+	mountBin := at + "/mounts"
+	if _, err := os.Stat(filepath.Join(dir, "busybox")); err == nil {
+		mountBin = at + "/busybox"
+	}
+	script = strings.Replace(script, "DRVFS_HELPER=/sbin/mount.drvfs\n", "DRVFS_HELPER="+at+"/mount.drvfs\n", 1)
+	script = strings.Replace(script, "DRVFS_LINK=/usr/local/bin/mount.drvfs\n", "DRVFS_LINK="+at+"/bin/mount.drvfs\n", 1)
+	script = strings.Replace(script, "MOUNT_BIN=/bin/mount\n", "MOUNT_BIN="+mountBin+"\n", 1)
 	script = strings.Replace(script, "set -eu\n", "set -eu\n"+grantsStandIns, 1)
 	run := filepath.Join(dir, "grants-run.sh")
 	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
