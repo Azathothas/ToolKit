@@ -1529,6 +1529,28 @@ func TestWriteFileAtomicSurvivesConcurrentWriters(t *testing.T) {
 	}
 }
 
+// ⛔ A WRITER'S TEMPORARY IS NEVER ANOTHER WRITER'S NAME, held without a race. The
+// case above needs two writers to collide, and on a quiet runner they sometimes
+// did not, so its mutation row read THEATRE once and ok once. Here the other
+// writer's temporary is planted at the name a shared scheme would use: a write
+// must leave it untouched, and land its own bytes.
+func TestAWritersTemporaryIsNeverAnotherWritersName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	other := []byte("another writer's bytes, still in flight")
+	if err := os.WriteFile(path+".tmp", other, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileAtomic(path, []byte("mine"), 0o600); err != nil {
+		t.Fatalf("a write beside another writer's temporary failed: %v", err)
+	}
+	if got, err := os.ReadFile(path + ".tmp"); err != nil || !bytes.Equal(got, other) {
+		t.Fatalf("another writer's temporary was taken: %q, %v", got, err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "mine" {
+		t.Fatalf("the write landed %q, %v", got, err)
+	}
+}
+
 // -- WSL-60: what the cgroup tree can do, named rather than assumed ----------
 
 // TestCapabilitiesNameTheMechanismRatherThanTheHost is the case for the ruling

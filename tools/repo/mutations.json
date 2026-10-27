@@ -13806,7 +13806,7 @@
       "file": "internal/toolkit/catalog.go",
       "find": "\ttmp := path + \".\" + hex.EncodeToString(raw[:]) + \".tmp\"",
       "replace": "\ttmp := path + \".tmp\"",
-      "run": "TestWriteFileAtomicSurvivesConcurrentWriters",
+      "run": "TestAWritersTemporaryIsNeverAnotherWritersName",
       "args": []
     },
     {
