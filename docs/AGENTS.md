@@ -244,6 +244,11 @@ it is conditional on the session having gone well:
 In this order: what the operator said in this session, what the linked rule
 says, what the probe or the code measured, then ask the operator.
 
+⛔ **Ruling 36 narrows that last step.** A decision the session can make, it makes,
+with its reason in the entry and in the summary. A step the operator already gave
+the session is never handed back. Only a credential is asked for: a password, a
+sign-in, a key.
+
 ⛔ Never invent a fifth option quietly, and never settle a disagreement between
 two of these by taking the convenient one. A contradiction is a finding, and a
 finding is reported.

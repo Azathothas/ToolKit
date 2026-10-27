@@ -11,8 +11,10 @@ any other distribution.
 
 ⛔ **Never act on a WSL distribution this tool did not create.** `wsl --unregister`
 deletes the distribution it names, with no question. ⛔ **Only `wsl --shutdown`
-reaches every distribution on the machine**, including the user's own work, and
-running it is the user's step. Use the tool's own commands.
+reaches every distribution on the machine**, including the user's own work. ⭐ Where
+the user has said nobody else uses WSL on that machine, run it yourself when a step
+needs it, and say what it stopped. Otherwise it is the user's step. Never hand back a
+step the user has already given you. Use the tool's own commands.
 
 ---
 
@@ -250,7 +252,7 @@ wsl-toolkit base reclaim
 
 Makes the base's disk sparse, then trims what the guest freed. ⚠ WSL makes a disk
 sparse only while its VM is stopped. While any distribution runs, `base reclaim`
-exits 1 and names `wsl --shutdown`, which is the user's step.
+exits 1 and names `wsl --shutdown`. Who runs it is the rule at the top.
 
 ---
 
