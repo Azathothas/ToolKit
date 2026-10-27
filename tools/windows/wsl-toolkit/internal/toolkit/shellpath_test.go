@@ -9,13 +9,13 @@ import (
 	"testing"
 )
 
-// shellPath is dir as a script's text can carry it unquoted: forward slashes,
-// and on Windows its short name where the long one cannot be carried. A case
-// skips, saying why, where neither will do.
+// shellPath is dir as a script's text can carry it unquoted, with forward
+// slashes. On Windows it is the short name where the long one cannot be carried.
+// A case skips, saying why, where neither will do.
 //
 // ⛔ A CASE PASTES ITS DIRECTORY INTO THE SCRIPT IT DRIVES, as the guest's own
 // paths are written there. A temporary directory holding a space broke the
-// script, measured with TMP set to one: ten of the eleven WSL-198 cases failed,
+// script. Measured with TMP set to one, ten of the eleven WSL-198 cases failed,
 // and two older ones. A Windows profile such as `First Last` puts one there.
 // WSL-198.
 func shellPath(t *testing.T, dir string) string {

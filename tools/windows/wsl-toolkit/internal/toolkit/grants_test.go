@@ -292,7 +292,7 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 // ⚠ mount COMES UP rw WHATEVER ITS LINE SAYS while dir holds mount.drops-ro, as
 // BusyBox's was measured to, and a read-only remount then makes it ro. Its log
 // names which. A plain remount is the filesystem's, so every mount of the same
-// source goes ro, and a bind one is its mount point's alone, both measured on
+// source goes ro. A bind one is its mount point's alone. Both were measured on
 // alpine. A plain one fails while dir holds remount.plain.fail. While dir holds
 // mount.second, a mount brings a second one of its source, as a bind of the grant
 // made before its remount would. WSL-188, WSL-198.

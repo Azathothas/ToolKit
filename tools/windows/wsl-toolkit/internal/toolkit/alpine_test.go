@@ -175,8 +175,8 @@ func TestTheMountHelperNeverFailsItsRunner(t *testing.T) {
 
 // mountHelperRunStandIns are WSL's helper's remount and the umount, as functions,
 // for the helper mount-helper.sh writes. A plain remount is the filesystem's, so
-// every mount of the same source goes ro, and a bind one is its mount point's
-// alone, both measured on alpine. remount.plain.fail and remount.bind.fail fail
+// every mount of the same source goes ro. A bind one is its mount point's alone.
+// Both were measured on alpine. remount.plain.fail and remount.bind.fail fail
 // one, umount.fail fails a plain unmount, and lazy.fail a lazy one.
 const mountHelperRunStandIns = `
 st_rows() {
@@ -284,8 +284,8 @@ func mountHelperCase(t *testing.T) (string, func(string) string) {
 	return dir, grantsSeed(t, dir, mountHelperFstab, "", "")
 }
 
-// busyBoxOptions is what BusyBox's mount hands the helper for a grant's line,
-// measured on alpine: the line's options with ro, rw and nofail taken out.
+// busyBoxOptions is what BusyBox's mount hands the helper for a grant's line. It
+// is the line's options with ro, rw and nofail taken out, measured on alpine.
 const busyBoxOptions = "metadata,uid=1000,gid=1000,umask=022,fmask=011"
 
 // ⛔ THE HELPER IS HANDED THE ro ITS LINE ASKS FOR, so a read-only grant is
@@ -424,8 +424,8 @@ func grantsDriveHelped(t *testing.T, dir, mode string, mounts []BaseMount, targe
 }
 
 // ⛔ grants.sh WRITES THE MOUNT HELPER BEFORE IT WRITES A BLOCK, so a new base's
-// first start mounts its grants, and only where /bin/mount is BusyBox's. It does
-// so for a take-back's block too. The held step changes nothing. WSL-198.
+// first start mounts its grants. It does so only where /bin/mount is BusyBox's,
+// and for a take-back's block too. The held step changes nothing. WSL-198.
 func TestAGrantWritesWSLsMountHelperBeforeItsBlock(t *testing.T) {
 	grantsCase(t)
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "ro"}

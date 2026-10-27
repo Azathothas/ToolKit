@@ -121,7 +121,7 @@ done
 [ "$mh_given" = true ] || set -- "$@" -o ro
 "$helper" "$@" || exit
 # mh_live sets mh_mode to the first option of the last Windows mount at the
-# target, ro or rw, as the mount on top is the last row.
+# target, ro or rw. The mount on top is the last row.
 mh_live() {
   mh_mode=
   while read -r _mh_from mh_at mh_type mh_options _mh_rest; do
