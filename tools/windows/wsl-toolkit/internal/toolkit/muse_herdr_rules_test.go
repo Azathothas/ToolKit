@@ -230,17 +230,17 @@ func TestTheMuseAdapterWritesNoHerdrRulesWithoutHerdr(t *testing.T) {
 // ⭐ THE FILE BEING THERE IS NOT herdr READING IT. herdr ignores an override it cannot
 // read, with a warning and its own rules instead, so the probe asks herdr which rules
 // it uses, and says so in a note when they are not this file.
+//
+// ⚠ jq IS REACHED THROUGH as_account, WHOSE PATH IS FIXED. Where that PATH has a jq,
+// the probe's own program reads herdr's answer. Where it has none, as in golang:1.25,
+// a stand-in answers what that program answers, so every guard below runs on both.
 func TestTheMuseProbeSaysWhetherHerdrLoadsItsRules(t *testing.T) {
-	needPosix(t, "sed", "grep", "head", "cut")
-	// ⚠ jq IS REACHED THROUGH as_account, WHOSE PATH IS FIXED, so a jq elsewhere does not count.
-	jqFound := false
+	needPosix(t, "sed", "grep", "head", "cut", "cat")
+	realJQ := ""
 	for _, dir := range []string{"/usr/local/sbin", "/usr/local/bin", "/usr/bin", "/bin"} {
 		if _, err := os.Stat(filepath.Join(dir, "jq")); err == nil {
-			jqFound = true
+			realJQ = "1"
 		}
-	}
-	if !jqFound {
-		t.Skip("jq is not in the PATH probe.sh gives the account")
 	}
 	probe, err := adapterScript("muse", "probe.sh")
 	if err != nil {
@@ -263,20 +263,32 @@ func TestTheMuseProbeSaysWhetherHerdrLoadsItsRules(t *testing.T) {
 	}
 	bin, write := stubDir(t)
 	write("getent", "printf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n")
-	// runuser answers for herdr's server as the case says, and runs everything else.
+	// ⚠ ROOT'S jq IS ONLY ASKED WHETHER IT IS THERE. Every call goes through as_account.
+	write("jq", "exit 0\n")
+	// runuser answers for herdr's server as the case says, stands in for the probe's jq
+	// program where the account's PATH has no jq, and runs everything else.
 	write("runuser", `[ "$1" = -u ] && [ "$2" = herdr ] && [ "$3" = -- ] || exit 9
 shift 3
 case " $* " in
   *" herdr server agent-manifests "*)
     [ -n "${STUB_KIND:-}" ] || exit 1
-    printf '{"result":{"manifests":[{"agent":"pi","source_kind":"remote"},{"agent":"muse","source_kind":"%s"%s}]}}\n' "$STUB_KIND" "${STUB_WARNING:-}"
+    warning=
+    [ -z "${STUB_WARNING:-}" ] || warning=",\"warning\":\"$STUB_WARNING\""
+    printf '{"result":{"manifests":[{"agent":"pi","source_kind":"remote"},{"agent":"muse","source_kind":"%s"%s}]}}\n' "$STUB_KIND" "$warning"
+    exit 0 ;;
+  *'select(.agent == "muse")'*)
+    [ -z "${STUB_REAL_JQ:-}" ] || exec "$@"
+    input=$(cat)
+    [ -n "$input" ] || exit 0
+    printf '%s|%s\n' "$STUB_KIND" "${STUB_WARNING:-it gave no warning}"
     exit 0 ;;
 esac
 exec "$@"
 `)
 	read := func(extra ...string) AdapterState {
 		t.Helper()
-		code, out := runSh(t, probe, bin, nil, append([]string{"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base", "STUB_HOME=" + home}, extra...)...)
+		code, out := runSh(t, probe, bin, nil, append([]string{"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base",
+			"STUB_HOME=" + home, "STUB_REAL_JQ=" + realJQ}, extra...)...)
 		if code != 0 {
 			t.Fatalf("probe.sh exited %d, and a probe exits 0 whatever it finds:\n%s", code, out)
 		}
@@ -301,7 +313,7 @@ exec "$@"
 	if st.Facts["herdr_detection_rules"] != "installed" || st.Facts["herdr_detection_source"] != "local override" || noted(st, "herdr reads its own Muse rules") {
 		t.Fatalf("rules herdr loads were read as %v with %v", st.Facts, st.Notes)
 	}
-	st = read("STUB_KIND=bundled", `STUB_WARNING=,"warning":"ignored override because it could not be compiled"`)
+	st = read("STUB_KIND=bundled", "STUB_WARNING=ignored override because it could not be compiled")
 	// ⚠ A NOTE AND NOT A PROBLEM: base ensure writes the same file and cannot cure it.
 	if st.Facts["herdr_detection_source"] != "bundled" || !noted(st, "could not be compiled") || strings.Contains(strings.Join(st.Problems, " "), "rules") {
 		t.Fatalf("rules herdr ignores were read as %v with %v and %v", st.Facts, st.Notes, st.Problems)
