@@ -1054,6 +1054,8 @@ given. A base without systemd enforces nothing, and its finding names
 
 - ⚠ The account's engine moves to the systemd cgroup manager only where its
   session bus answers. Without one, podman would warn on every call and fall back.
+  A ⚠ line names a drop-in the account could not write beside a live bus, or could
+  not remove without one. `WSL-201`
 - ⛔ **A base with systemd and no D-Bus has no user manager to delegate to.**
   Measured on a Debian 13 base: provisioning installs systemd without D-Bus, so
   its limits stay unenforced, and the finding names D-Bus rather than claiming a
@@ -1440,15 +1442,29 @@ revoke of a target another file holds is refused, naming that file and its
 revoke. A target already mounted from another Windows directory is refused too. So
 is one mounted in the other mode that this configuration did not mount. `WSL-179`
 
-⛔ **A target inside another grant is refused.** The outer grant is a Windows
+⛔ **A target inside another grant is never mounted.** The outer grant is a Windows
 directory, and the account can make links in it. Root's `mkdir`, `chmod` and `mount`
-of the inner target followed a link there. A configuration whose targets nest is
-refused where it is read. A target nested with another file's grant is refused through
-the ledger, while that grant is live or the block holds its line. `WSL-202`
+of the inner target followed a link there. `base grant` refuses a new target inside
+another, or around one. `WSL-202`
+
+⭐ **A configuration an earlier release wrote can still nest, and it loads.** So `base
+revoke --target INNER` runs. Its inner grant is left out of the fstab block and out of
+every mount, and `base status` names it with that revoke. `base ensure` writes the
+block without its line, so the next start mounts nothing there. It then exits 1 naming
+the revoke. `base grant` refuses beside it until it is revoked. `WSL-202`
+
+⛔ **A target nested with another file's grant is never mounted either.** The ledger
+names that grant while it is live or the block holds its line. A live grant of such a
+target is refused. `base ensure` leaves a line inside another file's grant out of the
+block. Its own file's line fails the ensure, naming its revoke. Another file's line is
+named with that file's revoke, and the ensure goes on. `base status --probe` names a
+block whose lines nest. `WSL-202`
 
 ⛔ **A target is made only where it names.** A link on its way, or a live Windows mount
-above it, is refused before anything is made. Root gives mode 755 only to a directory
-it made. One already there keeps its mode, a grant's own mount too. `WSL-202`
+above it, is refused before anything is made. The refusal says what stands there: a
+link, a directory reached through a linked parent, one root cannot enter, or a file.
+Root gives mode 755 only to a directory it made. One already there keeps its mode, a
+grant's own mount too. `WSL-202`
 
 ⛔ **A mount the ledger does not give this file is not claimed.** A mount made
 before 7.0.2 has no ledger entry. A grant of that same directory at that target is
@@ -1614,13 +1630,18 @@ account reads a file there to compare it, so a link or a named pipe there reache
 read of root's. ⚠ A path the account cannot write, such as a link to a directory of
 root's, stops that adapter, and `base ensure` names it.
 
+⚠ **The account's read of a file in its home stops after 30 seconds** where the
+userland carries `timeout`. A named pipe there, or a file its own FUSE mount serves,
+held `base ensure` until the adapter's 20-minute limit. A read stopped reads as
+nothing. The hang is bounded, not removed. `WSL-201`
+
 ⛔ **Provisioning makes nothing in the home as root.** The account makes its XDG
-directories and writes the engine's settings. Root gives back a directory at one of
-those paths that is not the account's, such as one an older release left root's. It
-enters that directory with `cd -P`, reads the path back, and changes that directory
-alone. So it follows no link, and a hard link there gets nothing. ⚠ A name there that
-is not a directory stops provisioning, named, until the account moves it aside.
-`WSL-201`
+directories, `~/.config/containers` and its `containers.conf.d`, and writes the
+engine's settings. Root gives back a directory at one of those paths that is not the
+account's, such as one an older release left root's. It enters that directory with
+`cd -P`, reads the path back, and changes that directory alone. So it follows no link,
+and a hard link there gets nothing. ⚠ A name there that is not a directory stops
+provisioning, named, until the account moves it aside. `WSL-201`
 
 ```json
 "adapters": [{ "name": "herdr" }]
@@ -2764,8 +2785,8 @@ the state directory that owns the base moves it. `WSL-143`
 manager's engine transaction three tries, 15 and then 30 seconds apart, and
 names the line that ended each one. `WSL-140` ⛔ Every manager call is stopped
 after 900 seconds where the userland carries `timeout`, and the stop is named
-as the manager that ran past its time. A hung mirror then costs an attempt, not
-the build. `WSL-203`
+as the manager that ran past its time. A hung mirror then costs a try, not the
+build. `WSL-203`
 
 ⭐ **A build stopped before its identity marker is still this tool's to remove.**
 The build records itself in the ledger before its import registers anything.

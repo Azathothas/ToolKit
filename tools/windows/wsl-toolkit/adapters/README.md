@@ -173,6 +173,7 @@ carries between its `the account's own writes` markers:
 | `as_account CMD...` | runs one command as the account, with a fresh environment |
 | `account_dirs MODE DIR...` | makes each directory as the account and gives it MODE. A directory that is a link keeps its own mode |
 | `account_put DEST MODE` | writes its standard input to a file of the account's own beside DEST, and renames it over DEST. A link at DEST is replaced, never written through |
+| `account_read CMD...` | is `as_account CMD...`, stopped after 30 seconds where the userland carries `timeout` |
 | `account_same SRC DEST` | is true when DEST, read by the account, is a file holding SRC's bytes |
 
 ⭐ Root builds what goes into a file outside the home, in its own temporary file, and
@@ -180,6 +181,15 @@ hands it to `account_put` on standard input. ⛔ **Root reads nothing in the hom
 either.** Its read followed a link the account placed there, and a named pipe there
 held `base ensure`. So `account_same` compares, and a probe reads a file there as the
 account. Root reads only its own file outside the home.
+
+⚠ **The account's read is bounded, not removed.** The account can still swap a named
+pipe in after a `[ -f ]` test, or serve the file from its own FUSE mount and never
+answer. So every read of a file in the home goes through `account_read`: `jq`,
+`sha256sum`, `head`, `sed`, `cat`, `grep` and `readlink`, a script that tests and reads
+a file, and the login shell that reads its profile. Root's `timeout` runs `runuser`,
+so nothing on the account's PATH decides the bound. A read it stops reads as nothing,
+as an unreadable file does. A userland without `timeout` reads unbounded. `TestEveryAccountReadInTheAdaptersIsBounded` refuses a new read that
+does not go through it. `WSL-201`
 
 ⛔ **The suite refuses a new root step in the home.**
 `TestNoRootWriteLandsInTheAccountsHome` reads every script the executable carries. A
@@ -191,6 +201,12 @@ a path, and a redirect from or onto one.
 path's link or size. It reads past a wrapper such as `env` or `sudo` to the command it
 runs. A pipeline into `xargs` or `read` that names the home is refused, and so is a
 here-document fed to anything but `cat`.
+
+⛔ **`runuser` and `su` are the account only by their user word**, `$TK_USER`. Read by
+name, `runuser -u root` passed as the account. ⛔ **A `cd` into the home puts its shell
+there until that shell closes**, so a relative name after it is a path in the home. A
+waiver on the `cd` stands for the `cd` alone, and `chown .` after it needs its own.
+`WSL-201`
 
 ⭐ **A root step the scan cannot judge carries a `# linksafe: REASON` comment.** It
 stands for every command on the next line. One that stands for nothing, or gives no

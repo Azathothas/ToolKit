@@ -128,13 +128,26 @@ account_put() {
     exit 1' sh "$1" "$2"
 }
 
+# account_read CMD ARG... is as_account CMD ARG..., stopped after 30 seconds where the
+# userland carries timeout. ⛔ A FILE OF THE ACCOUNT'S CAN HOLD ITS READER. A named pipe
+# swapped in after the `[ -f ]` test, or a file of its own FUSE mount that never answers,
+# held base ensure until the adapter's own limit. ⭐ Root's timeout runs runuser, so
+# nothing on the account's PATH decides the bound. ⚠ The hang is bounded, not removed:
+# a read stopped reads as nothing. WSL-201.
+account_read() (
+  if command -v timeout >/dev/null 2>&1; then
+    runuser() { timeout 30 runuser "$@"; }
+  fi
+  as_account "$@"
+)
+
 # account_same SRC DEST is true when DEST, read by the account, is a file holding SRC's
 # bytes. ⛔ ROOT READS ONLY SRC, its own file outside the home. Root's read of DEST
 # followed a link the account placed there, and a named pipe there held base ensure.
 account_same() {
   as_src=$(sha256sum < "$1") || return 1
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  [ "$as_src" = "$(as_account sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
+  [ "$as_src" = "$(account_read sh -c '[ -f "$1" ] && exec sha256sum < "$1"' sh "$2" 2>/dev/null)" ]
 }
 # <<< the account's own writes: end
 
@@ -162,9 +175,9 @@ from_release() {
   if [ -z "$PI_ASSET" ] || [ ! -x "$RELEASE_BIN" ]; then
     return 1
   fi
-  linked=$(as_account readlink -f "$PREFIX/bin/pi" 2>/dev/null) || return 1
-  [ "$linked" = "$(as_account readlink -f "$RELEASE_BIN" 2>/dev/null)" ] || return 1
-  [ "$(as_account cat "$RELEASE_DIR/asset.sha256" 2>/dev/null)" = "$PI_WANT" ]
+  linked=$(account_read readlink -f "$PREFIX/bin/pi" 2>/dev/null) || return 1
+  [ "$linked" = "$(account_read readlink -f "$RELEASE_BIN" 2>/dev/null)" ] || return 1
+  [ "$(account_read cat "$RELEASE_DIR/asset.sha256" 2>/dev/null)" = "$PI_WANT" ]
 }
 
 # prune_releases removes every release this adapter unpacked but the one in use, and any
@@ -314,7 +327,7 @@ else
   command -v npm >/dev/null 2>&1 ||
     die "pi's release could not be fetched, and npm is not installed in this base for the fallback. Run base ensure again when the release can be fetched, or set base.toolset to developer or later"
   want=$PI_PACKAGE@$PI_RELEASE
-  current=$(as_account readlink -f "$PREFIX/bin/pi" 2>/dev/null || :)
+  current=$(account_read readlink -f "$PREFIX/bin/pi" 2>/dev/null || :)
   case $current in
     */node_modules/*) ;;
     *) installed= ;;
@@ -326,7 +339,7 @@ else
     # and it comes back when npm fails. A failed fallback leaves the pi that was there.
     earlier_link=
     if [ -L "$PREFIX/bin/pi" ]; then
-      earlier_link=$(as_account readlink "$PREFIX/bin/pi" 2>/dev/null || :)
+      earlier_link=$(account_read readlink "$PREFIX/bin/pi" 2>/dev/null || :)
       as_account rm -f "$PREFIX/bin/pi"
     fi
     say "installing $want from npm for $TK_USER, with no lifecycle scripts"
@@ -388,7 +401,7 @@ if [ -n "${TK_ADAPTER_MODEL:-}${TK_ADAPTER_EFFORT:-}" ]; then
     if [ ! -f "$pi_settings" ]; then
       printf '{}\n' | account_put "$pi_settings" 0600 || die "the account could not write $pi_settings"
     fi
-    as_account jq -e 'type == "object"' "$pi_settings" >/dev/null 2>&1 ||
+    account_read jq -e 'type == "object"' "$pi_settings" >/dev/null 2>&1 ||
       die "$pi_settings is not a JSON object, and pi reads its settings from one. It was left exactly as it is; read it, then run base ensure again"
     # ⭐ A SLASH SPLITS PROVIDER FROM MODEL, because pi reaches a model through a named
     # provider and spells that pair `provider/id` on its own --model flag. A bare id
@@ -401,7 +414,7 @@ if [ -n "${TK_ADAPTER_MODEL:-}${TK_ADAPTER_EFFORT:-}" ]; then
     esac
     settings_tmp=$(mktemp)
     # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
-    if as_account jq \
+    if account_read jq \
         --arg provider "$pi_provider" --arg model "$pi_model" --arg effort "${TK_ADAPTER_EFFORT:-}" '
         (if $provider == "" then . else .defaultProvider = $provider end)
         | (if $model == "" then . else .defaultModel = $model end)

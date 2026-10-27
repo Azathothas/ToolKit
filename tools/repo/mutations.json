@@ -5,7 +5,7 @@
       "label": "wsl-toolkit: root gives back only a directory, from inside it",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
-      "find": "    cd -P \"$TK_HOME/$xdg_rel\" 2>/dev/null || exit 0\n    [ \"$(pwd -P)\" = \"$tk_home_real/$xdg_rel\" ] || exit 0\n    chown \"$TK_USER:$TK_GROUP\" .\n",
+      "find": "    cd -P \"$TK_HOME/$xdg_rel\" 2>/dev/null || exit 0\n    [ \"$(pwd -P)\" = \"$tk_home_real/$xdg_rel\" ] || exit 0\n    # linksafe: `.` is the directory pwd -P just read back as the home's own, and a directory has no hard link\n    chown \"$TK_USER:$TK_GROUP\" .\n",
       "replace": "    [ -e \"$TK_HOME/$xdg_rel\" ] || [ -L \"$TK_HOME/$xdg_rel\" ] || exit 0\n    chown -h \"$TK_USER:$TK_GROUP\" \"$TK_HOME/$xdg_rel\"\n",
       "run": "TestProvisioningGivesTheAccountNoFileAHardLinkNames",
       "args": []
@@ -50,8 +50,8 @@
       "label": "wsl-toolkit: cgroupfs is said only once the account's drop-in is gone",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/engines.sh",
-      "find": "    if write_manager remove; then\n      say \"⚠ cgroup delegation: $TK_USER's user manager has no session bus",
-      "replace": "    write_manager remove || :\n    if true; then\n      say \"⚠ cgroup delegation: $TK_USER's user manager has no session bus",
+      "find": "  elif write_manager remove; then\n",
+      "replace": "  elif write_manager remove || true; then\n",
       "run": "TestEnginesShSaysCgroupfsOnlyOnceTheDropInIsGone",
       "args": []
     },
@@ -86,7 +86,7 @@
       "label": "muse: the account reads whose herdr rules they are",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "  ! as_account sh -c '[ -f \"$1\" ] && exec head -n 1 \"$1\"' sh \"$HERDR_RULES\" 2>/dev/null | grep -q \"$HERDR_RULES_MARK\"; then\n",
+      "find": "  ! account_read sh -c '[ -f \"$1\" ] && exec head -n 1 \"$1\"' sh \"$HERDR_RULES\" 2>/dev/null | grep -q \"$HERDR_RULES_MARK\"; then\n",
       "replace": "  ! head -n 1 \"$HERDR_RULES\" | grep -q \"$HERDR_RULES_MARK\"; then\n",
       "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot|TestNoRootWriteLandsInTheAccountsHome",
       "args": []
@@ -140,7 +140,7 @@
       "label": "omp: the probe reads the separating wrapper's directory as the account",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/omp/probe.sh",
-      "find": "  wrapped_dir=$(as_account sh -c '[ -f \"$1\" ] && exec sed -n \"s/^PI_CODING_AGENT_DIR=//p\" \"$1\"' sh \"$omp_path\" 2>/dev/null | head -1)\n",
+      "find": "  wrapped_dir=$(account_read sh -c '[ -f \"$1\" ] && exec sed -n \"s/^PI_CODING_AGENT_DIR=//p\" \"$1\"' sh \"$omp_path\" 2>/dev/null | head -1)\n",
       "replace": "  wrapped_dir=$(sed -n 's/^PI_CODING_AGENT_DIR=//p' \"$omp_path\" 2>/dev/null | head -1)\n",
       "run": "TestNoRootWriteLandsInTheAccountsHome",
       "args": []
@@ -164,12 +164,12 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: a configuration whose grant targets nest is refused",
+      "label": "wsl-toolkit: a grant inside another loads, marked, rather than refusing the file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/catalog.go",
-      "find": "\tif err := nestedTargetsError(targets); err != nil {\n",
-      "replace": "\tif err := error(nil); err != nil {\n",
-      "run": "TestAConfigurationRefusesAGrantTargetInsideAnother",
+      "find": "\t\tout[i].Inside = outermostAround(out[i].Target, targets)\n",
+      "replace": "\t\tout[i].Inside = \"\"\n",
+      "run": "TestAConfigurationThatNestsLoadsAndNeverMountsTheInnerGrant",
       "args": []
     },
     {
@@ -203,8 +203,8 @@
       "label": "wsl-toolkit: a target is made only where it names",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/grants.sh",
-      "find": "  [ \"$tr_real\" = \"$tr_have\" ] ||\n",
-      "replace": "  true ||\n",
+      "find": "  [ \"$tr_real\" = \"$tr_have\" ] || target_astray \"$1\"\n",
+      "replace": "  true || target_astray \"$1\"\n",
       "run": "TestATargetIsMadeOnlyWhereItNames",
       "args": []
     },
@@ -215,6 +215,321 @@
       "find": "  [ \"$tr_have\" != \"$1\" ] || return 0\n",
       "replace": "",
       "run": "TestATargetIsMadeOnlyWhereItNames",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure writes no line for a grant inside another",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tmounts = unnested(mounts)\n",
+      "replace": "",
+      "run": "TestAConfigurationThatNestsLoadsAndNeverMountsTheInnerGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant, a revoke and the verifier leave out a grant inside another",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\treturn renderBaseMounts(unnested(present))\n",
+      "replace": "\treturn renderBaseMounts(present)\n",
+      "run": "TestAConfigurationThatNestsLoadsAndNeverMountsTheInnerGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status names a grant inside another with its revoke",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif m.Inside == \"\" {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "\t\tif true {\n\t\t\tcontinue\n\t\t}\n",
+      "run": "TestAConfigurationThatNestsLoadsAndNeverMountsTheInnerGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base grant refuses beside a grant inside another, naming its revoke",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif err := NestedGrantsError(current); err != nil {\n",
+      "replace": "\tif err := NestedGrantsError(nil); err != nil {\n",
+      "run": "TestAConfigurationThatNestsLoadsAndNeverMountsTheInnerGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base grant refuses a new target inside another, or around one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif err := nestedTargetsError(append(targets, want.Target)); err != nil {\n",
+      "replace": "\tif err := nestedTargetsError(nil); err != nil {\n",
+      "run": "TestANewGrantInsideAnotherOrAroundOneIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a re-provision refused over a nested grant keeps the refusal that names its revoke",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif errors.Is(err, ErrGrantSourceGone) || errors.Is(err, ErrGrantNested) {\n",
+      "replace": "\tif errors.Is(err, ErrGrantSourceGone) {\n",
+      "run": "TestAConfigurationThatNestsLoadsAndNeverMountsTheInnerGrant|TestABlockThatNestsLosesItsInnerLine",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: grants.sh's refusal of a nested grant reaches base ensure as one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif strings.Contains(reason, grantsNestedSaid) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestABlockThatNestsLosesItsInnerLine",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stored configuration does not carry a grant's nested mark",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\tresolved[i].Missing = false\n\t\tresolved[i].Inside = \"\"\n\t}\n\tc.Base.Mounts = resolved\n",
+      "replace": "\t\tresolved[i].Missing = false\n\t}\n\tc.Base.Mounts = resolved\n",
+      "run": "TestAConfigurationThatNestsLoadsAndNeverMountsTheInnerGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a configuration sent to the helper does not carry a grant's nested mark",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\t\tresolved[i].Inside = \"\"\n",
+      "replace": "",
+      "run": "TestAConfigurationThatNestsLoadsAndNeverMountsTheInnerGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the fstab block never holds a line inside another",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "      \"$target_of\"/*) bn_outer=$target_of; break ;;\n",
+      "replace": "      \"$target_of\"/*) ;;\n",
+      "run": "TestABlockThatNestsLosesItsInnerLine|TestAGrantNestedWithAnotherFilesGrantIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a write refuses its own grant inside another file's, once the block is without it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  if [ -s \"$WORK/left-out\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestABlockThatNestsLosesItsInnerLine",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a write leaves out its own line inside another file's live grant",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  if [ -s \"$WORK/left-out-targets\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestABlockThatNestsLosesItsInnerLine",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a revoke runs beside a grant inside another file's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    [ \"$tk_target\" != \"$CHANGING\" ] || die \"$ng_said. Grant it at a target outside every other grant\"\n",
+      "replace": "    die \"$ng_said. Grant it at a target outside every other grant\"\n",
+      "run": "TestABlockThatNestsLosesItsInnerLine",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier names an fstab block whose lines nest",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "  if [ -n \"$nest_pair\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestTheVerifierNamesABlockThatNests",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant line names a grant inside another with its revoke",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_grant.go",
+      "find": "\tcase g.Inside != \"\":\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAGrantLineNamesWhatKeepsItUnmounted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a target under a linked parent is named as one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  if [ -n \"$tr_real\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestATargetIsMadeOnlyWhereItNames",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a directory root could not enter is named as one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  if [ -d \"$tr_have\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestATargetIsMadeOnlyWhereItNames",
+      "args": []
+    },
+    {
+      "label": "muse: the account's read of a file in its home is bounded",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    runuser() { timeout 30 runuser \"$@\"; }\n",
+      "replace": "    :\n",
+      "run": "TestAnAccountReadThatHangsIsStopped",
+      "args": []
+    },
+    {
+      "label": "pi: the account's read of a file in its home is bounded",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "    runuser() { timeout 30 runuser \"$@\"; }\n",
+      "replace": "    :\n",
+      "run": "TestAnAccountReadThatHangsIsStopped",
+      "args": []
+    },
+    {
+      "label": "omp: the probe's read of a file in the home is bounded",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "    runuser() { timeout 30 runuser \"$@\"; }\n",
+      "replace": "    :\n",
+      "run": "TestAnAccountReadThatHangsIsStopped",
+      "args": []
+    },
+    {
+      "label": "muse: account_same reads through the bound",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  [ \"$as_src\" = \"$(account_read sh -c '[ -f \"$1\" ] && exec sha256sum < \"$1\"' sh \"$2\" 2>/dev/null)\" ]\n",
+      "replace": "  [ \"$as_src\" = \"$(as_account sh -c '[ -f \"$1\" ] && exec sha256sum < \"$1\"' sh \"$2\" 2>/dev/null)\" ]\n",
+      "run": "TestAnAccountReadThatHangsIsStopped",
+      "args": []
+    },
+    {
+      "label": "pi: the probe reads its first lines through the bound",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "  account_read sh -c '[ -f \"$2\" ] && exec head -n \"$1\" \"$2\"' sh \"$1\" \"$2\" 2>/dev/null\n",
+      "replace": "  as_account sh -c '[ -f \"$2\" ] && exec head -n \"$1\" \"$2\"' sh \"$1\" \"$2\" 2>/dev/null\n",
+      "run": "TestAnAccountReadThatHangsIsStopped",
+      "args": []
+    },
+    {
+      "label": "muse: the trust store's read is bounded",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    if account_read jq -e --arg w \"$ws\" '.projects | has($w)' \"$trust_file\" >/dev/null 2>&1; then\n",
+      "replace": "    if as_account jq -e --arg w \"$ws\" '.projects | has($w)' \"$trust_file\" >/dev/null 2>&1; then\n",
+      "run": "TestEveryAccountReadInTheAdaptersIsBounded",
+      "args": []
+    },
+    {
+      "label": "pi: the probe's read of its settings is bounded",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "  want_provider=$(account_read jq -r '.defaultProvider // \"\"' \"$settings\" 2>/dev/null)\n",
+      "replace": "  want_provider=$(as_account jq -r '.defaultProvider // \"\"' \"$settings\" 2>/dev/null)\n",
+      "run": "TestEveryAccountReadInTheAdaptersIsBounded",
+      "args": []
+    },
+    {
+      "label": "omp: the account's profile is read under the bound",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "  account_read sh -lc \"printf '%s' \\\"\\${$1:-}\\\"\" 2>/dev/null\n",
+      "replace": "  as_account sh -lc \"printf '%s' \\\"\\${$1:-}\\\"\" 2>/dev/null\n",
+      "run": "TestEveryAccountReadInTheAdaptersIsBounded",
+      "args": []
+    },
+    {
+      "label": "omp: the probe's readlink of omp is bounded",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "case $(account_read readlink -f \"$omp_real\" 2>/dev/null || :) in\n",
+      "replace": "case $(as_account readlink -f \"$omp_real\" 2>/dev/null || :) in\n",
+      "run": "TestEveryAccountReadInTheAdaptersIsBounded",
+      "args": []
+    },
+    {
+      "label": "pi: the release's digest is read under the bound",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "  [ \"$(account_read cat \"$RELEASE_DIR/asset.sha256\" 2>/dev/null)\" = \"$PI_WANT\" ]\n",
+      "replace": "  [ \"$(as_account cat \"$RELEASE_DIR/asset.sha256\" 2>/dev/null)\" = \"$PI_WANT\" ]\n",
+      "run": "TestEveryAccountReadInTheAdaptersIsBounded",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a file where the engine's settings go is named",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "\"$TK_HOME/.config/containers\" \"$TK_HOME/.config/containers/containers.conf.d\" \\\n",
+      "replace": "\\\n",
+      "run": "TestProvisioningNamesAFileWhereTheEngineSettingsGo",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a drop-in write that failed beside a live bus is said as one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.sh",
+      "find": "      say \"⚠ cgroup delegation: $TK_USER could not write $home/$MANAGER_REL, so its engine was not moved to its user manager, whose session bus answers\"\n",
+      "replace": "      write_manager remove || :\n      say \"⚠ cgroup delegation: $TK_USER's user manager has no session bus, so its engine keeps cgroupfs and a limit can go unenforced\"\n",
+      "run": "TestEnginesShSaysAWriteThatFailedBesideALiveBus",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a drop-in the account could not remove is named without a claim on what it holds",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engines.sh",
+      "find": "    say \"⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, and its user manager has no session bus. Remove that file as $TK_USER\"\n",
+      "replace": "    say \"⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, which still names the systemd manager, and its user manager has no session bus. Remove that file as $TK_USER\"\n",
+      "run": "TestEnginesShSaysCgroupfsOnlyOnceTheDropInIsGone",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the scan counts runuser and su as the account only by their user word",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/linksafe_test.go",
+      "find": "\troute := shAccountRoutes[base] || (base == \"runuser\" || base == \"su\") && shRunsAsAccount(args)\n",
+      "replace": "\troute := shAccountRoutes[base] || base == \"runuser\" || base == \"su\"\n",
+      "run": "TestTheHomeWriteScanReadsWhatRootWrites",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the scan reads a relative name after a cd into the home as a path there",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/linksafe_test.go",
+      "find": "\t\t\tat[c.scope] = h.place(to) != placeNone || here && shRelative(to)\n",
+      "replace": "\t\t\tat[c.scope] = false\n",
+      "run": "TestTheHomeWriteScanReadsWhatRootWrites",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the scan ends a cd's reach where its subshell closes",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/linksafe_test.go",
+      "find": "\t\t\tscopes = scopes[:len(scopes)-1]\n",
+      "replace": "",
+      "run": "TestTheHomeWriteScanReadsWhatRootWrites",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the tdnf family installs runuser and su",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": " tar iproute2 util-linux >/dev/null\n",
+      "replace": " tar iproute2 >/dev/null\n",
+      "run": "TestTheProvisionerInstallsWhatEachFamilysEngineNeeds",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the xbps family installs runuser and su",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": " ca-certificates tar util-linux >/dev/null\n",
+      "replace": " ca-certificates tar >/dev/null\n",
+      "run": "TestTheProvisionerInstallsWhatEachFamilysEngineNeeds",
       "args": []
     },
     {
@@ -257,7 +572,7 @@
       "label": "muse: the account reads the trust store it edits",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "    if as_account jq --arg w \"$ws\" '.projects += {($w): {\"decision\":\"trusted\"}}' \"$trust_file\" > \"$tmp\" 2>/dev/null &&\n",
+      "find": "    if account_read jq --arg w \"$ws\" '.projects += {($w): {\"decision\":\"trusted\"}}' \"$trust_file\" > \"$tmp\" 2>/dev/null &&\n",
       "replace": "    if jq --arg w \"$ws\" '.projects += {($w): {\"decision\":\"trusted\"}}' \"$trust_file\" > \"$tmp\" 2>/dev/null &&\n",
       "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot",
       "args": []
@@ -275,7 +590,7 @@
       "label": "muse: the account reads whether the trust store is Muse's",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "    as_account jq -e 'has(\"schema_version\") and has(\"projects\")' \"$trust_file\" >/dev/null 2>&1 ||\n",
+      "find": "    account_read jq -e 'has(\"schema_version\") and has(\"projects\")' \"$trust_file\" >/dev/null 2>&1 ||\n",
       "replace": "    jq -e 'has(\"schema_version\") and has(\"projects\")' \"$trust_file\" >/dev/null 2>&1 ||\n",
       "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot",
       "args": []
@@ -284,7 +599,7 @@
       "label": "muse: the account reads whether a workspace is trusted",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "    if as_account jq -e --arg w \"$ws\" '.projects | has($w)' \"$trust_file\" >/dev/null 2>&1; then\n",
+      "find": "    if account_read jq -e --arg w \"$ws\" '.projects | has($w)' \"$trust_file\" >/dev/null 2>&1; then\n",
       "replace": "    if jq -e --arg w \"$ws\" '.projects | has($w)' \"$trust_file\" >/dev/null 2>&1; then\n",
       "run": "TestTheMuseAdapterWritesNothingInTheHomeAsRoot",
       "args": []
@@ -671,7 +986,7 @@
       "label": "muse: herdr rules of the operator's own are left as they are",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "elif [ -f \"$HERDR_RULES\" ] &&\n  ! as_account sh -c '[ -f \"$1\" ] && exec head -n 1 \"$1\"' sh \"$HERDR_RULES\" 2>/dev/null | grep -q \"$HERDR_RULES_MARK\"; then\n",
+      "find": "elif [ -f \"$HERDR_RULES\" ] &&\n  ! account_read sh -c '[ -f \"$1\" ] && exec head -n 1 \"$1\"' sh \"$HERDR_RULES\" 2>/dev/null | grep -q \"$HERDR_RULES_MARK\"; then\n",
       "replace": "elif false; then\n",
       "run": "TestTheMuseAdapterWritesHerdrsRulesAndHerdrReloadsThem",
       "args": []
@@ -1139,8 +1454,8 @@
       "label": "wsl-toolkit: omp's installer reads its wrapper mark only from a regular file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/omp/install.sh",
-      "find": "  as_account sh -c '[ -f \"$1\" ] && head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
-      "replace": "  as_account sh -c 'head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
+      "find": "  account_read sh -c '[ -f \"$1\" ] && head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
+      "replace": "  account_read sh -c 'head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
       "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
       "args": []
     },
@@ -1148,8 +1463,8 @@
       "label": "wsl-toolkit: the omp probe reads its wrapper mark only from a regular file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/omp/probe.sh",
-      "find": "  as_account sh -c '[ -f \"$1\" ] && head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
-      "replace": "  as_account sh -c 'head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
+      "find": "  account_read sh -c '[ -f \"$1\" ] && head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
+      "replace": "  account_read sh -c 'head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
       "run": "TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram",
       "args": []
     },
@@ -1157,8 +1472,8 @@
       "label": "wsl-toolkit: the omp probe reads omp's first bytes only from a regular file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/omp/probe.sh",
-      "find": "as_account sh -c '[ -f \"$1\" ] && head -c 4 \"$1\"' sh \"$omp_real\"",
-      "replace": "as_account sh -c 'head -c 4 \"$1\"' sh \"$omp_real\"",
+      "find": "account_read sh -c '[ -f \"$1\" ] && head -c 4 \"$1\"' sh \"$omp_real\"",
+      "replace": "account_read sh -c 'head -c 4 \"$1\"' sh \"$omp_real\"",
       "run": "TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram",
       "args": []
     },
@@ -4702,8 +5017,8 @@
     {
       "label": "wsl-toolkit: a live grant or revoke takes its own target from another file's line",
       "file": "internal/toolkit/grants.sh",
-      "find": "  printf '%s\\n' \"$(cat \"$WORK/claim\")\" >> \"$WORK/claimed\"\n",
-      "replace": "  :\n",
+      "find": "  CHANGING=$(cat \"$WORK/claim\")\n  printf '%s\\n' \"$CHANGING\" >> \"$WORK/claimed\"\n",
+      "replace": "  CHANGING=$(cat \"$WORK/claim\")\n  :\n",
       "run": "TestALiveGrantTakesItsTargetFromAnotherFilesLine|TestARevokeTakesItsTargetsLineWithItsRow",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -7645,8 +7960,8 @@
     {
       "label": "wsl-toolkit: the account's engine moves to the systemd manager only behind its bus",
       "file": "internal/toolkit/engines.sh",
-      "find": "if [ -S \"/run/user/$uid/bus\" ] && systemctl is-active --quiet \"user@$uid.service\" && write_manager write; then",
-      "replace": "if write_manager write; then",
+      "find": "if [ -S \"/run/user/$uid/bus\" ] && systemctl is-active --quiet \"user@$uid.service\"; then",
+      "replace": "if true; then",
       "run": "TestEachEnginesSettingOwnsItsFiles",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -13351,7 +13666,7 @@
     {
       "label": "wsl-toolkit: a grant gone mid-ensure does not cost the base",
       "file": "internal/toolkit/base.go",
-      "find": "\tif errors.Is(err, ErrGrantSourceGone) {\n\t\treturn err\n\t}\n",
+      "find": "\tif errors.Is(err, ErrGrantSourceGone) || errors.Is(err, ErrGrantNested) {\n\t\treturn err\n\t}\n",
       "replace": "",
       "run": "TestAGrantGoneWhileEnsureRunsDoesNotCostTheBase",
       "module": "tools/windows/wsl-toolkit",
@@ -13882,8 +14197,8 @@
     {
       "label": "wsl-toolkit: a stored configuration does not carry a grant's missing mark",
       "file": "internal/toolkit/catalog.go",
-      "find": "\t// not stored.\n\tfor i := range resolved {\n\t\tresolved[i].Missing = false\n\t}\n",
-      "replace": "\t// not stored.\n\tfor i := range resolved[:0] {\n\t\tresolved[i].Missing = false\n\t}\n",
+      "find": "\t// not stored. ⚠ Nor is Inside, which the reader decides again. WSL-202.\n\tfor i := range resolved {\n",
+      "replace": "\t// not stored. ⚠ Nor is Inside, which the reader decides again. WSL-202.\n\tfor i := range resolved[:0] {\n",
       "run": "TestAGoneMarkIsNeitherStoredNorFingerprinted",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -16018,8 +16333,8 @@
       "label": "a managed account receiving its private persistent XDG directories",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
-      "find": "  \"$TK_HOME/.config\" \"$TK_HOME/.cache\" \"$TK_HOME/.local\" \"$TK_HOME/.local/share\" \"$TK_HOME/.local/state\") ||",
-      "replace": "  \"$TK_HOME/.config\") ||",
+      "find": "\"$TK_HOME/.cache\" \"$TK_HOME/.local\" \"$TK_HOME/.local/share\" \"$TK_HOME/.local/state\") ||",
+      "replace": "\"$TK_HOME/.cache\") ||",
       "run": "TestManagedAccountGetsPrivateXDGDirectories",
       "args": []
     },
@@ -17620,7 +17935,7 @@
       "label": "muse: a settings file without schema_version is refused and left untouched",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",
-      "find": "  if ! as_account jq -e 'type == \"object\" and has(\"schema_version\")' \"$MUSE_SETTINGS\" >/dev/null 2>&1; then\n",
+      "find": "  if ! account_read jq -e 'type == \"object\" and has(\"schema_version\")' \"$MUSE_SETTINGS\" >/dev/null 2>&1; then\n",
       "replace": "  if false; then\n",
       "run": "TestTheHerdrReporterIsRegisteredWhereMuseReadsIt",
       "args": []

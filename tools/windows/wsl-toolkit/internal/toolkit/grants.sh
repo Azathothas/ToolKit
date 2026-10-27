@@ -184,6 +184,8 @@ fi
 # ⚠ THE BLOCK NAMES A TARGET ONCE. Two lines would mount two directories at one
 # target, and the last would hide the first. WSL-190.
 : > "$WORK/claimed"
+# CHANGING is the one target a live run grants or revokes, and empty in every other mode.
+CHANGING=
 if [ "$TK_GRANTS_MODE" = write ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     fstab_target "$line"
@@ -191,7 +193,8 @@ if [ "$TK_GRANTS_MODE" = write ]; then
   done < "$WORK/block"
 elif [ "$TK_GRANTS_MODE" = live ] && [ -n "$TK_GRANT_TARGET" ]; then
   decode64 claim "$TK_GRANT_TARGET"
-  printf '%s\n' "$(cat "$WORK/claim")" >> "$WORK/claimed"
+  CHANGING=$(cat "$WORK/claim")
+  printf '%s\n' "$CHANGING" >> "$WORK/claimed"
 fi
 
 # listed WORD FILE: whether a line of FILE is WORD. In the shell, for the reason
@@ -227,7 +230,7 @@ fi
 # it as changed, and restart the base over the same grants. WSL-175, WSL-190.
 cat "$WORK/old-block" "$WORK/block" > "$WORK/order"
 : > "$WORK/placed"
-printf '%s\n' "$FSTAB_BEGIN" >> "$WORK/fstab"
+: > "$WORK/composed"
 while IFS= read -r line || [ -n "$line" ]; do
   fstab_target "$line"
   at=$target_of
@@ -240,10 +243,53 @@ while IFS= read -r line || [ -n "$line" ]; do
     line_for "$at" "$WORK/block"
     [ -n "$line_of" ] || continue
   fi
-  printf '%s\n' "$line_of" >> "$WORK/fstab"
+  printf '%s\n' "$line_of" >> "$WORK/composed"
   printf '%s\n' "$at" >> "$WORK/placed"
 done < "$WORK/order"
+
+# revoke_for TARGET: sets revoke_of to the command that takes TARGET's grant away, with
+# the file the ledger keeps its line for, or with this caller's own. WSL-202.
+revoke_for() {
+  rf_name=$TK_GRANT_OWNER_NAME
+  if listed "$1" "$WORK/kept-targets"; then
+    holder "$1"
+    rf_name=${holder_of#* }
+  fi
+  rf_file=
+  if [ -n "$rf_name" ]; then
+    rf_file=$(printf '%s' "$rf_name" | base64 -d 2>/dev/null) || rf_file=
+  fi
+  revoke_of="wsl-toolkit${rf_file:+ --config $rf_file} base revoke --target $1"
+}
+
+# >>> the block's nesting: begin
+# ⛔ NO LINE OF THE BLOCK MOUNTS INSIDE ANOTHER, IN ANY MODE. The outer grant is a
+# Windows directory where the account can make links, and WSL's mount -a at every start
+# resolved the inner target through whatever link stood there. A block an earlier
+# release wrote can hold such a pair, of one file or of two. The inner line is left out
+# and named with the revoke that clears it. WSL-202.
+printf '%s\n' "$FSTAB_BEGIN" >> "$WORK/fstab"
+while IFS= read -r line || [ -n "$line" ]; do
+  fstab_target "$line"
+  bn_inner=$target_of
+  bn_outer=
+  while IFS= read -r bn_line || [ -n "$bn_line" ]; do
+    fstab_target "$bn_line"
+    [ -n "$target_of" ] || continue
+    case "$bn_inner" in
+      "$target_of"/*) bn_outer=$target_of; break ;;
+    esac
+  done < "$WORK/composed"
+  if [ -z "$bn_outer" ]; then
+    printf '%s\n' "$line" >> "$WORK/fstab"
+    continue
+  fi
+  revoke_for "$bn_inner"
+  [ "$TK_GRANTS_MODE" = held ] ||
+    say "⚠ left $bn_inner out of the fstab block: it sits inside $bn_outer, a Windows directory where the account can make links on the way. Run: $revoke_of"
+done < "$WORK/composed"
 printf '%s\n' "$FSTAB_END" >> "$WORK/fstab"
+# <<< the block's nesting: end
 
 # install_fstab FILE: the whole file, through a rename, so a killed run leaves one.
 install_fstab() {
@@ -347,11 +393,32 @@ target_ready() {
   if [ ! -L "$tr_have" ]; then
     tr_real=$(cd -P "$tr_have" 2>/dev/null && pwd -P) || tr_real=
   fi
-  [ "$tr_real" = "$tr_have" ] ||
-    die "$tr_have is a link or not a directory, so $1 would not be made where it names. Remove $tr_have, or grant at another target"
+  [ "$tr_real" = "$tr_have" ] || target_astray "$1"
   [ "$tr_have" != "$1" ] || return 0
   mkdir -p "$1" || die "could not make $1"
   chmod 755 "$1" || die "could not give $1 mode 755"
+}
+
+# target_astray TARGET: refuses TARGET, whose deepest part that is there, tr_have, is not
+# the directory its path names, and says what it is instead.
+# ⚠ IT CALLED EVERY ONE "a link or not a directory", and told the reader to remove it.
+# One was a real directory under a linked parent, and one a directory root could not
+# enter. WSL-202.
+target_astray() {
+  if [ -L "$tr_have" ]; then
+    die "$tr_have is a link, so $1 would not be made where it names. Remove $tr_have, or grant at another target"
+  fi
+  if [ -n "$tr_real" ]; then
+    ta_link=${tr_have%/*}
+    while [ -n "$ta_link" ] && [ ! -L "$ta_link" ]; do
+      ta_link=${ta_link%/*}
+    done
+    die "$tr_have resolves to $tr_real, because ${ta_link:-a directory on its way} is a link, so $1 would not be made where it names. Make ${ta_link:-it} a directory, or grant at another target"
+  fi
+  if [ -d "$tr_have" ]; then
+    die "$tr_have is a directory root could not enter, so $1 would not be made where it names. Grant at another target"
+  fi
+  die "$tr_have is not a directory, so $1 would not be made where it names. Remove $tr_have, or grant at another target"
 }
 # <<< each target, where it names: end
 
@@ -389,6 +456,10 @@ nested_grant() {
 }
 
 : > "$WORK/targets"
+# left-out: each of this caller's targets inside another file's grant, with what to say
+# of it, and left-out-targets the target alone.
+: > "$WORK/left-out"
+: > "$WORK/left-out-targets"
 # The payload is a validated sequence of base64-target/mode pairs.
 # shellcheck disable=SC2086
 set -- $TK_MOUNT_CHECKS
@@ -396,14 +467,29 @@ while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || die "the explicit mount check table is incomplete"
   decode64 target "$1"
   tk_target=$(cat "$WORK/target")
-  printf '%s %s\n' "$2" "$tk_target" >> "$WORK/targets"
-  # ⛔ A TARGET NESTED WITH ANOTHER FILE'S GRANT IS REFUSED, as validation refuses one
-  # nested in a grant of the same file. WSL-202.
+  # ⛔ A TARGET NESTED WITH ANOTHER FILE'S GRANT IS NEVER MADE OR MOUNTED. A live run that
+  # grants it is refused, as PlanGrant refuses one nested in a grant of the same file.
+  # One inside that grant is left out of what is made, the ledger and the block. Write
+  # mode then refuses, once the block is written without it. Refused before the block,
+  # the earlier release's line stayed there, and the next start mounted it. Around that
+  # grant, the block above left the inner line out. WSL-202.
   nested_grant "$tk_target"
   if [ -n "$nested_at" ]; then
     decode64 nested_by "$nested_by"
-    die "$tk_target and $nested_at, which $(cat "$WORK/nested_by") grants, sit one inside the other, where the account can make links on the way. Grant it at a target outside every other grant"
+    ng_said="$tk_target and $nested_at, which $(cat "$WORK/nested_by") grants, sit one inside the other, where the account can make links on the way"
+    [ "$tk_target" != "$CHANGING" ] || die "$ng_said. Grant it at a target outside every other grant"
+    case "$tk_target" in
+      "$nested_at"/*)
+        revoke_for "$tk_target"
+        printf '%s %s, so %s is not in the fstab block and is not mounted. Run: %s\n' \
+          "$tk_target" "$ng_said" "$tk_target" "$revoke_of" >> "$WORK/left-out"
+        printf '%s\n' "$tk_target" >> "$WORK/left-out-targets"
+        shift 2
+        continue
+        ;;
+    esac
   fi
+  printf '%s %s\n' "$2" "$tk_target" >> "$WORK/targets"
   target_ready "$tk_target"
   shift 2
 done
@@ -411,6 +497,18 @@ count=$(grep -c . "$WORK/targets" || :)
 say "explicit Windows directories: ${count:-0}"
 
 if [ "$TK_GRANTS_MODE" = write ]; then
+  # ⛔ A TARGET LEFT OUT ABOVE LOSES ITS LINE, which an earlier release wrote. WSL-202.
+  if [ -s "$WORK/left-out-targets" ]; then
+    : > "$WORK/fstab.out"
+    while IFS= read -r line || [ -n "$line" ]; do
+      fstab_target "$line"
+      if [ -n "$target_of" ] && listed "$target_of" "$WORK/left-out-targets"; then
+        continue
+      fi
+      printf '%s\n' "$line" >> "$WORK/fstab.out"
+    done < "$WORK/fstab"
+    mv "$WORK/fstab.out" "$WORK/fstab"
+  fi
   # ⛔ SAID WHETHER IT CHANGED, because provisioning restarts the base only when
   # this block or wsl.conf did. The x keeps a trailing newline that command
   # substitution would strip. WSL-175.
@@ -440,6 +538,15 @@ if [ "$TK_GRANTS_MODE" = write ]; then
       fi
     done < "$WORK/targets"
     install_owners "$WORK/owners"
+  fi
+  # ⛔ REFUSED ONCE THE BLOCK IS WRITTEN WITHOUT IT, so the refusal names the revoke and
+  # the next start mounts nothing inside another file's grant. WSL-202.
+  if [ -s "$WORK/left-out" ]; then
+    left_said=
+    while read -r _left_target left_rest; do
+      left_said="${left_said:+$left_said; }$left_rest"
+    done < "$WORK/left-out"
+    die "$left_said"
   fi
   printf 'grants-complete\n'
   exit 0

@@ -28,13 +28,26 @@ as_account() {
     PATH="$PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin" "$@"
 }
 
+# >>> the account's reads: begin
+# account_read CMD ARG... is as_account CMD ARG..., stopped after 30 seconds where the
+# userland carries timeout. ⛔ A FILE OF THE ACCOUNT'S CAN HOLD ITS READER: a named pipe
+# swapped in after a `[ -f ]` test, or a file of its own FUSE mount that never answers.
+# ⭐ Root's timeout runs runuser. ⚠ The hang is bounded, not removed. WSL-201.
+account_read() (
+  if command -v timeout >/dev/null 2>&1; then
+    runuser() { timeout 30 runuser "$@"; }
+  fi
+  as_account "$@"
+)
+
 # first_lines N PATH prints the first N lines of PATH, read by the account, when it is a
 # file. ⛔ Root's head followed a path the account's login shell named, and a named
 # pipe there held the probe. WSL-201.
 first_lines() {
   # shellcheck disable=SC2016  # the single quotes hold the account's own script
-  as_account sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
+  account_read sh -c '[ -f "$2" ] && exec head -n "$1" "$2"' sh "$1" "$2" 2>/dev/null
 }
+# <<< the account's reads: end
 
 # ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk. `base status` asks it of
 # an adapter the configuration no longer names, which keeps its files until `base
@@ -115,8 +128,8 @@ fi
 # ⭐ WHERE THE ACCOUNT'S pi CAME FROM. install.sh takes pi's own release, and npm only when
 # that release could not be fetched. So `npm` here says the official route did not run. A
 # base built before WSL-138 reads `npm` too, until its next base ensure.
-pi_real=$(as_account readlink -f "$PREFIX/bin/pi" 2>/dev/null || :)
-releases_real=$(as_account readlink -f "$RELEASES" 2>/dev/null || :)
+pi_real=$(account_read readlink -f "$PREFIX/bin/pi" 2>/dev/null || :)
+releases_real=$(account_read readlink -f "$RELEASES" 2>/dev/null || :)
 if [ -n "$pi_real" ] && [ -n "$releases_real" ] && [ "${pi_real#"$releases_real"/}" != "$pi_real" ]; then
   printf 'source release\n'
 else
@@ -145,9 +158,9 @@ fi
 # than a fact.
 settings=$TK_HOME/.pi/agent/settings.json
 if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
-  want_provider=$(as_account jq -r '.defaultProvider // ""' "$settings" 2>/dev/null)
-  want_model=$(as_account jq -r '.defaultModel // ""' "$settings" 2>/dev/null)
-  want_effort=$(as_account jq -r '.defaultThinkingLevel // ""' "$settings" 2>/dev/null)
+  want_provider=$(account_read jq -r '.defaultProvider // ""' "$settings" 2>/dev/null)
+  want_model=$(account_read jq -r '.defaultModel // ""' "$settings" 2>/dev/null)
+  want_effort=$(account_read jq -r '.defaultThinkingLevel // ""' "$settings" 2>/dev/null)
   [ -n "$want_model" ] && printf 'startup_model %s/%s\n' "${want_provider:-?}" "$want_model"
   [ -n "$want_effort" ] && printf 'startup_effort %s\n' "$want_effort"
   if [ -n "$want_model" ]; then
@@ -175,12 +188,12 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
       # --provider with not_ready for any name, a provider it does not know included.
       check="pi auth check --model $want_provider/$want_model"
       # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
-      if [ -f "$models" ] && as_account jq -e --arg p "$want_provider" --arg m "$want_model" \
+      if [ -f "$models" ] && account_read jq -e --arg p "$want_provider" --arg m "$want_model" \
           '(.providers[$p].models // []) | any(.id == $m)' "$models" >/dev/null 2>&1; then
         # ⭐ DECLARED, AND ITS KEY IS THE OPERATOR'S TO STORE. True, and it stops nothing.
         printf "note pi's startup model %s/%s is declared in %s, and pi holds no key for %s yet, so pi lists none of its models. Store the key, and %s answers ready\n" \
           "$want_provider" "$want_model" "$models" "$want_provider" "$check"
-      elif [ -f "$models" ] && as_account jq -e --arg p "$want_provider" '.providers | has($p)' "$models" >/dev/null 2>&1; then
+      elif [ -f "$models" ] && account_read jq -e --arg p "$want_provider" '.providers | has($p)' "$models" >/dev/null 2>&1; then
         # ⛔ THE PROVIDER IS DECLARED AND THE MODEL IS NOT, so no key would make pi list it.
         problem "$undeclared"
       else
@@ -207,7 +220,7 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
       xhigh|max)
         models=$TK_HOME/.pi/agent/models.json
         # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
-        if [ -f "$models" ] && ! as_account jq -e --arg p "$want_provider" --arg m "$want_model" --arg e "$want_effort" \
+        if [ -f "$models" ] && ! account_read jq -e --arg p "$want_provider" --arg m "$want_model" --arg e "$want_effort" \
             '(.providers[$p].models // []) | any(.id == $m and ((.thinkingLevelMap // {}) | has($e)))' "$models" >/dev/null 2>&1; then
           problem "pi's startup effort is $want_effort and $want_provider/$want_model declares no thinkingLevelMap exposing it, so pi clamps every session to high. Add \"thinkingLevelMap\": {\"$want_effort\": \"$want_effort\"} to that model"
         fi

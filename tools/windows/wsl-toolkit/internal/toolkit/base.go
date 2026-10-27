@@ -342,6 +342,25 @@ func (b *Base) configuredState() (BaseState, error) {
 			Repairable: true,
 		})
 	}
+	// ⭐ SO IS A GRANT INSIDE ANOTHER, which a file an earlier release wrote can hold. It
+	// is never mounted, so its target shows the outer grant's own directory of that
+	// name. A problem, so `base ensure` says it and exits 1 until it is revoked. WSL-202.
+	for _, m := range mounts {
+		if m.Inside == "" {
+			continue
+		}
+		revoke := ToolCommand("base revoke --target " + m.Target)
+		st.Problems = append(st.Problems, fmt.Sprintf(
+			"the grant at %s sits inside the grant at %s, a Windows directory the account can make links in, so it is not mounted. Run: %s",
+			m.Target, m.Inside, revoke))
+		st.Remediations = append(st.Remediations, Remediation{
+			ID:         "grant-nested",
+			What:       "the grant at " + m.Target + " sits inside the grant at " + m.Inside + ", where the account can make links on the way to it",
+			Costs:      "it is left out of the fstab block and never mounted, and base grant refuses until it is revoked",
+			Command:    revoke,
+			Repairable: true,
+		})
+	}
 	return st, nil
 }
 
@@ -1273,8 +1292,11 @@ func (b *Base) importedInto(dir string) bool {
 //
 // ⚠ A GRANT WHOSE DIRECTORY WENT AWAY WHILE ENSURE RAN keeps its own refusal,
 // which names the revoke: a rebuild would refuse over the same grant. WSL-106.
+//
+// ⚠ SO DOES A GRANT grants.sh LEFT OUT FOR SITTING INSIDE ANOTHER FILE'S. Its refusal
+// names the revoke, which clears it without the cost of a rebuild. WSL-202.
 func reprovisionFailed(name string, err error) error {
-	if errors.Is(err, ErrGrantSourceGone) {
+	if errors.Is(err, ErrGrantSourceGone) || errors.Is(err, ErrGrantNested) {
 		return err
 	}
 	return fmt.Errorf("re-provisioning %s failed, and it was NOT removed: %w. Its home, credentials and images are as they were. "+
@@ -1919,11 +1941,30 @@ func baseMountPayloads(cfg Config) (fstab64, checks string, mounts []BaseMount, 
 	if err := GoneGrantsError(mounts); err != nil {
 		return "", "", nil, err
 	}
+	// ⛔ A GRANT INSIDE ANOTHER IS LEFT OUT, NOT REFUSED. A block an earlier release
+	// wrote holds its line, and this block replaces that one, so the next start does
+	// not mount it. `base status` names it with its revoke. WSL-202.
+	mounts = unnested(mounts)
 	fstab64, checks, err = renderBaseMounts(mounts)
 	if err != nil {
 		return "", "", nil, err
 	}
 	return fstab64, checks, mounts, nil
+}
+
+// unnested is mounts without each grant that sits inside another.
+//
+// ⛔ SUCH A GRANT IS NEVER MOUNTED, AND ITS LINE NEVER REACHES THE BLOCK. The outer
+// grant is a Windows directory where the account can make links, and WSL's mount -a
+// at every start resolved the inner target through whatever link stood there. WSL-202.
+func unnested(mounts []BaseMount) []BaseMount {
+	out := mounts[:0:0]
+	for _, m := range mounts {
+		if m.Inside == "" {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // presentGrantChecks is the read-back the verifier runs for the grants whose
@@ -1975,7 +2016,9 @@ func liveMountPayloads(cfg Config) (fstab64, checks string, err error) {
 			present = append(present, m)
 		}
 	}
-	return renderBaseMounts(present)
+	// ⛔ AND A GRANT INSIDE ANOTHER, for the reason baseMountPayloads gives. A live
+	// grant or revoke writes the block too. WSL-202.
+	return renderBaseMounts(unnested(present))
 }
 
 // renderBaseMounts writes the fstab block and the read-back lines for a set of

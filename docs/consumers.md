@@ -92,31 +92,43 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
-### ⛔ What refusing a grant target inside another breaks, and what a caller does
+### ⛔ What never mounting a grant inside another breaks, and what a caller does
 
 `WSL-202`. In `wsl-toolkit-v9.0.0`. It fixes a root write that followed a link the
 account made in a Windows directory a grant mounted. A break by the table above,
-because a configuration that loaded is now refused.
+because a grant that was mounted no longer is, and a command that exited 0 exits 1.
+
+⭐ **A configuration that already nests still loads, so its revoke runs.** It is not
+refused where it is read. Its inner grant is marked, as a gone source is, and nothing
+mounts it. The fstab block an earlier release wrote loses the inner line at the next
+`base ensure`, so the next start mounts nothing there. Every message names `base revoke
+--target INNER`, or the file to edit.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
-| a configuration whose `base.mounts` targets nest, one inside another, is refused where it is read. Every command that reads it exits non-zero, naming the two | grants one target inside another in one file | grants each at a target outside every other grant, such as `/workspaces/NAME` |
-| `base grant` and `base ensure` refuse a target nested with a grant another configuration file holds, while that grant is live or the fstab block holds its line | nests a project file's grant with the home file's, or the other way round | grants at a target outside every other grant |
-| a target with a link on its way, or one under a live Windows mount, is refused before anything is made or mounted | linked a path under `/workspaces` to another directory, or mounted a Windows directory there itself | removes the link or the mount, or grants at another target |
+| `base grant` refuses a new target inside another of the same file, or around one | grants one target inside another in one file | grants each at a target outside every other grant, such as `/workspaces/NAME` |
+| a file that already nests loads. Its inner grant is left out of the fstab block and every mount, so its target shows the outer grant's own directory of that name. `base status` names it with its revoke, `base ensure` exits 1 naming it, and `base grant` refuses beside it | reads files under the inner target, or reads `base ensure` exit 0 | runs `base revoke --target INNER`, then grants that directory at a target outside every other grant |
+| a live `base grant` of a target nested with a grant another configuration file holds is refused, while that grant is live or the fstab block holds its line | nests a project file's grant with the home file's, or the other way round | grants at a target outside every other grant |
+| `base ensure` leaves out of the block a line inside another file's grant. Its own file's line fails the ensure, naming its revoke. Another file's line is named in a ⚠ line with that file's revoke, and the ensure goes on. It refused either, and the block kept both lines | reads that other file's grant as mounted after the next start | runs the named revoke with the file that granted it |
+| `base status --probe` reports an fstab block whose lines nest, with the revoke the ledger gives, and `base ensure` writes the block again | | nothing |
+| a target with a link on its way, or one under a live Windows mount, is refused before anything is made or mounted. The refusal says what stands there | linked a path under `/workspaces` to another directory, or mounted a Windows directory there itself | removes the link or the mount, or grants at another target |
 | root gives mode 755 only to a target it made. One already there keeps its mode | made a target itself with another mode, and relied on a grant to open it | makes it 0755 itself, or leaves it for the grant to make |
 | muse's reporter self-test makes its own directory, and the muse probe removes the account's scratch directory as the account | | nothing |
 
 ⚠ **The rows it reaches, from the register.** The register names no consumer whose
 grants nest. pg-toolkit's row names a grant whose directory is gone, and does not read
-its targets. A pg-toolkit whose targets nest has its `base ensure` refused, naming the
-two.
+its targets. A pg-toolkit whose targets nest has its `base ensure` exit 1, naming the
+revoke, with the inner grant unmounted.
 
 ### ⛔ What root writing nothing in the account's home breaks, and what a caller does
 
 `WSL-201`. In `wsl-toolkit-v9.0.0`. It fixes a write root made through a link the
 account placed. A break by the table above, because an adapter that finished there
-can now fail. ⚠ One row changes a home with no such link, the `chown -R` row. Every
-other row changes only a home holding one.
+can now fail.
+
+⚠ Two rows change a home with no such link: the `chown -R` row and the
+`~/.config/containers` row. The `timeout` row changes only a read slower than its
+bound. Every other row changes only a home holding one.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -125,7 +137,9 @@ other row changes only a home holding one.
 | a link at muse's `trust.json` or at omp's separating wrapper is replaced by the file. Root wrote through it, as root's `install` already replaced the others | keeps one of those files somewhere else through a link | reads the file in the home after `base ensure` |
 | provisioning no longer runs `chown -R` over `~/.config`. A file root left there stays root's after a re-provisioning | relied on a re-provisioning to give the account a file root wrote under `~/.config` | gives it with `base exec --root` |
 | provisioning gives back only a directory that stands at an XDG path itself. It gave what a link there named to the account, and made it 0700 | linked an XDG path to a directory of root's | links it to a directory the account owns |
-| on a base without systemd, root no longer removes the account's engine drop-in where the account could not. With no session bus, one the account could not remove is named, and `cgroupfs` is no longer claimed. `base ensure` names the file in a ⚠ line | reads the ⚠ line that says the engine keeps `cgroupfs` | reads the ⚠ line that names the drop-in too |
+| on a base without systemd, root no longer removes the account's engine drop-in where the account could not. With no session bus, one the account could not remove is named, and `cgroupfs` is no longer claimed. `base ensure` names the file in a ⚠ line, which says nothing of what it holds. A write that failed beside a live session bus is named as a write | reads the ⚠ line that says the engine keeps `cgroupfs` | reads the ⚠ line that names the drop-in too |
+| provisioning makes `~/.config/containers` and its `containers.conf.d` as the account, mode 0700, as the XDG directories. A name there that is not a directory stops provisioning, named. It failed at the engine's settings, naming neither the path nor the remedy | reads either directory as another account | nothing, since both are the account's own |
+| an adapter's read of a file in the account's home stops after 30 seconds where the userland carries `timeout`, and reads as nothing | keeps such a file on a mount slower than that | keeps it on a faster one |
 
 ⚠ **The rows it reaches, from the register.** The register names no consumer that
 configures an adapter. pg-toolkit runs `base ensure`, and podbox runs `base ensure

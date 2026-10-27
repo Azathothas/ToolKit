@@ -239,7 +239,7 @@ func TestEachEnginesSettingOwnsItsFiles(t *testing.T) {
 			t.Errorf("engines.sh no longer carries %q", want)
 		}
 	}
-	bus := strings.Index(src, `if [ -S "/run/user/$uid/bus" ] && systemctl is-active --quiet "user@$uid.service" && write_manager write; then`)
+	bus := strings.Index(src, `if [ -S "/run/user/$uid/bus" ] && systemctl is-active --quiet "user@$uid.service"; then`)
 	if bus < 0 {
 		t.Error("the account's engine is moved to the systemd manager without asking whether its session bus answers")
 	}

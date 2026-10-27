@@ -68,7 +68,7 @@ func ompScript(t *testing.T) string {
 // never fire on any base.
 func TestTheAccountsEnvironmentIsReadThroughALoginShell(t *testing.T) {
 	script := ompScript(t)
-	if !strings.Contains(script, `as_account sh -lc "printf '%s' \"\${$1:-}\""`) {
+	if !strings.Contains(script, `account_read sh -lc "printf '%s' \"\${$1:-}\""`) {
 		t.Fatal("account_env no longer reads a login shell, so every variable it asks about reads as unset under env -i")
 	}
 }

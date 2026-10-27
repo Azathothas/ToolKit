@@ -702,7 +702,8 @@ func TestTheVerifiersAutomountRowIsReadByItsValue(t *testing.T) {
 
 func TestManagedAccountGetsPrivateXDGDirectories(t *testing.T) {
 	for _, want := range []string{
-		`"$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state"`,
+		`"$TK_HOME/.config" "$TK_HOME/.config/containers" "$TK_HOME/.config/containers/containers.conf.d"`,
+		`"$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state"`,
 		`chmod 0700 "$TK_HOME"`,
 	} {
 		if !strings.Contains(string(provisionScript), want) {

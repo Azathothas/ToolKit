@@ -79,6 +79,23 @@ func grantsEnv(cfg Config, mode string, grant BaseMount) (map[string]string, err
 	}, nil
 }
 
+// grantsNestedSaid is what grants.sh says of a grant it leaves out for sitting inside
+// another file's, or around one. WSL-202.
+const grantsNestedSaid = "sit one inside the other"
+
+// grantsStepError is the refusal of a grants step in the base name, for the reason
+// grants.sh gave.
+//
+// ⚠ A GRANT LEFT OUT FOR SITTING INSIDE ANOTHER FILE'S keeps its own refusal, which
+// names the revoke, as a gone one does. A failed re-provision named a rebuild over it.
+// WSL-202.
+func grantsStepError(name, reason string) error {
+	if strings.Contains(reason, grantsNestedSaid) {
+		return fmt.Errorf("the grants step in %s: %w: %s", name, ErrGrantNested, reason)
+	}
+	return fmt.Errorf("the grants step in %s: %s", name, reason)
+}
+
 // grantOwner is how the guest's grant ledger names a configuration file: a key
 // compared as Windows compares paths, and the file's own spelling to show. Both are
 // base64, and both are empty for a configuration with no file. WSL-179.
@@ -132,7 +149,7 @@ func (b *Base) applyGrants(ctx context.Context, cfg Config, mode string, grant B
 				reason = strings.TrimPrefix(strings.TrimSpace(line), "grants: ")
 			}
 		}
-		return seen, fmt.Errorf("the grants step in %s: %s", cfg.Base.Name, reason)
+		return seen, grantsStepError(cfg.Base.Name, reason)
 	}
 	if !strings.Contains(seen, "grants-complete") {
 		return seen, errors.New("the grants step exited 0 without reaching its last line")
@@ -200,6 +217,11 @@ func PlanGrant(cfg Config, source, target, mode string) (GrantChange, error) {
 	if err := GoneGrantsError(current); err != nil {
 		return GrantChange{}, err
 	}
+	// ⛔ AND BESIDE A GRANT INSIDE ANOTHER, as beside a gone one. A file an earlier
+	// release wrote can hold one, and it loads so that its revoke can run. WSL-202.
+	if err := NestedGrantsError(current); err != nil {
+		return GrantChange{}, err
+	}
 	for _, have := range current {
 		sameTarget := have.Target == want.Target
 		sameSource := sameSourcePath(have.Source, want.Source)
@@ -217,6 +239,15 @@ func PlanGrant(cfg Config, source, target, mode string) (GrantChange, error) {
 	next := cfg
 	next.Base.Mounts = append(append([]BaseMount(nil), cfg.Base.Mounts...), want)
 	if err := next.Validate(); err != nil {
+		return GrantChange{}, err
+	}
+	// ⛔ A NEW GRANT INSIDE ANOTHER, OR AROUND ONE, IS REFUSED. Validation lets a file
+	// that nests load, so this is where a new nesting stops. WSL-202.
+	targets := make([]string, 0, len(current)+1)
+	for _, have := range current {
+		targets = append(targets, have.Target)
+	}
+	if err := nestedTargetsError(append(targets, want.Target)); err != nil {
 		return GrantChange{}, err
 	}
 	return GrantChange{Next: next, Mount: want}, nil

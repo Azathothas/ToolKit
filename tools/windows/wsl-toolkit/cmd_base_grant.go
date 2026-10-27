@@ -213,11 +213,15 @@ func renderGrant(ans baseGrantAnswer, cfg toolkit.Config, asJSON bool) (int, err
 	return exitOK, nil
 }
 
-// goneMark is what a grant line adds when the grant's source no longer exists.
-// WSL-106.
+// goneMark is what a grant line adds when the grant's source no longer exists,
+// WSL-106, or when the grant sits inside another and is never mounted, WSL-202.
 func goneMark(g toolkit.BaseMount) string {
-	if !g.Missing {
-		return ""
+	revoke := toolkit.ToolCommand("base revoke --target " + g.Target)
+	switch {
+	case g.Missing:
+		return ". ⛔ The directory no longer exists. Run: " + revoke
+	case g.Inside != "":
+		return ". ⛔ It sits inside " + g.Inside + ", so it is not mounted. Run: " + revoke
 	}
-	return ". ⛔ The directory no longer exists. Run: " + toolkit.ToolCommand("base revoke --target "+g.Target)
+	return ""
 }

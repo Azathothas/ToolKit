@@ -144,20 +144,29 @@ if [ "$systemd_up" = true ]; then
   done
   while [ ! -S "/run/user/$uid/bus" ] && [ "$i" -lt 10 ]; do sleep 1; i=$((i+1)); done
   delegated=$(cat "/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/cgroup.controllers" 2>/dev/null) || delegated=
-  if [ -S "/run/user/$uid/bus" ] && systemctl is-active --quiet "user@$uid.service" && write_manager write; then
-    say "cgroup delegation: ${delegated:-none read} to $TK_USER's user manager, which holds a cgroup per container"
-  else
-    # >>> the account's drop-in without a session bus: begin
-    # ⛔ cgroupfs IS SAID ONLY ONCE THE DROP-IN IS GONE. A drop-in the account could not
-    # remove still names the systemd manager, and the line said the engine kept cgroupfs
-    # over it. One the account cannot remove is named, as without systemd. WSL-201.
-    if write_manager remove; then
-      say "⚠ cgroup delegation: $TK_USER's user manager has no session bus, so its engine keeps cgroupfs and a limit can go unenforced"
-    else
-      say "⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, which still names the systemd manager, and $TK_USER's user manager has no session bus to serve it"
-    fi
-    # <<< the account's drop-in without a session bus: end
+  # >>> the account's drop-in, by its session bus: begin
+  # ⛔ THE BUS IS READ ONCE, AND A WRITE THAT FAILED IS SAID AS ONE. The write was a
+  # third test beside the bus, so a write that failed beside a live bus was reported as
+  # no session bus. WSL-201.
+  bus_up=false
+  if [ -S "/run/user/$uid/bus" ] && systemctl is-active --quiet "user@$uid.service"; then
+    bus_up=true
   fi
+  if [ "$bus_up" = true ]; then
+    if write_manager write; then
+      say "cgroup delegation: ${delegated:-none read} to $TK_USER's user manager, which holds a cgroup per container"
+    else
+      say "⚠ cgroup delegation: $TK_USER could not write $home/$MANAGER_REL, so its engine was not moved to its user manager, whose session bus answers"
+    fi
+  # ⛔ cgroupfs IS SAID ONLY ONCE THE DROP-IN IS GONE. One the account could not remove is
+  # named, and nothing is claimed of what it holds: a removal can fail where no drop-in
+  # was there to remove. WSL-201.
+  elif write_manager remove; then
+    say "⚠ cgroup delegation: $TK_USER's user manager has no session bus, so its engine keeps cgroupfs and a limit can go unenforced"
+  else
+    say "⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, and its user manager has no session bus. Remove that file as $TK_USER"
+  fi
+  # <<< the account's drop-in, by its session bus: end
 else
   # ⚠ A BASE THAT NO LONGER RUNS SYSTEMD keeps no drop-in pointing its engine at
   # a manager it does not have.
@@ -166,7 +175,7 @@ else
   # made of a directory above the file, so root's removal reached a file of that name
   # outside the home. One the account cannot remove is named instead. WSL-201.
   write_manager remove ||
-    say "⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, which still names a manager this base does not run"
+    say "⚠ cgroup delegation: $TK_USER could not remove $home/$MANAGER_REL, and this base does not run systemd. Remove that file as $TK_USER"
   # <<< the account's drop-in without systemd: end
   rm -f "$DELEGATE"
   say "cgroup delegation: none, because this base does not run systemd"

@@ -190,12 +190,14 @@ engine_transaction() {
       bounded dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs \
         slirp4netns shadow-utils iproute tar util-linux >/dev/null
       ;;
+    # ⚠ AND HERE, under the same name, on Photon, Azure Linux and Void. Neither preset is
+    # built yet, and a build without it would stop at the XDG directories. WSL-201.
     tdnf)
-      bounded tdnf install -y podman shadow-utils tar iproute2 >/dev/null
+      bounded tdnf install -y podman shadow-utils tar iproute2 util-linux >/dev/null
       ;;
     xbps)
       bounded xbps-install -Sy podman crun fuse-overlayfs slirp4netns shadow \
-        iproute2 ca-certificates tar >/dev/null
+        iproute2 ca-certificates tar util-linux >/dev/null
       ;;
   esac
 }
@@ -500,11 +502,15 @@ for xdg_rel in .config .cache .local .local/share .local/state .config/container
     # linksafe: cd -P resolves every link, and pwd -P reads back that this is the home's own
     cd -P "$TK_HOME/$xdg_rel" 2>/dev/null || exit 0
     [ "$(pwd -P)" = "$tk_home_real/$xdg_rel" ] || exit 0
+    # linksafe: `.` is the directory pwd -P just read back as the home's own, and a directory has no hard link
     chown "$TK_USER:$TK_GROUP" .
   )
 done
 # ⛔ A NAME THAT IS NOT A DIRECTORY IS NAMED, AND LEFT AS IT IS. The verifier refuses
 # the base over it, and only the account may move a file of its home aside.
+# ⛔ THE ENGINE SETTINGS' TWO DIRECTORIES TOO. A file, a pipe or a dangling link at
+# either failed the settings step below with a message that named neither the path nor
+# the remedy. WSL-201.
 xdg_code=0
 # shellcheck disable=SC2016  # the single quotes hold the account's own script
 xdg_said=$(as_account '
@@ -515,11 +521,12 @@ xdg_said=$(as_account '
     mkdir -p "$d" || exit 1
     [ -L "$d" ] || chmod 0700 "$d" || exit 1
   done' wtk-xdg \
-  "$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state") ||
+  "$TK_HOME/.config" "$TK_HOME/.config/containers" "$TK_HOME/.config/containers/containers.conf.d" \
+  "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state") ||
   xdg_code=$?
 case $xdg_code in
   0) ;;
-  2) die "$xdg_said is not a directory, and $TK_USER's XDG directory belongs there. Move it aside as $TK_USER, then run base ensure again" ;;
+  2) die "$xdg_said is not a directory, and a directory of $TK_USER's belongs there. Move it aside as $TK_USER, then run base ensure again" ;;
   127) die "neither runuser nor su is installed, so nothing can act as $TK_USER in its home" ;;
   *) die "$TK_USER could not make its XDG directories in $TK_HOME, so the verifier would refuse the base" ;;
 esac

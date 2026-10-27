@@ -117,14 +117,15 @@ func TestTheProvisionerInstallsWhatEachFamilysEngineNeeds(t *testing.T) {
 	tdnf := engineCase{
 		family: "tdnf",
 		want: []string{
-			"tdnf install -y podman shadow-utils tar iproute2",
+			// ⛔ util-linux here too, by the same name. WSL-201.
+			"tdnf install -y podman shadow-utils tar iproute2 util-linux",
 			"tdnf install -y passt",
 		},
 	}
 	xbps := engineCase{
 		family: "xbps",
 		want: []string{
-			"xbps-install -Sy podman crun fuse-overlayfs slirp4netns shadow iproute2 ca-certificates tar",
+			"xbps-install -Sy podman crun fuse-overlayfs slirp4netns shadow iproute2 ca-certificates tar util-linux",
 			"xbps-install -Sy passt",
 		},
 	}
