@@ -125,6 +125,8 @@ func provisionerDeveloperSection(t *testing.T, family, osID string) string {
 	s.WriteString("\nset -eu\n")
 	s.WriteString("say() { printf 'say: %s\\n' \"$*\" >&2; }\n")
 	s.WriteString("die() { printf 'die: %s\\n' \"$*\" >&2; exit 3; }\n")
+	// bounded is the engine section's; the stubs below never hang.
+	s.WriteString("bounded() { \"$@\"; }\n")
 	for _, manager := range []string{"apk", "pacman", "apt-get", "dnf", "tdnf", "xbps-install"} {
 		s.WriteString(strings.ReplaceAll(manager, "-", "_") + "_stub() { printf '" + manager + " %s\\n' \"$*\" >&2; }\n")
 	}
