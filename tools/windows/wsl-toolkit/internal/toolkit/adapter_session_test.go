@@ -135,7 +135,9 @@ func TestAStaleHerdrServerIsAnAdvisoryWithItsRestart(t *testing.T) {
 func TestAPendingPrivateNetPassesTheEnsure(t *testing.T) {
 	h := newFakeHost(t)
 	b, _, _ := fakeBuiltBase(t, h, DefaultBaseImage)
-	b.cfg.Base.Adapters = []BaseAdapter{{Name: "herdr", PrivateNet: true}}
+	b.cfg.Base.Adapters = []BaseAdapter{
+		{Name: "herdr", PrivateNet: true},
+	}
 	h.stageGuest(t, "verify=ok", "binfmt=ok", "herdr=pending")
 	fakeHerdrDoor(t)
 	st, err := b.EnsureWith(context.Background(), false, false)
@@ -185,7 +187,9 @@ func fakeHerdrDoor(t *testing.T) {
 // herdr is already installed. A configuration that listed muse first got none of
 // them on a new base's first ensure. WSL-158.
 func TestHerdrInstallsBeforeTheAgentsThatLookForIt(t *testing.T) {
-	got := installOrder([]BaseAdapter{{Name: "muse"}, {Name: "pi"}, {Name: "herdr", PrivateNet: true}, {Name: "omp"}})
+	got := installOrder([]BaseAdapter{
+		{Name: "muse"}, {Name: "pi"}, {Name: "herdr", PrivateNet: true}, {Name: "omp"},
+	})
 	var names []string
 	for _, a := range got {
 		names = append(names, a.Name)
@@ -196,7 +200,9 @@ func TestHerdrInstallsBeforeTheAgentsThatLookForIt(t *testing.T) {
 
 	h := newFakeHost(t)
 	b, _, _ := fakeBuiltBase(t, h, DefaultBaseImage)
-	b.cfg.Base.Adapters = []BaseAdapter{{Name: "muse"}, {Name: "herdr", PrivateNet: true}}
+	b.cfg.Base.Adapters = []BaseAdapter{
+		{Name: "muse"}, {Name: "herdr", PrivateNet: true},
+	}
 	h.stageGuest(t, "verify=ok", "binfmt=ok", "herdr=pending", "muse=ok")
 	fakeHerdrDoor(t)
 	t.Setenv("PATH", os.Getenv(BinDirEnv)+string(os.PathListSeparator)+os.Getenv("PATH"))

@@ -173,7 +173,10 @@ func TestAHerdrServerOutsideItsNamespaceEarnsTheRestart(t *testing.T) {
 		}
 	}
 	// ⚠ A BASE THAT NEVER ASKED, and whose probe printed none of the namespace's facts.
-	for _, facts := range []map[string]string{{"server": "active"}, {"private-net": "off", "server-netns": "private"}} {
+	for _, facts := range []map[string]string{
+		{"server": "active"},
+		{"private-net": "off", "server-netns": "private"},
+	} {
 		if r, ok := herdrNetRemediation(AdapterState{Name: "herdr", Facts: facts}, false); ok {
 			t.Errorf("%v without the key earned %+v, and it needs nothing run", facts, r)
 		}
