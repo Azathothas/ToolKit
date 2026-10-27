@@ -2,6 +2,60 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "check: a split package's cases run in several processes",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\tif err == nil && split[filepath.ToSlash(rel)] {",
+      "replace": "\t\tif err == nil && split[filepath.ToSlash(rel)] && false {",
+      "run": "TestASplitPackagesCasesRunOnceEachInSeveralProcesses",
+      "args": []
+    },
+    {
+      "label": "check: a case that fails in one of a split package's processes is a finding",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\tif out, err := runIn(dir, goBin, \"test\", \"-run\", patterns[i], pkg); err != nil {",
+      "replace": "\t\tif out, err := runIn(dir, goBin, \"test\", \"-run\", patterns[i], pkg); err != nil && false {",
+      "run": "TestAFailureInOneProcessIsAFinding",
+      "args": []
+    },
+    {
+      "label": "check: a case no process's pattern matches is a finding",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\tif hits != 1 {",
+      "replace": "\t\tif hits > 1 {",
+      "run": "TestEveryCaseIsDealtToOneProcess",
+      "args": []
+    },
+    {
+      "label": "check: a case name that begins another's is matched whole",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\t\talt := regexp.QuoteMeta(name) + \"$\"",
+      "replace": "\t\t\talt := regexp.QuoteMeta(name)",
+      "run": "TestEveryCaseIsDealtToOneProcess",
+      "args": []
+    },
+    {
+      "label": "check: a split package that holds no test file is a finding",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "\t\tif err != nil || len(cases) == 0 {",
+      "replace": "\t\tif err != nil && len(cases) == 0 {",
+      "run": "TestASplitPackageThatMovedIsAFinding",
+      "args": []
+    },
+    {
+      "label": "check: a split package runs in two to four processes",
+      "module": "tools/check",
+      "file": "internal/checks/gotest.go",
+      "find": "func testProcesses() int { return min(4, max(2, runtime.NumCPU()/4)) }",
+      "replace": "func testProcesses() int { return min(4, max(1, runtime.NumCPU()/64)) }",
+      "run": "TestASplitPackageRunsInTwoToFourProcesses",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a parallel case that sets the environment is found",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/parallel_test.go",

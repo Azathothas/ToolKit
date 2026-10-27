@@ -338,6 +338,9 @@ func psRead(scripts []string, lines []string) (found []string, parsed string, no
 //
 // ⭐ THE MODULES ARE CHECKED AT ONCE, and each module's own steps still run in
 // order. A module that does not build is not vetted or tested, as before.
+//
+// ⭐ A PACKAGE splitTests NAMES RUNS ITS CASES IN 2 TO 4 PROCESSES, in
+// gotest.go. TOOL-40.
 func GoModules(t *Tree) Result {
 	r := Result{Extra: map[string]any{}}
 	goBin, err := exec.LookPath("go")
@@ -352,6 +355,9 @@ func GoModules(t *Tree) Result {
 		}
 	}
 	r.Extra["modules"] = len(mods)
+	for _, f := range missingSplits(t.Root, splitTests) {
+		r.bad("%s", f)
+	}
 	for _, f := range goModules(mods, func(m string) []string { return goModule(t.Root, goBin, m) }) {
 		r.bad("%s", f)
 	}
@@ -387,9 +393,7 @@ func goModule(root, goBin, m string) []string {
 	if out, err := runIn(dir, goBin, "vet", "./..."); err != nil {
 		found = append(found, sprintf("%s: go vet: %s", m, firstFinding(out)))
 	}
-	if out, err := runIn(dir, goBin, "test", "./..."); err != nil {
-		found = append(found, sprintf("%s: go test: %s", m, testFailure(out)))
-	}
+	found = append(found, goTestModule(root, goBin, m, dir, splitTests, testProcesses())...)
 	// ⚠ gofmt reports by PRINTING, not by exiting non-zero. Reading its
 	// exit code would report a tree that needs formatting as clean.
 	if out, err := runIn(dir, goBin, "fmt", "-n", "./..."); err == nil && strings.TrimSpace(out) != "" {
