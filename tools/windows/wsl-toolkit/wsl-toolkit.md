@@ -1644,8 +1644,8 @@ the digest is the one the adapter pins. `WSL-138`
 | `omp` | `omp-linux-x64` or `omp-linux-arm64`, one program with its own runtime, at `~/.local/bin/omp` | omp 18.12.6 |
 
 - ⛔ **Any other digest stops the ensure with exit 2, and npm is not tried.** The file
-  stays under `/var/lib/wsl-toolkit/NAME`, and the refusal names the release's own
-  checksum list to compare it with.
+  stays under `/var/lib/wsl-toolkit/NAME` until the pinned release is in use again.
+  The refusal names the release's own checksum list to compare it with.
 - ⭐ `version` and `sha256` on the entry move the release, as they move herdr's. A
   version with no digest for this machine is refused.
 - ⚠ **npm is the fallback, and only when the release cannot be fetched.** It installs
@@ -1657,7 +1657,7 @@ the digest is the one the adapter pins. `WSL-138`
 
 Each writes a wrapper at `/usr/local/bin/NAME`, because each installs into
 `~/.local/bin` and ⛔ **a herdr pane does not have that on `PATH`**. Each adapter reads
-the name back through `runuser -l`, which is the PATH a pane has, and refuses the
+the name back through `runuser -l`, which is the PATH a pane has. It refuses the
 install when a login shell still cannot find it. `WSL-88`, `WSL-89`
 
 ⭐ **A pi model declared before its key is stored is a note.** pi lists only the models

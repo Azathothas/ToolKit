@@ -2,6 +2,42 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the pi probe asks pi about its startup model by --model",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "verdict=$(as_account pi auth check --model \"$want_provider/$want_model\"",
+      "replace": "verdict=$(as_account pi auth check --provider \"$want_provider\"",
+      "run": "TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne",
+      "args": []
+    },
+    {
+      "label": "muse-code guide: step 10 closes the workspace before the revoke",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "examples/muse-code/README.md",
+      "find": "wsl-toolkit base herdr -- workspace close $made.result.workspace.workspace_id\n",
+      "replace": "",
+      "run": "TestTheMuseCodeGuideRunsInItsOwnOrder",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi removes an asset a refusal kept once the pinned release is in use",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "    rm -f \"$STAGE_DIR/$PI_ASSET\"\n",
+      "replace": "    :\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp removes a binary a refusal kept once the pinned release is in use",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "    rm -f \"$STAGE_DIR/$OMP_ASSET\"\n",
+      "replace": "    :\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a declared pi model without a key is a note, not a problem",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/pi/probe.sh",

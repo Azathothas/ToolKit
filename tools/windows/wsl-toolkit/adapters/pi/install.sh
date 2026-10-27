@@ -222,6 +222,12 @@ release_install() {
 installed=$(pi_version || :)
 if from_release; then
   say "pi $installed is installed for $TK_USER from its release, unpacked from the asset this adapter pins"
+  # ⚠ AN ASSET A REFUSAL KEPT IS MOOT ONCE THE RELEASE IN USE IS THE PINNED ONE, and it
+  # is 42 MB. Driven on a scratch base: a refused digest, then the pin restored, left it.
+  if [ -e "$STAGE_DIR/$PI_ASSET" ]; then
+    rm -f "$STAGE_DIR/$PI_ASSET"
+    say "removed $STAGE_DIR/$PI_ASSET, which an earlier refusal kept and the release in use does not need"
+  fi
   prune_releases
 elif [ -n "$PI_ASSET" ] && release_install; then
   installed=$(pi_version || :)

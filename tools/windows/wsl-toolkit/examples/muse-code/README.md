@@ -217,7 +217,7 @@ It answers `ready`.
 
 ⭐ **Until the key is stored, pi's model is a note and not a problem.** pi lists only
 the models of a provider it holds a key for. So `base status --probe` reads
-`credential absent` and names the step that stores the key. It stops nothing. A model
+`credential absent`, and its note names `pi auth check`. It stops nothing. A model
 `models.json` does not declare is still a problem. `WSL-135`
 
 ⚠ **The type is `api_key`.** Another word is accepted by `jq` and read by pi as no
@@ -338,11 +338,16 @@ agent's code. `WSL_TOOLKIT_TOOL_EXIT` moves it. Use a herdr pane for the screen.
 
 ## 10. Take the grant away
 
-When the work is done, revoke the grant by the path the base sees it at:
+When the work is done, close the workspace step 8 made, then revoke the grant by the
+path the base sees it at:
 
 ```powershell
+wsl-toolkit base herdr -- workspace close $made.result.workspace.workspace_id
 wsl-toolkit base revoke --target /workspaces/demoproj
 ```
+
+⛔ **Close the workspace first.** Its pane's shell sits in the granted directory, so
+the mount is busy. `base revoke` then exits 1 and leaves the configuration unchanged.
 
 ⛔ **`base revoke` takes `--target` alone.** A grant is named by where the base sees
 it, not by the Windows directory. The mount goes at once. An empty directory is left

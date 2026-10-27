@@ -246,6 +246,12 @@ installed=$(omp_version || :)
 if omp_from_release; then
   omp_from=release
   say "omp ${installed#omp/} is installed for $TK_USER from its release, whose digest this adapter pins"
+  # ⚠ A BINARY A REFUSAL KEPT IS MOOT ONCE THE ONE IN USE IS THE PINNED ONE, and it is
+  # 256 MB. pi's adapter met the same leftover on a scratch base.
+  if [ -e "$STAGE_DIR/$OMP_ASSET" ]; then
+    rm -f "$STAGE_DIR/$OMP_ASSET"
+    say "removed $STAGE_DIR/$OMP_ASSET, which an earlier refusal kept and the omp in use does not need"
+  fi
 elif [ -n "$OMP_ASSET" ] && omp_release_install; then
   omp_from=release
   installed=$(omp_version || :)

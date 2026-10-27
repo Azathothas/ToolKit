@@ -161,16 +161,17 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
         # ⛔ THE PROVIDER IS DECLARED AND THE MODEL IS NOT, so no key would make pi list it.
         problem "$undeclared"
       else
-        # ⚠ A PROVIDER pi CARRIES ITSELF IS ONE models.json DOES NOT NAME, and pi answers
-        # not_ready for it with no key. Measured with pi 1.4.0: not_ready for anthropic,
-        # invalid for a provider pi does not know. Its models cannot be listed without the
-        # key, so the startup model waits for it.
-        verdict=$(as_account pi auth check --provider "$want_provider" 2>/dev/null | tr -d '\r' | head -1)
+        # ⚠ A PROVIDER pi CARRIES ITSELF IS ONE models.json DOES NOT NAME. Measured with pi
+        # 1.4.0 and no key: `pi auth check --model` answers not_ready for anthropic's
+        # models and invalid for a provider pi does not know. ⛔ NOT --provider, which
+        # answers not_ready for any name at all. The models of a provider pi carries
+        # cannot be listed without the key, so the startup model waits for it.
+        verdict=$(as_account pi auth check --model "$want_provider/$want_model" 2>/dev/null | tr -d '\r' | head -1)
         if [ "$verdict" = not_ready ]; then
           printf "note pi holds no key for %s, a provider pi carries itself, so its startup model %s/%s is not checked until the key is stored. Store the key, and pi auth check --provider %s answers ready\n" \
             "$want_provider" "$want_provider" "$want_model" "$want_provider"
         else
-          problem "pi answers ${verdict:-nothing} for the provider $want_provider of its startup model $want_provider/$want_model, so it knows no such provider. Declare the provider and the model in $models"
+          problem "pi answers ${verdict:-nothing} for its startup model $want_provider/$want_model, so it knows no such provider. Declare the provider and the model in $models"
         fi
       fi
     fi

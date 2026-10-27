@@ -269,7 +269,7 @@ func TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne(t *testing.
 	r.withJQ()
 	r.write(filepath.Join(r.system, "pi"), "#!/bin/sh\n# Written by wsl-toolkit's pi adapter. base ensure rewrites it.\n")
 	// The stand-in for pi answers what its home says pi would: the listing a key gives,
-	// and each provider's `pi auth check` verdict.
+	// and the `pi auth check --model` verdict for each provider's models.
 	r.write(filepath.Join(r.prefixBin, "pi"), `#!/bin/sh
 case $1 in
   --version) echo 1.4.0 ;;
@@ -278,8 +278,10 @@ case $1 in
     echo 'No models available. Use /login to log into a provider via OAuth or API key.'
     ;;
   auth)
-    [ "$2 $3" = "check --provider" ] || exit 64
-    if [ -f "$HOME/.stub-auth-$4" ]; then cat "$HOME/.stub-auth-$4"; exit 1; fi
+    # ⛔ --model, as pi 1.4.0 was measured: --provider answers not_ready for any name.
+    [ "$2 $3" = "check --model" ] || exit 64
+    provider=${4%%/*}
+    if [ -f "$HOME/.stub-auth-$provider" ]; then cat "$HOME/.stub-auth-$provider"; exit 1; fi
     echo invalid
     exit 2
     ;;
@@ -291,10 +293,14 @@ esac
 	const declared = `{"providers":{"muse-gateway":{"baseUrl":"https://gateway.invalid","apiKey":"$MUSE_GATEWAY_API_KEY",` +
 		`"api":"anthropic-messages","models":[{"id":"muse-spark-1.3-contributor","thinkingLevelMap":{"xhigh":"xhigh","max":"max"}}]}}}`
 	const header = "provider      model                       context  max-out  thinking  images\n"
+	withModels := true
 	state := func(provider, model, effort, listed string, auth map[string]string) AdapterState {
 		t.Helper()
 		r.write(filepath.Join(agent, "settings.json"), fmt.Sprintf(`{"defaultProvider":%q,"defaultModel":%q,"defaultThinkingLevel":%q}`, provider, model, effort))
-		r.write(models, declared)
+		_ = os.Remove(models)
+		if withModels {
+			r.write(models, declared)
+		}
 		for _, stale := range []string{".stub-listed", ".stub-auth-muse-gateway", ".stub-auth-anthropic"} {
 			_ = os.Remove(filepath.Join(r.home, stale))
 		}
@@ -362,6 +368,13 @@ esac
 	if st.Healthy || about(st, "so it knows no such provider") != 1 || len(st.Notes) != 0 {
 		t.Fatalf("a provider pi does not know read as notes=%q problems=%q", st.Notes, st.Problems)
 	}
+
+	// ⛔ AND THE GUIDE'S STEP 3: a new base, the profile's model, no models.json yet.
+	withModels = false
+	st = state("muse-gateway", "muse-spark-1.3-contributor", "max", "", nil)
+	if st.Healthy || about(st, "so it knows no such provider") != 1 || len(st.Notes) != 0 {
+		t.Fatalf("a new base's pi, whose provider is not declared yet, read as notes=%q problems=%q", st.Notes, st.Problems)
+	}
 }
 
 // TestTheMuseCodeGuideRunsInItsOwnOrder holds the three faults of the muse-code guide
@@ -397,8 +410,11 @@ func TestTheMuseCodeGuideRunsInItsOwnOrder(t *testing.T) {
 			t.Errorf("step %d revokes a grant, and steps 8 and 9 work in it", n)
 		}
 	}
-	if !strings.Contains(step(10), "wsl-toolkit base revoke --target") {
-		t.Error("the guide no longer ends by taking its grant away")
+	// ⛔ AND THE PANE STEP 8 LEFT IN THE GRANT IS CLOSED FIRST. Driven on a scratch base:
+	// with the workspace open, revoke answered `target is busy` and exited 1.
+	if s := step(10); !strings.Contains(s, "wsl-toolkit base revoke --target") ||
+		strings.Index(s, "workspace close") < 0 || strings.Index(s, "workspace close") > strings.Index(s, "base revoke --target") {
+		t.Errorf("step 10 does not close step 8's workspace before it revokes the grant that workspace holds busy:\n%s", s)
 	}
 	if s := step(9); !strings.Contains(s, fmt.Sprintf("`muse` with no argument answers exit %d", ExitTool)) {
 		t.Errorf("step 9 names an exit for a bare launcher that is not the tool's own, %d:\n%s", ExitTool, s)
@@ -582,11 +598,16 @@ func TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(t
 		t.Fatalf("the saved asset stayed after it was unpacked (%v)", err)
 	}
 
-	// ⭐ A SECOND RUN FETCHES NOTHING.
+	// ⭐ A SECOND RUN FETCHES NOTHING, and takes away an asset an earlier refusal kept.
+	kept := filepath.Join(r.stage, "pi-linux-x64.tar.gz")
+	r.write(kept, "an asset a refusal kept\n")
 	before := r.read(r.fetches)
 	code, out = r.run(script, moved...)
 	if code != 0 || r.read(r.fetches) != before || !strings.Contains(out, "from its release, unpacked from the asset this adapter pins") {
 		t.Fatalf("a second run over the release answered exit %d, fetching %q after %q:\n%s", code, r.read(r.fetches), before, out)
+	}
+	if _, err := os.Stat(kept); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("an asset a refusal kept stayed beside the pinned release in use (%v)", err)
 	}
 
 	// ⛔ npm ONLY WHEN THE RELEASE CANNOT BE FETCHED, at the same version.
@@ -654,10 +675,15 @@ func TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched(
 		t.Fatalf("a base that took omp's release installed Bun: %s", r.read(r.pacmanLog))
 	}
 
+	kept := filepath.Join(r.stage, "omp-linux-x64")
+	r.write(kept, "a binary a refusal kept\n")
 	before := r.read(r.fetches)
 	code, out = r.run(script, moved...)
 	if code != 0 || r.read(r.fetches) != before || !strings.Contains(out, "from its release, whose digest this adapter pins") {
 		t.Fatalf("a second run over the release answered exit %d, fetching %q after %q:\n%s", code, r.read(r.fetches), before, out)
+	}
+	if _, err := os.Stat(kept); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a binary a refusal kept stayed beside the pinned release in use (%v)", err)
 	}
 
 	r = newReleaseRig(t, "omp", "omp/")
