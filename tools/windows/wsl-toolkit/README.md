@@ -122,11 +122,21 @@ them first. `TOOL-40`.
 
 ⭐ **A case that sets nothing shared calls `parallelCase`, and runs beside the
 others like it.** ⛔ A case that calls `t.Setenv`, changes the working directory
-or sets a package variable stays serial, through any helper it calls.
-`TestNoParallelCaseSetsWhatAnotherReads` reads that from the source, with
-`internal/parallelread`. ⚠ A case with a bound a loaded host can break stays
-serial too, as a child that must never stall for 2 s. A case waits on what it
-needs, never on a sleep.
+or sets a package variable of any package stays serial. That holds through
+every function of this package it calls or passes on, to any depth.
+`TestNoParallelCaseSetsWhatAnotherReads` reads that from the type-checked
+source, with `internal/parallelread`. A method called on a package variable
+sets it, unless the method only reads, and so do `delete`, `clear`, `copy`,
+`append` and `&`.
+
+⚠ **What the reading does not see.** It does not see a write through a copy of
+a variable's map, slice or pointer, or through what a call returned. Nor does
+it see a value method of another package that writes through what its value
+holds, or another package's own setters, as `log.SetOutput`. It reads the files
+this host builds, and CI's Linux job reads the rest.
+
+⚠ **A case with a bound a loaded host can break stays serial too,** as a child
+that must never stall for 2 s. A case waits on what it needs, never on a sleep.
 
 ⚠ **A case that runs the acceptance suite's own PowerShell needs `pwsh`.** On
 Windows a missing one fails the case. Elsewhere it skips, as in the Linux proof's
