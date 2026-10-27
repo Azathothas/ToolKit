@@ -93,7 +93,10 @@ func TestTheIntegrationOverrideIsOnlyAppliedWhenSeparating(t *testing.T) {
 // read the path alone called the real shim a wrapper and refused to install.
 func TestTheWrapperIsDetectedByItsMarkerAndNotByItsPath(t *testing.T) {
 	script := ompScript(t)
-	if !strings.Contains(script, `head -3 "$OMP_WRAPPER" 2>/dev/null | grep -qF "$OMP_MARK"`) {
+	// ⚠ Through is_omp_wrapper, which the account runs on a regular file alone. WSL-138.
+	if !strings.Contains(script, `if is_omp_wrapper "$OMP_WRAPPER"; then`) ||
+		!strings.Contains(script, `grep -qF "# wsl-toolkit omp adapter wrapper"`) ||
+		!strings.Contains(script, `OMP_MARK="# wsl-toolkit omp adapter wrapper"`) {
 		t.Error("the installer no longer tells its wrapper from npm's shim by content")
 	}
 	if !strings.Contains(script, `mv -f "$OMP_WRAPPER" "$OMP_REAL"`) {

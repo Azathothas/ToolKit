@@ -17,11 +17,23 @@ problem() { printf 'problem %s\n' "$*"; }
 
 TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
 PREFIX=$TK_HOME/.local
+# The two paths install.sh writes outside the account's home. A case in the suite points
+# both into a temporary directory, and nothing else sets them.
+STAGE_DIR=${TK_OMP_STAGE_DIR:-/var/lib/wsl-toolkit/omp}
+WRAPPER=${TK_OMP_WRAPPER:-/usr/local/bin/omp}
 
 as_account() {
   runuser -u "$TK_USER" -- env -i HOME="$TK_HOME" USER="$TK_USER" LOGNAME="$TK_USER" \
     SHELL=/bin/bash LANG=C.UTF-8 npm_config_prefix="$PREFIX" \
     PATH="$PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin" "$@"
+}
+# is_omp_wrapper PATH is true when PATH is the adapter's separating wrapper. ⛔ The account
+# reads it, and only once it is a regular file. Root reading a FIFO the account planted
+# there would hold the probe until its timeout.
+is_omp_wrapper() {
+  # shellcheck disable=SC2016  # the single quotes hold the account's own script
+  as_account sh -c '[ -f "$1" ] && head -3 "$1"' sh "$1" 2>/dev/null |
+    grep -qF "# wsl-toolkit omp adapter wrapper"
 }
 # ⛔ A LOGIN SHELL, AND THAT IS THE WHOLE POINT OF THIS FUNCTION. as_account runs
 # `env -i`, which clears the environment on purpose so an install is reproducible,
@@ -61,14 +73,19 @@ npm_package_dir() {
 # "installed and a login shell cannot find it", and three more that only mean
 # something for an omp that is there. The adapter installs bun itself. WSL-107,
 # issue 37.
-if [ -e /usr/local/bin/omp ] || [ -e "$PREFIX/bin/omp" ]; then installed=yes; else installed=no; fi
+if [ -e "$WRAPPER" ] || [ -e "$PREFIX/bin/omp" ]; then installed=yes; else installed=no; fi
 printf 'installed %s\n' "$installed"
 if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
   # ⚠ The npm shim is moved aside to omp-npm when the adapter separates omp's
   # directory, so the package is found through whichever launcher is npm's.
   shim=$PREFIX/bin/omp
   [ -e "$PREFIX/bin/omp-npm" ] && shim=$PREFIX/bin/omp-npm
-  printf 'footprint %s\n' "$(footprint /usr/local/bin/omp "$PREFIX/bin/omp" "$PREFIX/bin/omp-npm" "$(npm_package_dir "$shim")" "$TK_HOME/.omp")"
+  # ⚠ npm's package is counted where a launcher points into it, or where an omp from npm
+  # left it. A release binary a refusal kept is counted too. Each is the adapter's.
+  # WSL-138.
+  npm_dir=$(npm_package_dir "$shim")
+  [ -n "$npm_dir" ] || npm_dir=$PREFIX/lib/node_modules/@oh-my-pi/pi-coding-agent
+  printf 'footprint %s\n' "$(footprint "$WRAPPER" "$PREFIX/bin/omp" "$PREFIX/bin/omp-npm" "$npm_dir" "$STAGE_DIR" "$TK_HOME/.omp")"
   exit 0
 fi
 if [ "$installed" = no ]; then
@@ -76,14 +93,40 @@ if [ "$installed" = no ]; then
   exit 0
 fi
 
-# ⭐ THE RUNTIME IS A FACT HERE, because omp is a Bun program and a base with Node
+# ⭐ WHERE THE ACCOUNT'S omp CAME FROM, read from the file that is omp itself: beside the
+# separating wrapper when there is one. install.sh takes omp's own release binary and
+# takes npm only when that release could not be fetched. WSL-138.
+omp_real=$PREFIX/bin/omp
+if is_omp_wrapper "$omp_real"; then
+  omp_real=$PREFIX/bin/omp-npm
+fi
+case $(as_account readlink -f "$omp_real" 2>/dev/null || :) in
+  */node_modules/*) source=npm ;;
+  *)
+    # ⭐ A PREBUILT omp IS ONE ELF FILE, and it carries its own runtime. ⛔ Read only once it
+    # is a regular file, so a FIFO there holds nothing.
+    # shellcheck disable=SC2016  # the single quotes hold the account's own script
+    if [ "$(as_account sh -c '[ -f "$1" ] && head -c 4 "$1"' sh "$omp_real" 2>/dev/null | od -An -c | tr -d ' \n')" = '177ELF' ]; then
+      source=release
+    else
+      source=other
+    fi
+    ;;
+esac
+printf 'source %s\n' "$source"
+if [ "$source" = npm ]; then
+  printf "note omp came from npm, not from omp's own release. base ensure installs the release when it can fetch it\n"
+fi
+
+# ⭐ THE RUNTIME IS A FACT HERE, because omp from npm is a Bun program. A base with Node
 # alone installs it and cannot run it. Reporting the version alone would have said
 # "no version" for a missing runtime and a broken install alike, which are different
 # problems with different fixes. Measured 2026-09-17.
+# ⚠ omp's release binary carries its own runtime, so only an omp that is not one needs bun.
 bun_version=$(as_account bun --version 2>/dev/null | tr -d '\r' | head -1)
 if [ -n "$bun_version" ]; then
   printf 'bun %s\n' "$bun_version"
-else
+elif [ "$source" != release ]; then
   problem "omp is a Bun program and this base has no bun the account can run"
 fi
 
@@ -139,7 +182,7 @@ omp_path=$(runuser -l "$TK_USER" -c "command -v omp" 2>/dev/null | tr -d '\r' | 
 separated=no
 # ⛔ BY CONTENT, NOT BY PATH. npm's prefix for this account is $HOME/.local, so its
 # own shim and the wrapper share a filename and only the marker tells them apart.
-if [ -n "$omp_path" ] && head -3 "$omp_path" 2>/dev/null | grep -qF "# wsl-toolkit omp adapter wrapper"; then
+if [ -n "$omp_path" ] && is_omp_wrapper "$omp_path"; then
   wrapped_dir=$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$omp_path" 2>/dev/null | head -1)
   if [ -n "$wrapped_dir" ]; then
     separated=yes

@@ -2,6 +2,438 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "muse-code guide: step 4 runs base ensure after the grant, so Muse trusts it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "examples/muse-code/README.md",
+      "find": "```powershell\nwsl-toolkit base ensure\n```\n\n⛔ **A directory no grant covers is refused.**",
+      "replace": "⛔ **A directory no grant covers is refused.**",
+      "run": "TestTheMuseCodeGuideRunsInItsOwnOrder",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi removes npm's empty scope with its package",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "      @*/*) as_account rmdir \"${npm_dir%/*}\" 2>/dev/null || : ;;\n",
+      "replace": "      @*/*) : ;;\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp removes npm's empty scope with its package",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "      @*/*) as_account rmdir \"${npm_dir%/*}\" 2>/dev/null || : ;;\n",
+      "replace": "      @*/*) : ;;\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "muse-code guide: step 3 says every adapter reads healthy, pi with a note",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "examples/muse-code/README.md",
+      "find": "⭐ **On a new base, pi reads `healthy` with one note.**",
+      "replace": "⚠ **On a new base, pi reads one problem and `base ensure` exits 2.**",
+      "run": "TestTheMuseCodeGuideRunsInItsOwnOrder",
+      "args": []
+    },
+    {
+      "label": "muse-code guide: step 5 checks pi's key by model",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "examples/muse-code/README.md",
+      "find": "pi auth check --model muse-gateway/muse-spark-1.3-contributor\n```",
+      "replace": "pi auth check --provider muse-gateway\n```",
+      "run": "TestTheMuseCodeGuideRunsInItsOwnOrder",
+      "args": []
+    },
+    {
+      "label": "muse-code guide: step 10 reads the workspace id again in a new session",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "examples/muse-code/README.md",
+      "find": "$id = ((wsl-toolkit base herdr -- workspace list | ConvertFrom-Json).result.workspaces | Where-Object label -eq work).workspace_id\n",
+      "replace": "",
+      "run": "TestTheMuseCodeGuideRunsInItsOwnOrder",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a new base's pi, with no models.json yet, reads a note",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "        elif [ \"$verdict\" = invalid ] && [ ! -e \"$models\" ] && [ ! -L \"$models\" ]; then\n",
+      "replace": "        elif false; then\n",
+      "run": "TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi's notes name the key check by model",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "      check=\"pi auth check --model $want_provider/$want_model\"\n",
+      "replace": "      check=\"pi auth check --provider $want_provider\"\n",
+      "run": "TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi removes npm's package once its release is in use",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "  if as_account rm -rf \"$npm_dir\"; then\n",
+      "replace": "  if true; then\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp removes npm's package once its release is in use",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "  if as_account rm -rf \"$npm_dir\"; then\n",
+      "replace": "  if true; then\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a signal during pi's fetch ends the run",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "  trap 'exit 143' 15\n",
+      "replace": "  trap 'rm -f \"$fetched\"' 15\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a signal during omp's fetch ends the run",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "  trap 'exit 143' 15\n",
+      "replace": "  trap 'rm -f \"$fetched\"' 15\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed npm leaves pi's release link in place",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "      [ -z \"$earlier_link\" ] || as_account ln -sfn \"$earlier_link\" \"$PREFIX/bin/pi\" || :\n",
+      "replace": "      :\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed npm leaves omp's release in place",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "      [ -z \"$aside\" ] || as_account mv -f \"$aside\" \"$OMP_LAUNCHER\" || :\n",
+      "replace": "      :\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp takes npm on a musl base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "if [ -f \"$MUSL_MARK\" ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a separated omp takes its release beside the wrapper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "  OMP_TARGET=$PREFIX/bin/omp-npm\n",
+      "replace": "  OMP_TARGET=$OMP_LAUNCHER\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp's installer reads its wrapper mark only from a regular file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "  as_account sh -c '[ -f \"$1\" ] && head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
+      "replace": "  as_account sh -c 'head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp probe reads its wrapper mark only from a regular file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "  as_account sh -c '[ -f \"$1\" ] && head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
+      "replace": "  as_account sh -c 'head -3 \"$1\"' sh \"$1\" 2>/dev/null |\n",
+      "run": "TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp probe reads omp's first bytes only from a regular file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "as_account sh -c '[ -f \"$1\" ] && head -c 4 \"$1\"' sh \"$omp_real\"",
+      "replace": "as_account sh -c 'head -c 4 \"$1\"' sh \"$omp_real\"",
+      "run": "TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp probe reads the release behind the wrapper",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "  omp_real=$PREFIX/bin/omp-npm\n",
+      "replace": "  :\n",
+      "run": "TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the pi footprint counts an asset a refusal kept",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "\"$RELEASES\" \"$STAGE_DIR\" \"$TK_HOME/.pi\"",
+      "replace": "\"$RELEASES\" \"$TK_HOME/.pi\"",
+      "run": "TestThePiAndOmpFootprintsCountWhatTheirReleasesLeave",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the pi footprint counts npm's package beside a release",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "  [ -n \"$npm_dir\" ] || npm_dir=$PREFIX/lib/node_modules/@earendil-works/pi-coding-agent\n",
+      "replace": "",
+      "run": "TestThePiAndOmpFootprintsCountWhatTheirReleasesLeave",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp footprint counts a binary a refusal kept",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "\"$npm_dir\" \"$STAGE_DIR\" \"$TK_HOME/.omp\"",
+      "replace": "\"$npm_dir\" \"$TK_HOME/.omp\"",
+      "run": "TestThePiAndOmpFootprintsCountWhatTheirReleasesLeave",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp footprint counts npm's package beside a release",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "  [ -n \"$npm_dir\" ] || npm_dir=$PREFIX/lib/node_modules/@oh-my-pi/pi-coding-agent\n",
+      "replace": "",
+      "run": "TestThePiAndOmpFootprintsCountWhatTheirReleasesLeave",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the pi probe asks pi about its startup model by --model",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "verdict=$(as_account pi auth check --model \"$want_provider/$want_model\"",
+      "replace": "verdict=$(as_account pi auth check --provider \"$want_provider\"",
+      "run": "TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne",
+      "args": []
+    },
+    {
+      "label": "muse-code guide: step 10 closes the workspace before the revoke",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "examples/muse-code/README.md",
+      "find": "wsl-toolkit base herdr -- workspace close $made.result.workspace.workspace_id\n",
+      "replace": "",
+      "run": "TestTheMuseCodeGuideRunsInItsOwnOrder",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi removes an asset a refusal kept once the pinned release is in use",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "    rm -f \"$STAGE_DIR/$PI_ASSET\"\n",
+      "replace": "    :\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp removes a binary a refusal kept once the pinned release is in use",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "    rm -f \"$STAGE_DIR/$OMP_ASSET\"\n",
+      "replace": "    :\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a declared pi model without a key is a note, not a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "          '(.providers[$p].models // []) | any(.id == $m)' \"$models\" >/dev/null 2>&1; then\n",
+      "replace": "          'false' \"$models\" >/dev/null 2>&1; then\n",
+      "run": "TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a pi provider whose models pi lists holds a key",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "    elif [ -z \"$want_provider\" ] || printf '%s\\n' \"$listed\" | awk -v p=\"$want_provider\" '$1 == p { found = 1 } END { exit !found }'; then\n",
+      "replace": "    elif [ -z \"$want_provider\" ]; then\n",
+      "run": "TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a pi model its declared provider does not carry stays a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "'.providers | has($p)'",
+      "replace": "'false'",
+      "run": "TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a pi provider pi carries itself, with no key, is a note",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "        if [ \"$verdict\" = not_ready ]; then\n",
+      "replace": "        if false; then\n",
+      "run": "TestThePiProbeTellsADeclaredModelWithoutAKeyFromAnUndeclaredOne",
+      "args": []
+    },
+    {
+      "label": "muse-code guide: a bare launcher answers the tool's own exit",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "examples/muse-code/README.md",
+      "find": "answers exit 125\nfrom Windows",
+      "replace": "answers exit 2\nfrom Windows",
+      "run": "TestTheMuseCodeGuideRunsInItsOwnOrder",
+      "args": []
+    },
+    {
+      "label": "muse-code guide: the grant stays until step 10",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "examples/muse-code/README.md",
+      "find": "⛔ **Keep this grant until step 10.** Steps 8 and 9 work in it.\n",
+      "replace": "Take a grant away:\n\n```powershell\nwsl-toolkit base revoke --target /workspaces/demoproj\n```\n",
+      "run": "TestTheMuseCodeGuideRunsInItsOwnOrder",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi unpacks its release only while the digest is the pinned one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "  if [ \"$digest\" != \"$PI_WANT\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi never takes npm over a changed release digest",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "    printf '  stop        where they disagree. The file is not the one pi published\\n' >&2\n    exit 2\n",
+      "replace": "    printf '  stop        where they disagree. The file is not the one pi published\\n' >&2\n    return 1\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi takes its own release before npm",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "elif [ -n \"$PI_ASSET\" ] && release_install; then\n",
+      "replace": "elif false; then\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi fetches nothing over the release in place",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "if from_release; then\n",
+      "replace": "if false; then\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi takes npm when its release cannot be fetched",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "    say \"pi's release asset could not be fetched from $url: $(printf '%s' \"$fetch_error\" | tail -1)\"\n    return 1\n",
+      "replace": "    die \"pi's release asset could not be fetched from $url\"\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: pi removes the releases nothing reads",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "    if as_account rm -rf \"$old\"; then\n",
+      "replace": "    if true; then\n",
+      "run": "TestThePiAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp installs its release only while the digest is the pinned one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "  if [ \"$digest\" != \"$OMP_WANT\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp never takes npm over a changed release digest",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "    printf '  stop        where they disagree. The file is not the one omp published\\n' >&2\n    exit 2\n",
+      "replace": "    printf '  stop        where they disagree. The file is not the one omp published\\n' >&2\n    return 1\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp takes its own release before npm",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "elif [ -n \"$OMP_ASSET\" ] && omp_release_install; then\n",
+      "replace": "elif false; then\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp fetches nothing over the release in place",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "if omp_from_release; then\n",
+      "replace": "if false; then\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp takes npm when its release cannot be fetched",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "    say \"omp's release binary could not be fetched from $url: $(printf '%s' \"$fetch_error\" | tail -1)\"\n    return 1\n",
+      "replace": "    die \"omp's release binary could not be fetched from $url\"\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: omp's release installs no Bun",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/install.sh",
+      "find": "if [ \"$omp_from\" = release ]; then\n  say \"omp's release binary carries its own runtime, so no Bun is installed for it\"\n",
+      "replace": "if false; then\n  say \"omp's release binary carries its own runtime, so no Bun is installed for it\"\n",
+      "run": "TestTheOmpAdapterTakesItsOwnReleaseAndNpmOnlyWhenTheReleaseCannotBeFetched",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp probe asks for Bun only where omp is a Bun program",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "elif [ \"$source\" != release ]; then\n",
+      "replace": "elif true; then\n",
+      "run": "TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp probe tells npm's omp from its release",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "  */node_modules/*) source=npm ;;\n",
+      "replace": "  */node_modules/*) source=release ;;\n",
+      "run": "TestTheOmpProbeAsksForBunOnlyWhereOmpIsABunProgram",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the mount helper hands WSL's helper the ro of a read-only line",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/mount-helper.sh",
