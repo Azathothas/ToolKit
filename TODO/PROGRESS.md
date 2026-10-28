@@ -10,11 +10,11 @@ standing rules and the rulings in force, and history is in git, the entries and
 ## State
 
 ```text
-session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z; it ends on wsl-toolkit-v8.0.0
+session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z and 2026-10-26T20:40Z; it ends on wsl-toolkit-v9.0.1
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
-head            this commit: wsl-toolkit 8.0.0 published from 5e0bdcf, installed and driven
-entries         total 267  open 1  blocked 0  done 266
-this session    ruling 31, then rulings 32 to 35
+head            this commit: wsl-toolkit 9.0.1 published from 2225272, installed, driven and accepted
+entries         total 267  open 0  blocked 0  done 267
+this session    ruling 31, then rulings 32 to 36
 ```
 
 ## Baseline
@@ -23,45 +23,45 @@ Measured on this host unless a row says read.
 
 | what | value | read from |
 | --- | --- | --- |
-| the gate | 24 checks, run at once; 280 to 600 s a run with two builders loading the host | `tools/check/main.go`; the last eight runs |
-| mutation rows | 1,821 at `5e0bdcf` | `tools/repo/mutations.json` |
-| CI | 8 jobs, 3 of them required; a `wsl-toolkit` push 465 to 658 s, its 12 shards at most 526 s; a push of the record alone 358 s | `gh run view` on the last nine runs |
-| the pre-push proof | ShellCheck, the go job and the added rows in containers, one at a time: 88 rows in 894 s, 173 in 408 s, none in about 230 s | the last eight pushes |
-| the acceptance suite | 104 cases quick, 111 full; 750 s quick with the installed 8.0.0 on a fresh instance | `acceptance.ps1`; the last run |
-| the last release | `wsl-toolkit-v8.0.0`, 22 assets, 19 release jobs green | `gh release view`, `gh run view` |
-| this host | Windows 11 Pro 26300, PowerShell 7.6.7, WSL 3.0.3.0, git 2.55.0, Go 1.27.0 | the doctor |
+| the gate | 24 checks, run at once; about 145 s a run on an idle host | `tools/check/main.go`; the last four pushes |
+| mutation rows | 2,161 at `2225272` | `tools/repo/mutations.json` |
+| CI | 20 jobs, 3 of them required; a `wsl-toolkit` push 752 to 780 s, its 12 shards at most 736 s | `gh run view` on the last five runs |
+| the pre-push proof | ShellCheck, the go job and the added rows in containers, one at a time: 183 rows in about 9 minutes, one row in 147 s, none in 104 s. 106 of the 183 rows needed no compile | the last five pushes |
+| the acceptance suite | 104 cases quick, 111 full; the full suite 998 s with the installed 9.0.1 on a fresh instance | `acceptance.ps1`; the last run |
+| the last release | `wsl-toolkit-v9.0.1`, 22 assets, 19 release jobs green on a second attempt | `gh release view`, `gh run view` |
+| this host | Windows 11 Pro 26300, PowerShell 7.6.8, WSL 3.0.3.0, git 2.55.0, Go 1.27.0 | the doctor |
 
 ### This host's state
 
 | | what is there, and how to undo it |
 | --- | --- |
-| the tools | `%USERPROFILE%\bin\wsl-toolkit.exe` 8.0.0, from `selfupdate`, beside `.wsl-toolkit-previous-7.0.2.exe`. `text-tool.exe` from the same release, beside `.text-tool-previous.exe`. The next `selfupdate` removes the old tool |
-| distributions | `podman-machine-default`, stopped and WSL's default; `wsl-toolkit`, the default base under its older name, 7.3 GiB, its disk not sparse. `wsl-toolkit-base` is unregistered with no copy, as ruling 33 says |
+| the tools | `%USERPROFILE%\bin\wsl-toolkit.exe` 9.0.1, from `selfupdate`, and `text-tool.exe` from the same release, each digest checked against `SHA256SUMS`. No previous copy is kept |
+| distributions | `podman-machine-default`, stopped and WSL's default, its engine empty and its disk sparse. `wsl-toolkit-jobs`, the default base, with no grant, no job and no session; its disk sparse, the proof's cache and images removed after the last push. No scratch instance is registered |
 | WSL's memory | `.wslconfig` caps the VM at `memory=16GB` and `swap=8GB`, with `autoMemoryReclaim=gradual`. The operator approved the cap after the VM reached 19.5 GB |
-| the podman connection | `podman-machine-default-root`, because the machine's rootless socket is dead (finding 76 of the old record). Undo with `podman system connection default podman-machine-default` once that socket works |
+| the podman connection | `podman-machine-default`, the rootless one, is the default again |
 | the package's copy of the state directory | absent. A Bash shell this desktop app starts recreates it when it runs the tool, `WSL-118` |
 | the skills | the three the skills manager installed match `main`, and so does this host's profile copy of `wsl-toolkit` |
-| scratch under `.tmp` | build outputs and label files of this work, the empty `go-tmp`, `bsd67-driver` (kept by `WSL-67`) and `finding8-4e94faa38b4c9c1c` |
+| herdr in the default base | one workspace, `work`, in the account's home. The muse-code guide's workspace in the demo grant is closed, and the grant revoked |
+| scratch under `.tmp` | `check.exe`, `repo.exe`, `repo-pre-push.exe` and `consumer-wsl-toolkit.exe`, which the gate and the hooks rebuild; the empty `go-tmp`; `bsd67-driver`, kept by `WSL-67` |
+| git | `main` alone, and one worktree, this checkout |
 
 ## This session
 
-- ⭐ **Three releases**: `wsl-toolkit-v7.0.1` and `v7.0.2`, the critical and data-loss
-  fixes, then `v8.0.0`, a major. Each was published, self-updated here and driven.
-- ⭐ **8.0.0 merged nine groups of builders** after the F-groups, `WSL-167`, `WSL-193`
-  and `WSL-131`. Each group was built in its own worktree, reviewed adversarially and
-  repaired. Every break has its section in `docs/consumers.md`.
-- ⭐ **CI proves every row in under 11 minutes**, where it took 23, `TOOL-39`. Its probes
-  job then exposed three cases that two `go test` runs at once broke, and each is fixed.
-- ⭐ **Rulings 32 to 35** settled the canonical base, its name, the major version and the
-  exit codes. `WSL-196` to `WSL-199` are filed from the last drives.
+- ⭐ **Two releases**: `wsl-toolkit-v9.0.0`, a major, and `v9.0.1`. Each was published with
+  22 assets, self-updated here and driven. 9.0.1's full acceptance suite passed 111 of 111 on
+  a fresh instance.
+- ⭐ **Ruling 36's leftovers are finished here**, with nothing handed back: `WSL-134`,
+  `WSL-135`, `WSL-138`, `WSL-158`, `WSL-159`, `WSL-196` to `WSL-205` and `TOOL-40`. Each group
+  was reviewed adversarially and repaired before it merged.
+- ⭐ **The drives and the acceptance run found four more, and each is closed**: `WSL-206`,
+  `DOC-16`, `TOOL-41` and `WSL-207`.
+- ⭐ **This host is cleaned**: every scratch instance is removed, and so are the default base's
+  jobs, sessions, demo grant, images and proof cache. Both WSL disks are sparse and trimmed.
 
 ## In progress
 
-Ruling 36, from 2026-10-27: every leftover of 8.0.0 is finished here, with nothing handed
-back. This host is cleaned: podman's machine pruned and compacted, the old default base
-removed with its state, and `wsl-toolkit-jobs` built by the muse-code guide in order.
-`WSL-197` and `WSL-134` are done. The guide's ordered pass found four faults, filed in
-`WSL-135` and built with `WSL-138` for 9.0.0. Every branch but `TOOL-40` is merged.
+None. Every entry this session took on is closed, and the release that carries it is
+published and installed here.
 
 ## The work order, set by the operator on 2026-10-21
 
@@ -98,6 +98,9 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
     **Closed:** all five, merged for 9.0.0.
 13. **The 9.0.0 release**: `WSL-196` to `WSL-205` and `TOOL-40`, with the five above.
     `WSL-200` is a break, so the release is a major one. **Closed:** all of them, in 9.0.0.
+14. **What the 9.0.0 drive and the acceptance run found**: `WSL-206`, `DOC-16`, `TOOL-41`
+    and `WSL-207`. **Closed:** `WSL-206` and `DOC-16` in 9.0.1, `TOOL-41` by a dispatched
+    herdr build, `WSL-207` by the full suite.
 
 ## Open questions for the operator
 

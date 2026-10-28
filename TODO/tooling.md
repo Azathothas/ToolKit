@@ -3667,7 +3667,7 @@ linux-proof --rows-since 3460e0d: proved tree 621c5b0 (commit 499e10c), 46 rows
 ## TOOL-41. One connection reset in herdr's build fails a whole release
 
 **Source** the `wsl-toolkit-v9.0.1` release run, whose linux-aarch64 herdr build died in zig's dependency fetch
-**Category** tooling, **Priority** P2, **Effort** S, **Status** open
+**Category** tooling, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -3699,4 +3699,10 @@ The nightly's four builds pass through the changed steps.
 
 ## Closing
 
-Open.
+**Closed on main at `2e871e0`.** Each herdr build step tries `cargo build` three times, 30 and then 60 seconds apart, and names each failed try. A later try reuses what the earlier one compiled. The nightly builds nothing for a herdr commit it already published, so `herdr-build.yml` was dispatched on `main` for v0.9.5. All four targets built through the new steps, each on its first try.
+
+- ⚠ No reset happened on that run, so the retry path itself has not run. It runs at the next reset.
+
+```text
+gh run 40605845890, herdr-build.yml on 2e871e0, ref v0.9.5: 4 of 4 jobs green
+```
