@@ -7,6 +7,7 @@ The probe, the checks, and the helpers a project inherits.
 | [`doctor/`](doctor/) | ⭐ the environment probe. Two implementations, one schema. Every project keeps this. |
 | [`common/`](common/) | the checks and the helpers, and one configuration file a helper installs. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin; a helper and a data file have neither and the twins table below says why. |
 | [`cc_profile/`](cc_profile/README.md) | the Claude desktop app as isolated profiles, one per account, with its own suite. A Windows helper, not a check |
+| [`ag_profile/`](ag_profile/README.md) | the Antigravity desktop app as isolated profiles, one per Google account, with its own suite. A Windows helper, not a check |
 | [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | the native Windows product, in Go. ⛔ Not a script, so nothing in this file's check contract applies to it; [`common/check-go.sh`](common/) is what the gate runs over it. |
 | [`../LICENSES/`](../LICENSES/README.md) | the SPDX texts [`common/fill-license.sh`](common/) reads. ⛔ Not scripts, and four of them must never be edited. |
 
@@ -94,6 +95,7 @@ the language does.**
 | [`common/bootstrap.sh`](common/), [`common/tmux.conf`](common/) and [`common/shell-profile.sh`](common/) | ⛔ **No twin.** The job is to drive a Unix package manager inside a Unix userland, and to configure a Unix shell. A PowerShell half would have nothing to install and nowhere to install it, and none of the three is a check. |
 | [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⛔ **Not a check and not a script.** It is a Go module, and the gate's `go` check is the check OVER it. Its release refusals are `repo release`, under [`../tools/repo/`](../tools/repo/). |
 | [`cc_profile/`](cc_profile/README.md) | ⛔ **No twin.** Its job is the Claude desktop app on Windows: an MSIX package, `CreateProcess`, consoles, jobs and shortcuts. A POSIX half would have no such app to start. |
+| [`ag_profile/`](ag_profile/README.md) | ⛔ **No twin.** Its job is the Antigravity desktop app on Windows: isolated user data, `CreateProcess`, consoles, jobs and shortcuts. A POSIX half has no Windows desktop app to launch. |
 
 ## The check contract
 
@@ -485,6 +487,17 @@ the five-point check contract.** It writes a configuration file and starts an ap
 which a check must never do. ⭐ Its suite is
 `cc_profile/tests/cc_profile.tests.ps1`, and the gate's `powershell` check
 parses and analyses both files like every other tracked script.
+
+### `ag_profile/ag_profile.ps1`
+
+Run the Antigravity desktop app as separate isolated profiles, one per Google
+account, with detached launches and file-based keyring isolation.
+[`ag_profile/README.md`](ag_profile/README.md) holds the full reference.
+
+⚠ **As a Windows desktop helper, it follows the header and exit-code rules rather
+than the check contract.** Its test and mutation suite lives at
+`ag_profile/tests/ag_profile.tests.ps1`, and the gate's `powershell` check parses
+and analyses both scripts.
 
 ### `common/text-tool.sh` and `common/text-tool.ps1`
 
