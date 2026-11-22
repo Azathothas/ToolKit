@@ -993,7 +993,7 @@ Add-Case 'validation-refuses-each-broken-shape' {
 }
 
 Add-Case 'seed-copies-settings-and-never-credentials' {
-    Assert-Exit (Run 'add' 't-a') 0
+    Assert-Exit (Run 'add' 't-a' '-IsolateSkills') 0
     $srcRoot = Join-Path $script:Ctx.Dir 'src-gemini'
     $src = Join-Path $srcRoot 'config'
     [void][IO.Directory]::CreateDirectory((Join-Path $src 'skills\demo'))
@@ -1033,6 +1033,74 @@ Add-Case 'seed-refuses-a-folder-the-config-may-not-name' {
     Assert-Exit $r 1
     Assert-That ($r.Err -match "this tool's own data folder") "wrong refusal $(Format-Snip $r.Err)"
     Assert-That (-not [IO.File]::Exists((Join-Path $script:Ctx.DataDir 'config\config.json'))) 'seed wrote into the tool''s data folder'
+}
+
+Add-Case 'home-shell-folders-and-shared-skills-are-linked-and-purged-safely' {
+    $r = Invoke-Unit {
+        $base = [IO.Path]::GetDirectoryName($script:ConfigFile)
+        $fakeHome = [IO.Path]::Combine($base, 'fake-home')
+        foreach ($sub in 'Desktop', 'Downloads', '.agents\skills', '.skills-manager\skills', '.gemini\config\skills') {
+            [void][IO.Directory]::CreateDirectory([IO.Path]::Combine($fakeHome, $sub))
+        }
+        $deskFile = [IO.Path]::Combine($fakeHome, 'Desktop', 'keep.txt')
+        $agentFile = [IO.Path]::Combine($fakeHome, '.agents\skills', 's.md')
+        $cfgSkill = [IO.Path]::Combine($fakeHome, '.gemini\config\skills', 'k.md')
+        $skillsJson = [IO.Path]::Combine($fakeHome, '.gemini\config\skills.json')
+        [IO.File]::WriteAllText($deskFile, 'desktop')
+        [IO.File]::WriteAllText($agentFile, 'agent-skill')
+        [IO.File]::WriteAllText($cfgSkill, 'cfg-skill')
+        [IO.File]::WriteAllText($skillsJson, '{ "entries": [{ "path": "~/.agents/skills" }] }')
+
+        # Override $HOME for Sync-ProfileHome inside this isolated child process.
+        Set-Variable -Name HOME -Value $fakeHome -Scope Global -Force
+        $udd = [IO.Path]::Combine($base, 'p-shared')
+        $hd = [IO.Path]::Combine($udd, 'home')
+        $gd = [IO.Path]::Combine($hd, '.gemini')
+        foreach ($d in $udd, $hd, $gd) { [void][IO.Directory]::CreateDirectory($d) }
+        $vShared = [pscustomobject]@{ IsDefault = $false; UserDataDir = $udd; HomeDir = $hd; GeminiDir = $gd; SharesGeminiConfig = $false; IsolatesSkills = $false }
+        Sync-ProfileHome $vShared
+        "DESK_LINK=$(Test-ReparsePoint ([IO.Path]::Combine($hd, 'Desktop')))"
+        "AGENTS_LINK=$(Test-ReparsePoint ([IO.Path]::Combine($hd, '.agents')))"
+        "SM_LINK=$(Test-ReparsePoint ([IO.Path]::Combine($hd, '.skills-manager')))"
+        "SKILLS_LINK=$(Test-ReparsePoint ([IO.Path]::Combine($gd, 'config\skills')))"
+        "SKILLS_JSON=$([IO.File]::Exists([IO.Path]::Combine($gd, 'config\skills.json')))"
+        "GEM_NEVER_LINKED=$(-not (Test-ReparsePoint $gd))"
+
+        # Reparse point timestamps must not count as profile GeminiDir writes.
+        $future = [DateTime]::UtcNow.AddMinutes(5)
+        $skillsLinkPath = [IO.Path]::Combine($gd, 'config\skills')
+        if ([IO.Directory]::Exists($skillsLinkPath)) { [IO.Directory]::SetLastWriteTimeUtc($skillsLinkPath, $future) }
+        $act = Get-GeminiActivityUtc $gd
+        "REPARSE_IGNORED=$($act -lt $future.AddMinutes(-1))"
+
+        # -IsolateSkills skips sharing .agents, .skills-manager, config\skills and skills.json.
+        $udd2 = [IO.Path]::Combine($base, 'p-iso')
+        $hd2 = [IO.Path]::Combine($udd2, 'home')
+        $gd2 = [IO.Path]::Combine($hd2, '.gemini')
+        foreach ($d in $udd2, $hd2, $gd2) { [void][IO.Directory]::CreateDirectory($d) }
+        $vIso = [pscustomobject]@{ IsDefault = $false; UserDataDir = $udd2; HomeDir = $hd2; GeminiDir = $gd2; SharesGeminiConfig = $false; IsolatesSkills = $true }
+        Sync-ProfileHome $vIso
+        "ISO_DESK=$(Test-ReparsePoint ([IO.Path]::Combine($hd2, 'Desktop')))"
+        "ISO_AGENTS=$(Test-ReparsePoint ([IO.Path]::Combine($hd2, '.agents')))"
+        "ISO_SKILLS=$(Test-ReparsePoint ([IO.Path]::Combine($gd2, 'config\skills')))"
+        "ISO_JSON=$([IO.File]::Exists([IO.Path]::Combine($gd2, 'config\skills.json')))"
+
+        # Purge unlinks every junction before moving into .ag-trash and leaves targets intact.
+        Move-ToTrash $udd 'p-shared' 6>$null
+        $trashDir = @(Get-ChildItem ([IO.Path]::Combine($base, '.ag-trash')) -Directory -Filter 'p-shared-*')[0].FullName
+        "TRASH_DESK=$([IO.Directory]::Exists([IO.Path]::Combine($trashDir, 'home\Desktop')))"
+        "TRASH_SKILLS=$([IO.Directory]::Exists([IO.Path]::Combine($trashDir, 'home\.gemini\config\skills')))"
+        "REAL_DESK_OK=$([IO.File]::Exists($deskFile))"
+        "REAL_AGENT_OK=$([IO.File]::Exists($agentFile))"
+        "REAL_CFG_OK=$([IO.File]::Exists($cfgSkill))"
+    }
+    Assert-Exit $r 0
+    Assert-That ($r.Out -match 'DESK_LINK=True' -and $r.Out -match 'AGENTS_LINK=True' -and $r.Out -match 'SM_LINK=True') "home junctions missing: $(Format-Snip $r.Out)"
+    Assert-That ($r.Out -match 'SKILLS_LINK=True' -and $r.Out -match 'SKILLS_JSON=True' -and $r.Out -match 'GEM_NEVER_LINKED=True') "shared skills links missing: $(Format-Snip $r.Out)"
+    Assert-That ($r.Out -match 'REPARSE_IGNORED=True') "reparse point timestamp counted as GeminiDir activity: $(Format-Snip $r.Out)"
+    Assert-That ($r.Out -match 'ISO_DESK=True' -and $r.Out -match 'ISO_AGENTS=False' -and $r.Out -match 'ISO_SKILLS=False' -and $r.Out -match 'ISO_JSON=False') "IsolateSkills did not isolate skills: $(Format-Snip $r.Out)"
+    Assert-That ($r.Out -match 'TRASH_DESK=False' -and $r.Out -match 'TRASH_SKILLS=False') "junction survived into .ag-trash: $(Format-Snip $r.Out)"
+    Assert-That ($r.Out -match 'REAL_DESK_OK=True' -and $r.Out -match 'REAL_AGENT_OK=True' -and $r.Out -match 'REAL_CFG_OK=True') "real target file was lost: $(Format-Snip $r.Out)"
 }
 
 Add-Case 'discover-finds-and-registers-an-unregistered-folder' {
@@ -1774,6 +1842,14 @@ $script:Mutations = @(
         Find = 'if ($a -notlike ''-*'' -and $a -match ''\.(?:m|c)?js\z'') { return $false }'; Replace = 'if ($false) { return $false }' }
     @{ Name = 'keyring-log-readback'; Case = 'keyring-log-probe-detects-file-storage-and-unconfirmed-starts'; Expect = 'keyring probe:'
         Find = 'if ($text -match ''Using file-based token storage'') { return ''file'' }'; Replace = 'if ($false) { return ''file'' }' }
+    @{ Name = 'home-shell-junctions'; Case = 'home-shell-folders-and-shared-skills-are-linked-and-purged-safely'; Expect = 'home junctions missing'
+        Find = '[void](New-Item -ItemType Junction -Path $dst -Target $src -ErrorAction Stop)'; Replace = '$null = $dst, $src' }
+    @{ Name = 'shared-skills-junction'; Case = 'home-shell-folders-and-shared-skills-are-linked-and-purged-safely'; Expect = 'shared skills links missing'
+        Find = 'try { [void](New-Item -ItemType Junction -Path $dstSkills -Target $srcSkills -ErrorAction Stop) }'; Replace = 'try { $null = $dstSkills, $srcSkills }' }
+    @{ Name = 'trash-unlinks-junctions'; Case = 'home-shell-folders-and-shared-skills-are-linked-and-purged-safely'; Expect = 'junction survived into \.ag-trash'
+        Find = '    Remove-ProfileJunction $Path'; Replace = '    $null = $Path' }
+    @{ Name = 'gemini-activity-ignores-reparse'; Case = 'home-shell-folders-and-shared-skills-are-linked-and-purged-safely'; Expect = 'reparse point timestamp counted'
+        Find = 'if (($e.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }'; Replace = 'if ($false) { continue }' }
     @{ Name = 'stale-write-guard'; Case = 'a-write-refuses-when-the-file-changed-under-it'; Expect = 'a stale write was not refused'
         Find = 'if ($current -ne $ExpectedHash) {'; Replace = 'if ($false) {' }
     @{ Name = 'schema-refusal'; Case = 'a-newer-schema-is-read-only'; Expect = 'exit 0, wanted 1'

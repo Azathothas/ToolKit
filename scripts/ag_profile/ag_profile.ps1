@@ -65,6 +65,8 @@ param(
     [switch]$IsolateGeminiConfig,
     [switch]$UseSystemKeyring,
     [switch]$IsolateKeyring,
+    [switch]$IsolateSkills,
+    [switch]$ShareSkills,
     [object[]]$SetEnv,
     [string[]]$UnsetEnv,
     [string[]]$ProfileArgs,
@@ -170,8 +172,17 @@ $script:AppKeys = @('exePath', 'extraArgs')
 $script:LaunchKeys = @('verifySeconds', 'via')
 $script:ProfileKeys = @(
     'email', 'aliases', 'userDataDir', 'homeDir', 'keepUserProfile',
-    'geminiDir', 'shareGeminiConfig', 'useSystemKeyring', 'env', 'args', 'notes'
+    'geminiDir', 'shareGeminiConfig', 'useSystemKeyring', 'isolateSkills', 'env', 'args', 'notes'
 )
+
+# Baseline real-home folders linked into an isolated profile home so Windows file
+# dialogs (Explorer project picker) and shared developer/skill tools work seamlessly.
+# User Shell Folders in HKCU are also read dynamically at sync time.
+$script:BaselineHomeFolders = @(
+    'Desktop', 'Downloads', 'Documents', 'Pictures', 'Music', 'Videos',
+    'Favorites', 'Links', 'AppData', '.ssh'
+)
+$script:SharedSkillHomeFolders = @('.agents', '.skills-manager')
 
 # Variables Windows synthesizes per logon session; they are not in the registry
 # environment, so a "clean" launch copies them from the current process.
@@ -886,12 +897,12 @@ function Test-Config($Cfg) {
             if (-not (Test-StringArray $p['args'])) { & $E "${where}.args: must be an array of strings" $name }
             elseif (Test-UserDataDirArg $p['args']) { & $E "${where}.args: must not contain --user-data-dir (use userDataDir)" $name }
         }
-        foreach ($bk in 'keepUserProfile', 'shareGeminiConfig', 'useSystemKeyring') {
+        foreach ($bk in 'keepUserProfile', 'shareGeminiConfig', 'useSystemKeyring', 'isolateSkills') {
             if ($null -ne $p[$bk] -and $p[$bk] -isnot [bool]) { & $E "${where}.${bk}: must be true or false" $name }
         }
 
         if ($isDefault) {
-            foreach ($k in 'userDataDir', 'homeDir', 'keepUserProfile', 'geminiDir', 'shareGeminiConfig', 'useSystemKeyring', 'args') {
+            foreach ($k in 'userDataDir', 'homeDir', 'keepUserProfile', 'geminiDir', 'shareGeminiConfig', 'useSystemKeyring', 'isolateSkills', 'args') {
                 if ($p.Contains($k) -and $null -ne $p[$k]) {
                     & $E "${where}.${k}: not allowed on the built-in default profile (it always uses the app's own folders, ~/.gemini and the system keyring)" $name
                 }
@@ -996,11 +1007,13 @@ function Get-ProfileView($Cfg, [string]$Name) {
     $shareGem = $isDefault
     $keepHome = $isDefault
     $useKeyring = $isDefault
+    $isoSkills = $false
     if (-not $isDefault) {
         $udd = Get-FullPath $p['userDataDir'] "profiles.$Name.userDataDir"
         $shareGem = $p['shareGeminiConfig'] -eq $true
         $keepHome = $shareGem -or ($p['keepUserProfile'] -eq $true)
         $useKeyring = $p['useSystemKeyring'] -eq $true
+        $isoSkills = (-not $shareGem) -and ($p['isolateSkills'] -eq $true)
         if (-not $shareGem) {
             if (-not $keepHome) {
                 $hd = if ($p['homeDir']) { Get-FullPath $p['homeDir'] "profiles.$Name.homeDir" } else { [IO.Path]::Combine($udd, 'home') }
@@ -1025,6 +1038,7 @@ function Get-ProfileView($Cfg, [string]$Name) {
         EffectiveGeminiDir   = if ($gd) { $gd } else { [IO.Path]::Combine($HOME, '.gemini') }
         SharesGeminiConfig   = $shareGem
         UsesSystemKeyring    = $useKeyring
+        IsolatesSkills       = $isoSkills
         Env                  = $envd
         Args                 = @(if (Test-StringArray $p['args']) { $p['args'] })
         Notes                = if ($p['notes'] -is [string]) { $p['notes'] } else { $null }
@@ -1498,6 +1512,117 @@ function Get-DirActivityUtc([string]$Dir) {
     return $latest
 }
 
+function Test-ReparsePoint([string]$Path) {
+    if (-not $Path) { return $false }
+    try {
+        if (-not ([IO.Directory]::Exists($Path) -or [IO.File]::Exists($Path))) { return $false }
+        return (([IO.File]::GetAttributes($Path) -band [IO.FileAttributes]::ReparsePoint) -ne 0)
+    }
+    catch { return $false }
+}
+
+# Reads unexpanded REG_EXPAND_SZ entries under HKCU\...\User Shell Folders so every
+# %USERPROFILE%\<Folder> that Windows Explorer / Common File Dialogs open (Desktop,
+# Downloads, Favorites, Videos, AppData, etc.) gets a junction inside an isolated home.
+function Get-HomeLinkList([bool]$IncludeSharedSkills) {
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $out = [Collections.Generic.List[string]]::new()
+    $add = {
+        param([string]$n)
+        if (-not $n) { return }
+        $t = $n.Trim()
+        if (-not $t -or $t -ieq '.gemini' -or $t -match '[\\/:*?"<>|]') { return }
+        if ($seen.Add($t)) { $out.Add($t) }
+    }
+    try {
+        $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders')
+        if ($key) {
+            try {
+                foreach ($vn in $key.GetValueNames()) {
+                    $raw = [string]$key.GetValue($vn, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                    if ($raw -match '^%USERPROFILE%[\\/]([^\\/]+)') { & $add $Matches[1] }
+                }
+            }
+            finally { $key.Dispose() }
+        }
+    }
+    catch { Write-Trace "Could not read User Shell Folders: $($_.Exception.Message)" }
+    foreach ($n in $script:BaselineHomeFolders) { & $add $n }
+    if ($IncludeSharedSkills) {
+        foreach ($n in $script:SharedSkillHomeFolders) { & $add $n }
+    }
+    return $out.ToArray()
+}
+
+# Ensures an isolated profile home has NTFS directory junctions to the user's real
+# Windows shell folders (fixing Explorer's project selector "Location is not available"
+# dialog) and, unless -IsolateSkills is set, shares ~/.agents, ~/.skills-manager,
+# ~/.gemini/config/skills and ~/.gemini/config/skills.json with the default profile.
+# Directory junctions require no administrator privileges on Windows.
+function Sync-ProfileHome($View) {
+    if ($WhatIfPreference -or -not $View -or $View.IsDefault) { return }
+    $realHome = [IO.Path]::GetFullPath($HOME).TrimEnd('\')
+
+    if ($View.HomeDir -and [IO.Directory]::Exists($View.HomeDir)) {
+        $homeFull = [IO.Path]::GetFullPath($View.HomeDir).TrimEnd('\')
+        $linkNames = @(Get-HomeLinkList (-not $View.IsolatesSkills))
+        foreach ($leaf in $linkNames) {
+            if ($leaf -ieq '.gemini') { continue }
+            $src = [IO.Path]::Combine($realHome, $leaf)
+            if (-not [IO.Directory]::Exists($src)) { continue }
+            if ((Test-PathOverlap $src $homeFull) -or (Test-PathOverlap $homeFull $src)) { continue }
+            $dst = [IO.Path]::Combine($homeFull, $leaf)
+            if ([IO.Directory]::Exists($dst) -or [IO.File]::Exists($dst)) { continue }
+            try {
+                [void](New-Item -ItemType Junction -Path $dst -Target $src -ErrorAction Stop)
+            }
+            catch { Write-Trace "Could not link ${dst} -> ${src}: $($_.Exception.Message)" }
+        }
+    }
+
+    if ($View.GeminiDir -and -not $View.SharesGeminiConfig -and -not $View.IsolatesSkills) {
+        $realConfig = [IO.Path]::Combine($realHome, '.gemini', 'config')
+        $destConfig = [IO.Path]::Combine($View.GeminiDir, 'config')
+        if ([IO.Directory]::Exists($realConfig) -and -not (Test-PathOverlap $realConfig $destConfig)) {
+            [void][IO.Directory]::CreateDirectory($destConfig)
+            $srcSkills = [IO.Path]::Combine($realConfig, 'skills')
+            $dstSkills = [IO.Path]::Combine($destConfig, 'skills')
+            if ([IO.Directory]::Exists($srcSkills) -and -not ([IO.Directory]::Exists($dstSkills) -or [IO.File]::Exists($dstSkills))) {
+                try { [void](New-Item -ItemType Junction -Path $dstSkills -Target $srcSkills -ErrorAction Stop) }
+                catch { Write-Trace "Could not link ${dstSkills} -> ${srcSkills}: $($_.Exception.Message)" }
+            }
+            $srcSkillsJson = [IO.Path]::Combine($realConfig, 'skills.json')
+            $dstSkillsJson = [IO.Path]::Combine($destConfig, 'skills.json')
+            if ([IO.File]::Exists($srcSkillsJson) -and -not [IO.File]::Exists($dstSkillsJson)) {
+                try { [IO.File]::WriteAllBytes($dstSkillsJson, (Read-SharedBytes $srcSkillsJson)) }
+                catch { Write-Trace "Could not copy ${srcSkillsJson} -> ${dstSkillsJson}: $($_.Exception.Message)" }
+            }
+        }
+    }
+}
+
+# Unlinks NTFS directory junctions inside a profile directory before moving it to
+# .ag-trash. Directory.Delete(path, false) removes only the reparse point itself
+# and never touches the target directory (e.g. Desktop, .agents, shared skills).
+function Remove-ProfileJunction([string]$RootDir) {
+    if (-not $RootDir -or -not [IO.Directory]::Exists($RootDir)) { return }
+    $scanDirs = @(
+        $RootDir,
+        [IO.Path]::Combine($RootDir, 'home'),
+        [IO.Path]::Combine($RootDir, 'home', '.gemini', 'config'),
+        [IO.Path]::Combine($RootDir, '.gemini', 'config'),
+        [IO.Path]::Combine($RootDir, 'config')
+    )
+    foreach ($d in $scanDirs) {
+        if (-not [IO.Directory]::Exists($d) -or (Test-ReparsePoint $d)) { continue }
+        foreach ($child in [IO.DirectoryInfo]::new($d).EnumerateDirectories()) {
+            if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                [IO.Directory]::Delete($child.FullName, $false)
+            }
+        }
+    }
+}
+
 function Get-GeminiActivityUtc([string]$GeminiDir) {
     $latest = [datetime]::MinValue
     if (-not $GeminiDir) { return $latest }
@@ -1509,6 +1634,9 @@ function Get-GeminiActivityUtc([string]$GeminiDir) {
         )) {
         if (-not [IO.Directory]::Exists($d)) { continue }
         foreach ($e in [IO.DirectoryInfo]::new($d).EnumerateFileSystemInfos()) {
+            # Ignore shared junctions (such as config\skills) so activity in the default
+            # profile never reads as a fresh write inside this isolated profile.
+            if (($e.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
             if ($e.LastWriteTimeUtc -gt $latest) { $latest = $e.LastWriteTimeUtc }
         }
     }
@@ -1964,6 +2092,7 @@ function Invoke-Launch {
                 [void][IO.Directory]::CreateDirectory($d)
             }
         }
+        Sync-ProfileHome $view
     }
     if ($running.Count) {
         if ($Restart) { Stop-ProfileInstances $view $running; $running = @() }
@@ -2143,6 +2272,7 @@ function Invoke-Show($Cfg) {
         geminiDir          = $v.EffectiveGeminiDir
         sharesGeminiConfig = $v.SharesGeminiConfig
         usesSystemKeyring  = $v.UsesSystemKeyring
+        isolatesSkills     = $v.IsolatesSkills
         env                = $envShown
         args               = @($v.Args)
         notes              = $v.Notes
@@ -2179,6 +2309,8 @@ function Invoke-Add {
     if ($ShareGeminiConfig -and ($GeminiDir -or $HomeDir -or $IsolateGeminiConfig)) { throw 'Use either -ShareGeminiConfig or isolated -GeminiDir/-HomeDir, not both.' }
     if ($KeepUserProfile -and ($HomeDir -or $IsolateUserProfile)) { throw 'Use either -KeepUserProfile or -HomeDir/-IsolateUserProfile, not both.' }
     if ($UseSystemKeyring -and $IsolateKeyring) { throw 'Use either -UseSystemKeyring or -IsolateKeyring, not both.' }
+    if ($IsolateSkills -and $ShareSkills) { throw 'Use either -IsolateSkills or -ShareSkills, not both.' }
+    if ($ShareGeminiConfig -and $IsolateSkills) { throw 'Use either -ShareGeminiConfig or -IsolateSkills, not both.' }
 
     $res = Update-Config "add profile '$name'" {
         param($cfg)
@@ -2197,6 +2329,7 @@ function Invoke-Add {
             if ($ShareGeminiConfig -and -not $v.SharesGeminiConfig) { $diff.Add('it has its own .gemini dir') }
             if ($KeepUserProfile -and -not $v.KeepsUserProfile) { $diff.Add('it isolates USERPROFILE') }
             if ($UseSystemKeyring -and -not $v.UsesSystemKeyring) { $diff.Add('it isolates keyring tokens') }
+            if ($IsolateSkills -and -not $v.IsolatesSkills) { $diff.Add('it shares skills with default') }
             foreach ($a in @($Alias | Where-Object { $_ })) { if (@($v.Aliases) -inotcontains $a) { $diff.Add("alias '$a' is not set") } }
             if ($diff.Count) { throw "Profile '$existing' already exists and differs ($($diff -join '; ')). Use 'set' to change it." }
             return 'unchanged'
@@ -2220,6 +2353,7 @@ function Invoke-Add {
             $entry['geminiDir'] = Compress-UserPath $gd
         }
         if ($UseSystemKeyring) { $entry['useSystemKeyring'] = $true }
+        if ($IsolateSkills) { $entry['isolateSkills'] = $true }
         $entry['env'] = [ordered]@{}
         foreach ($k in $script:EnvSettings.Keys) { $entry['env'][$k] = $script:EnvSettings[$k] }
         $entry['args'] = @($ProfileArgs | Where-Object { $_ })
@@ -2233,12 +2367,14 @@ function Invoke-Add {
     else {
         $v = Get-ProfileView $res.Config $name
         foreach ($d in @($v.UserDataDir, $v.HomeDir, $v.GeminiDir)) { if ($d) { [void][IO.Directory]::CreateDirectory($d) } }
+        Sync-ProfileHome $v
         if ($res.Result -eq 'adopted') { Write-Ok "Added '$name', adopting the existing data in $(Compress-UserPath $v.UserDataDir)." }
         else { Write-Ok "Added '$name'." }
         Write-Line "  app data   : $(Compress-UserPath $v.UserDataDir)"
         Write-Line "  home dir   : $(if ($v.HomeDir) { Compress-UserPath $v.HomeDir } else { '(real USERPROFILE)' })"
         Write-Line "  gemini dir : $(Compress-UserPath $v.EffectiveGeminiDir)$(if ($v.SharesGeminiConfig) { ' (shared with default)' })"
         Write-Line "  keyring    : $(if ($v.UsesSystemKeyring) { 'system (shared Windows Credential Manager!)' } else { 'isolated (file-based token storage)' })"
+        Write-Line "  skills     : $(if ($v.IsolatesSkills) { 'isolated (profile-only)' } else { 'shared (~/.agents, ~/.skills-manager, ~/.gemini/config/skills)' })"
     }
     if ($SeedFrom) { Invoke-Seed (Read-Config).Config $name $SeedFrom }
     if ($res.Changed) {
@@ -2257,7 +2393,7 @@ function Invoke-Set {
         'Email', 'Alias', 'RemoveAlias', 'SetEnv', 'UnsetEnv', 'Notes', 'ProfileArgs',
         'UserDataDir', 'HomeDir', 'KeepUserProfile', 'IsolateUserProfile',
         'GeminiDir', 'ShareGeminiConfig', 'IsolateGeminiConfig',
-        'UseSystemKeyring', 'IsolateKeyring'
+        'UseSystemKeyring', 'IsolateKeyring', 'IsolateSkills', 'ShareSkills'
     )
     if (-not @($knobs | Where-Object { $script:Bound.ContainsKey($_) }).Count) { throw "Nothing to change. Options: -$($knobs -join ', -')" }
     if (@('HomeDir', 'KeepUserProfile', 'IsolateUserProfile' | Where-Object { $script:Bound.ContainsKey($_) }).Count -gt 1) {
@@ -2269,6 +2405,9 @@ function Invoke-Set {
     if ($UseSystemKeyring -and $IsolateKeyring) {
         throw 'Use either -UseSystemKeyring or -IsolateKeyring, not both.'
     }
+    if ($IsolateSkills -and $ShareSkills) {
+        throw 'Use either -IsolateSkills or -ShareSkills, not both.'
+    }
     $res = Update-Config "update profile '$($script:Tgt)'" {
         param($cfg)
         $name = Resolve-ProfileName $cfg $script:Tgt
@@ -2276,7 +2415,7 @@ function Invoke-Set {
         if (-not $key) { $key = 'default'; $cfg['profiles'][$key] = [ordered]@{} }
         $p = $cfg['profiles'][$key]
         if ($name -eq 'default') {
-            foreach ($k in 'UserDataDir', 'HomeDir', 'KeepUserProfile', 'IsolateUserProfile', 'GeminiDir', 'ShareGeminiConfig', 'IsolateGeminiConfig', 'UseSystemKeyring', 'IsolateKeyring', 'ProfileArgs') {
+            foreach ($k in 'UserDataDir', 'HomeDir', 'KeepUserProfile', 'IsolateUserProfile', 'GeminiDir', 'ShareGeminiConfig', 'IsolateGeminiConfig', 'UseSystemKeyring', 'IsolateKeyring', 'IsolateSkills', 'ShareSkills', 'ProfileArgs') {
                 if ($script:Bound.ContainsKey($k)) { throw "-$k is not allowed on the built-in default profile." }
             }
         }
@@ -2366,6 +2505,8 @@ function Invoke-Set {
         }
         if ($UseSystemKeyring) { $p['useSystemKeyring'] = $true }
         if ($IsolateKeyring) { $p.Remove('useSystemKeyring') }
+        if ($IsolateSkills) { $p['isolateSkills'] = $true }
+        if ($ShareSkills) { $p.Remove('isolateSkills') }
         return $name
     }
     if (-not $res.Changed) { if (-not $WhatIfPreference) { Write-Ok 'No change.' }; return }
@@ -2374,9 +2515,10 @@ function Invoke-Set {
     $needsRestart = @(
         'SetEnv', 'UnsetEnv', 'ProfileArgs', 'UserDataDir', 'HomeDir', 'KeepUserProfile',
         'IsolateUserProfile', 'GeminiDir', 'ShareGeminiConfig', 'IsolateGeminiConfig',
-        'UseSystemKeyring', 'IsolateKeyring' | Where-Object { $script:Bound.ContainsKey($_) }
+        'UseSystemKeyring', 'IsolateKeyring', 'IsolateSkills', 'ShareSkills' | Where-Object { $script:Bound.ContainsKey($_) }
     ).Count
     $v = Get-ProfileView $res.Config $name
+    if ($ShareSkills -and -not $v.IsDefault) { Sync-ProfileHome $v }
     if ($needsRestart -and @(Get-AntigravityInstances | Where-Object { Test-InstanceMatch $_ $v }).Count) {
         Write-Note "'$name' is running; restart it to apply: $($script:ToolName) $name -Restart"
     }
@@ -2504,6 +2646,9 @@ function Move-ToTrash {
     $dest = [IO.Path]::Combine($trash, $base)
     for ($n = 2; [IO.Directory]::Exists($dest) -or [IO.File]::Exists($dest); $n++) { $dest = [IO.Path]::Combine($trash, "$base-$n") }
     if (-not $PSCmdlet.ShouldProcess($Path, "Move to $dest")) { return }
+    # Remove any NTFS junctions pointing outside the profile before moving into
+    # .ag-trash so deleting .ag-trash later can never traverse into real folders.
+    Remove-ProfileJunction $Path
     [void][IO.Directory]::CreateDirectory($trash)
     [IO.Directory]::Move($Path, $dest)
     if ([IO.Directory]::Exists($Path) -or -not [IO.Directory]::Exists($dest)) {
@@ -2520,7 +2665,12 @@ function Remove-Contained([string]$Path, [string]$Root) {
     $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\')
     if (-not (Test-PathWithin $full $rootFull)) { throw "Refusing to remove '$full': it is not inside '$rootFull'." }
     if (-not (Test-Path -LiteralPath $full)) { return }
-    Remove-Item -LiteralPath $full -Recurse -Force
+    if ((Test-ReparsePoint $full) -and [IO.Directory]::Exists($full)) {
+        [IO.Directory]::Delete($full, $false)
+    }
+    else {
+        Remove-Item -LiteralPath $full -Recurse -Force
+    }
     if (Test-Path -LiteralPath $full) { throw "Removing '$full' did not take effect; it is still there." }
 }
 
@@ -2892,6 +3042,13 @@ function Invoke-Doctor($Cfg, $ReadResult) {
             if (-not [IO.Directory]::Exists($v.UserDataDir)) { Write-Note "${tag}: not launched yet ($(Compress-UserPath $v.UserDataDir) will be created)." }
             if ($v.SharesGeminiConfig) { Write-Warn "${tag}: shares ~/.gemini with the default profile." }
             elseif ($v.KeepsUserProfile) { Write-Warn "${tag}: keeps real USERPROFILE; Electron paths.js reads ~/.gemini while language_server uses $(Compress-UserPath $v.GeminiDir)." }
+            elseif ($v.HomeDir -and [IO.Directory]::Exists($v.HomeDir)) {
+                $realDesk = [IO.Path]::Combine($HOME, 'Desktop')
+                $profDesk = [IO.Path]::Combine($v.HomeDir, 'Desktop')
+                if ([IO.Directory]::Exists($realDesk) -and -not [IO.Directory]::Exists($profDesk)) {
+                    Write-Warn "${tag}: home dir is missing Windows shell folder links (such as Desktop); launch it once to sync links so file pickers work."
+                }
+            }
             if ($v.UsesSystemKeyring) { Write-Warn "${tag}: uses Windows Credential Manager (gemini:antigravity); concurrent sign-ins collide." }
             if ($run.Count) {
                 $started = ([datetime]$run[0].Started).ToUniversalTime()
@@ -3243,11 +3400,11 @@ function Show-Help {
         '  show PROFILE [-Json]                     details, and which Google account the profile is signed in as'
         '  add [NAME] [-Email E] [-Alias A,B]       create a profile (NAME comes from -Email when omitted)'
         '      [-UserDataDir D] [-HomeDir D | -KeepUserProfile] [-GeminiDir D | -ShareGeminiConfig]'
-        '      [-UseSystemKeyring] [-SetEnv NAME=VALUE] [-ProfileArgs ..] [-Notes ..] [-SeedFrom default|PROFILE|DIR]'
+        '      [-UseSystemKeyring] [-IsolateSkills] [-SetEnv NAME=VALUE] [-ProfileArgs ..] [-Notes ..] [-SeedFrom default|PROFILE|DIR]'
         "  set PROFILE [-Email E|''] [-Alias A] [-RemoveAlias A] [-SetEnv NAME=VALUE] [-UnsetEnv NAME]"
         '      [-Notes ..] [-ProfileArgs ..] [-UserDataDir D -Force]'
         '      [-HomeDir D | -KeepUserProfile | -IsolateUserProfile]'
-        '      [-GeminiDir D | -ShareGeminiConfig | -IsolateGeminiConfig] [-UseSystemKeyring | -IsolateKeyring]'
+        '      [-GeminiDir D | -ShareGeminiConfig | -IsolateGeminiConfig] [-UseSystemKeyring | -IsolateKeyring] [-IsolateSkills | -ShareSkills]'
         '  alias PROFILE ALIAS...                   add aliases          unalias ALIAS...   remove aliases'
         '  rename PROFILE NEW-NAME                  rename (folders stay where they are)'
         '  remove PROFILE [-PurgeData [-Force]]     unregister; -PurgeData moves its folders into .ag-trash beside them'

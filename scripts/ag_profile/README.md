@@ -14,15 +14,17 @@ strings in profile notes from mutating across rewrites.
 | scope | default app | isolated profile |
 | --- | --- | --- |
 | Electron user data: `app_storage.json`, single-instance lock, cookies and logs | `%APPDATA%\Antigravity` | its own folder via `--user-data-dir` |
-| profile home: `USERPROFILE`, `HOMEDRIVE` and `HOMEPATH` | the Windows logon home | `<userDataDir>\home`, isolating Electron's `paths.js` |
-| agent data and global config: `antigravity/` and `config/` | `~/.gemini` | `<homeDir>\.gemini`, also exported as `ANTIGRAVITY_GEMINI_DIR` |
+| profile home: `USERPROFILE`, `HOMEDRIVE` and `HOMEPATH` | the Windows logon home | `<userDataDir>\home`, with NTFS junctions to your real shell folders (`Desktop`, `Downloads`, etc.) and `.ssh` |
+| agent data and global configuration: `antigravity/` and `config/` | `~/.gemini` | `<homeDir>\.gemini`, also exported as `ANTIGRAVITY_GEMINI_DIR` |
+| global skills (`~/.agents/skills`, `~/.skills-manager/skills`, `~/.gemini/config/skills`) | `~/.agents` and `~/.gemini/config/skills` | shared live via NTFS junctions (and `skills.json`) unless `-IsolateSkills` is set |
 | Google OAuth tokens | Windows Credential Manager (`gemini:antigravity`) | file-based token storage inside the profile via `SSH_CONNECTION` |
 | process environment | the caller's environment | rebuilt from the registry like Explorer, with scrub patterns stripped |
 | terminal console | inherited parent console | none, as [Launching](#launching) describes |
 
 Each isolation layer has a per-profile opt-out: `-KeepUserProfile`,
-`-ShareGeminiConfig` and `-UseSystemKeyring`. Re-enable them with
-`-IsolateUserProfile`, `-IsolateGeminiConfig` and `-IsolateKeyring`.
+`-ShareGeminiConfig`, `-UseSystemKeyring` and `-IsolateSkills`. Toggle them back
+with `-IsolateUserProfile`, `-IsolateGeminiConfig`, `-IsolateKeyring` and
+`-ShareSkills`.
 
 ## What all profiles share
 
@@ -93,12 +95,13 @@ ag_profile w
 `default` represents the standard Antigravity installation with no extra flags.
 Assign metadata to it with `set default -Email E -Alias main`.
 
-`remove` leaves profile directories intact. Adding `-PurgeData` moves each
-profile directory into an `.ag-trash` folder beside it instead of deleting
-bytes. Before moving anything, it checks that the profile is stopped, every
-directory is safe to move, and the remaining configuration is valid. Folders
-move before the configuration entry is removed so a partial failure never
-orphans data.
+`remove` leaves profile directories intact. Adding `-PurgeData` unlinks every
+junction inside the profile first, then moves each directory into `.ag-trash`
+beside it instead of deleting bytes. Unlinking junctions before moving guarantees
+`.ag-trash` never holds a link back to `Desktop`, `.agents` or shared skills.
+Before moving anything, it checks that the profile is stopped, every directory
+is safe to move, and the remaining configuration is valid. Folders move before
+the configuration entry is removed so a partial failure never orphans data.
 
 `seed` copies `config.json`, `mcp_config.json`, `skills.json`, `skills`,
 `rules`, `GEMINI.md` and `AGENTS.md` from `<source>\config` by default. It
@@ -168,6 +171,7 @@ file and its companion `~/.ag_profiles.d` folder.
 | `homeDir` / `keepUserProfile` | isolated `USERPROFILE` folder, or `keepUserProfile: true` to keep the real Windows home |
 | `geminiDir` / `shareGeminiConfig` | isolated `.gemini` folder exported as `ANTIGRAVITY_GEMINI_DIR`, or `shareGeminiConfig: true` to share `~/.gemini` |
 | `useSystemKeyring` | when `true`, skips `SSH_CONNECTION` keyring bypass and uses Windows Credential Manager |
+| `isolateSkills` | when `true`, keeps the profile's skills separate instead of linking `~/.agents`, `~/.skills-manager` and `~/.gemini/config/skills` |
 
 Validation runs before every write and blocks invalid saves:
 
