@@ -99,7 +99,7 @@ jobs:
           [ "$rc" = 0 ]
 
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         id: go
         with:
           go-version-file: tools/check/go.mod
@@ -221,7 +221,7 @@ jobs:
       # ⛔ EVERY tracked .ps1, not a hardcoded list. A list is a thing somebody
       # forgets to extend, and the script they forgot is the one that breaks.
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         id: go
         with:
           go-version-file: tools/check/go.mod
@@ -354,7 +354,7 @@ jobs:
       # pinned on the line below rather than repeated here:
       #   gh api repos/actions/setup-go/git/ref/tags/v7.0.0 --jq .object.sha
       # It declares node24, which is current.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         id: go
         with:
           go-version-file: tools/windows/wsl-toolkit/go.mod
@@ -484,7 +484,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         id: go
         with:
           go-version-file: tools/repo/go.mod
@@ -591,7 +591,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         id: go
         with:
           go-version-file: tools/repo/go.mod
@@ -637,7 +637,7 @@ jobs:
 
       # ⛔ THE VERSION COMES FROM go.mod, and it is the plan's, so the keys
       # this step recomputes are the ones the plan looked up.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         id: go
         with:
           go-version-file: tools/repo/go.mod
@@ -756,7 +756,7 @@ jobs:
 
       # ⛔ THE VERSION COMES FROM go.mod. Without it the image's own Go fetched
       # the toolchain go.mod asks for on every run.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         id: go
         with:
           go-version-file: tools/check/go.mod
