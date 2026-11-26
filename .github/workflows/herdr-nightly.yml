@@ -107,7 +107,7 @@ jobs:
           persist-credentials: false
 
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: tools/repo/go.mod
           cache: false
@@ -137,7 +137,7 @@ jobs:
             --github-env "$GITHUB_ENV"
 
       # ⚠ THE COSIGN VERSION IS PINNED, as release.yml and release-smoke.yml pin theirs.
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         with:
           cosign-release: v3.1.3
 
